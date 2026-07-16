@@ -1,63 +1,57 @@
 # HANDOFF — YMU-A
 
-Snapshot of the repo at the end of **Phase 1 (auth, roles, RBAC)**. Phase 0 notes are superseded by this file; everything below was verified by running it (RLS test suite + driving the real dev server in a browser), not from memory.
+Snapshot of the repo at the end of **Phase 2 (schools, regions, Lists tab)**. Phase 1 notes are superseded by this file (see git history for the prior `HANDOFF.md` if you need Phase 1 detail); everything below was verified by running it — RLS test suite (32/32) + driving the real dev server in a browser as OM and RM — not from memory.
 
 ## What exists right now
 
-**App shell** — Next.js 16 (App Router, TypeScript, Turbopack-only build), Tailwind 4, PWA plumbing from Phase 0 unchanged (`@serwist/turbopack`, manifest, `/~offline`, placeholder icons).
+Everything from Phase 1 (auth, roles, RBAC — `src/app/(auth)/*`, `src/lib/auth/*`, `src/proxy.ts`, the Team page) is unchanged and still verified working; see the "Phase 1" section of git history for that detail.
 
-**Auth (new in Phase 1)** — full email+password auth against the hosted Supabase project:
+**Schools & Lists tab (new in Phase 2)** — replaces the Phase 1 stub at `src/app/(app)/lists/`:
 
-- `src/app/(auth)/` — login, signup (name/email/phone/password), reset-password (request), update-password (post-link), verify-email (notice + resend), all server-action forms with `useActionState`; shared card layout and form primitives (`ui.tsx`); `actions.ts` holds all auth server actions
-- `src/app/(auth)/auth/confirm/route.ts` — target of Supabase auth emails; `verifyOtp(token_hash, type)` → redirect to `next` (sanitized, relative-only)
-- `src/app/(auth)/auth/signout/route.ts` — GET signout route; also the archived-account bounce target (server components can't write cookies, a route handler can)
-- Email verification currently uses **Supabase's built-in sender** (user-confirmed decision). It is rate-limited (~2/hour) and rejects `example.com` addresses. Resend SMTP cutover steps are below.
+- `page.tsx` — server component; `requireRole(...MANAGER_ROLES)`, fetches `schools` (RLS-scoped) and `teacher_directory()` (RPC) in parallel, renders `ListsExplorer`
+- `lists-explorer.tsx` — client component: the search box (client-side filter over already-fetched schools/teachers — dataset is small, ≤255 schools + ~100 teachers, no server-side search needed) plus the Add-school form, Schools list, Teachers list
+- `add-school-form.tsx` — name/address/contact fields → `addSchool` server action → geocode → insert
+- `school-card.tsx` — one school's info: map preview, region (editable `<select>` via `RegionForm` for OM/CPO, read-only badge for everyone else), an expandable "Edit contact / pin" section with `ContactEditor` (contact name/phone/geofence radius — any manager) and `LocationEditor` (manual lat/lng override, shows a "moves the pin ~N m" hint computed client-side with `haversineMeters`)
+- `teacher-popover.tsx` — click-to-expand card showing email/phone, fed by `teacher_directory()` data already loaded server-side (no extra round-trip)
+- `map-preview.tsx` / `leaflet-map.tsx` — Leaflet map preview. `map-preview.tsx` is the client-only `next/dynamic(..., { ssr: false })` wrapper (required because `ssr: false` only works from a Client Component per the Next.js lazy-loading guide); `leaflet-map.tsx` has the actual `MapContainer`/`Marker`. Marker icons are served from `public/leaflet/*.png` (copied from `node_modules/leaflet/dist/images`) rather than bundled via static `import` — Turbopack's static-image-import object shape didn't give Leaflet a usable `iconUrl` string and threw `iconUrl not set in Icon options` at runtime (see DECISIONS)
+- `actions.ts` — server actions: `addSchool`, `updateSchoolLocation`, `updateSchoolContact`, `assignSchoolRegion` (each independently calls `requireRole` — the UI hiding a control is not the security boundary, RLS/triggers are)
+- `types.ts` — `School`/`Teacher` row shapes shared across the tab's client components
 
-**RBAC**:
+**Geocoding** — `src/lib/geocode.ts`, server-only (only ever imported from `actions.ts`): tries the US Census Bureau one-line address geocoder first, falls back to Nominatim (required `User-Agent` header, throttled to ≤1 req/s via a module-level last-call timestamp — sufficient because schools are added one at a time by a human, drip-fed). Both upstreams were exercised for real during verification.
 
-- `src/lib/auth/roles.ts` — `AppRole`/`Region` types mirroring the DB enums, role labels, `navForRole()` (teacher: Clocking/Schedules/Reports/Settings; managers: Lists instead of Clocking; OM/CPO also get Team), `ROUTE_ROLES` path→roles map
-- `src/lib/auth/dal.ts` — authoritative checks: `getProfile()` (React-`cache`d; bounces archived accounts to `/auth/signout?error=archived`), `requireProfile()`, `requireRole()`
-- `src/proxy.ts` + `src/lib/supabase/proxy.ts` — **Next 16 renamed middleware to proxy; there is no `middleware.ts`**. Optimistic checks only: session refresh via `getClaims()` (this is the session-expiry handling — failed refresh ⇒ treated as signed out ⇒ `/login`), signed-out redirect, signed-in bounce off auth pages, and role gating of `/users` + `/lists` + `/clocking` via the `app_role` JWT claim
-- The `app_role` claim lives in `auth.users.raw_app_meta_data` — stamped `'teacher'` at signup by a DB trigger, updated by `promote_user()`. JWT claims lag role changes by up to one token refresh (~1 h); the DAL/RLS are authoritative immediately
-- `src/app/(app)/` — signed-in shell. The group layout sets `data-role` on a wrapper div (per-role accent color via `globals.css`; see DECISIONS for why it's not on `<html>`), header with role badge + sign-out. Role-aware home tiles; stub pages for `/clocking` (teacher-only), `/lists` (managers), `/schedules`, `/reports`, `/settings`
-- `src/app/(app)/users/` — **Team page** (OM/CPO only): promote teacher→RM with region; CPO can also appoint/demote OMs. Mirrors the RPC's rules client-side so the UI never offers a doomed submit
+**Haversine** — `src/lib/geo/haversine.ts` (TypeScript) and `haversine_meters()` (SQL, in the migration) are deliberately kept as two implementations, per the plan. The TS one currently powers the "moved N meters" override hint; the SQL one isn't consumed by anything yet (no geofence check exists before Phase 4/5) but exists now per the Phase 2 file list so those phases can call it for server-side re-validation.
 
-**Database** (all migrations applied to hosted project `vgyogyojxlvhiwujidhy`; local/remote history in sync):
+**Database** (all migrations applied to hosted project `vgyogyojxlvhiwujidhy`; local/remote history in sync through `0005`):
 
-- `00000000000001_base_enums.sql` — `app_role`, `region` enums (renamed from `_init.sql`, see DECISIONS)
-- `0002_profiles_rls.sql` — `profiles` table (`full_name`, `phone`, `role` default `teacher`, `region`, `subjects[]`, `emergency_contact`, `archived_at`, timestamps); signup triggers (profile creation + `app_role` JWT stamp — role is always forced to `teacher`, so privileged roles can't be created via signup); `current_app_role()`/`current_app_region()` security-definer helpers; RLS (teacher: own row; RM: own region + own row; OM/CPO: all; update-own allowed but a trigger blocks non-managers changing `role`/`region`/`archived_at`); `promote_user()` RPC
-- `0003_seed_cpo.sql` — empty by design; contains the documented manual SQL for granting the CPO role (**not yet run — no real CPO exists yet**)
-- `0004_promote_target_guards.sql` — `promote_user()` hardened: CPO's role immutable via RPC, OM's role changeable only by CPO
+- `0005_schools.sql` — `schools` (name, address, contact_name, contact_phone, lat, lng, geocode_source, geofence_radius_m default 200, region, created_by, timestamps) and `school_years` (name, start_date, end_date, archived) tables + RLS; `protect_school_region()` trigger (region writable only by OM/CPO, same pattern as Phase 1's `protect_privileged_profile_columns`); `teacher_directory()` security-definer RPC (email from `auth.users`, region-scoped the same way `profiles_select` is); `haversine_meters()` SQL function
+  - Note: the original Phase 2 brief said `0003_schools.sql`, but `0003`/`0004` were already taken by the end of Phase 1 — used `0005` per `NEXT_STEPS.md`, which was more current
 
-**Tests** — `tests/rls.test.ts` (vitest): 16 integration tests against the **hosted** project (creates disposable confirmed users via service role, signs in via anon key, deletes them after). Covers teacher isolation (incl. the "teacher cannot read another teacher's row" done-criterion), self-promotion denial, RM region scoping, the full promotion matrix, archived flag. Run: `npm run test:rls` (needs `.env.local`; skips politely without it). **Not in CI** — it needs live credentials and mutates the shared project's user list.
+**Tests** — `tests/schools-rls.test.ts` (vitest, same disposable-hosted-user pattern as `tests/rls.test.ts`): 16 tests covering region-immutability (RM can insert unassigned, cannot insert/change a region even in-region, OM can set and re-set it, RM keeps write access to non-region columns), region-scoped `SELECT` visibility (RM sees own-region + unassigned, not other regions; OM/CPO see all), `teacher_directory()` scoping (teacher gets nothing back, RM gets own-region only, OM gets everyone including region-less teachers), and `school_years` write-gating (OM/CPO only; all managers can read). `npm run test:rls` now runs both files — **32/32 passing**. Still not in CI (needs live hosted credentials, mutates the shared project's user list).
 
-**CI** — unchanged from Phase 0 (lint, tsc, build with placeholder env). Passing locally: `npm run lint`, `npx tsc --noEmit`, `npm run build`, `npm run test:rls` (16/16).
+**CI** — unchanged from Phase 0/1.
 
-## Verified working (browser, dev server)
+## Verified working (browser, dev server, hosted project)
 
-- Signed-out `/` → `/login`; signed-in users bounced off auth pages
-- Login/logout for all four roles; each sees role-appropriate tiles and accent color (teacher indigo `#4f46e5`, RM teal `#0d9488`, OM amber `#b45309`, CPO rose `#be123c`)
-- Teacher hitting `/users` is bounced home by the proxy (JWT claim check)
-- OM promoted a teacher to RM Central through the Team UI (server action → RPC → revalidate); freshly-promoted RM logged in and saw Lists + teal
-- Archived account login is refused with a clear message; no session persists
-- Signup → `/verify-email`; profile row created with metadata and role `teacher`; invalid-email error surfaces inline
+- OM added a real school ("Coral Gables Senior High School", 450 Bird Rd, Coral Gables, FL 33146) by name+address; the pin landed exactly on the school on the map tile (visually confirmed — the OSM tile itself labels that building "Coral Gables Senior High School")
+- OM assigned a region ("East") to that school through the UI; persisted and re-rendered correctly on reload
+- RM (region east) saw the same school with region shown as a **read-only badge**, not an editable control — no region `<select>` is rendered for non-OM/CPO roles
+- RM saw a teacher in their own region via `teacher_directory()`; clicking the teacher's row expanded a popover showing real email and phone
+- Search box filtered correctly: typing "gables" kept the matching school and hid the non-matching teacher, confirming the client-side filter checks name/address/contact fields and name/email/phone fields respectively
+- One real runtime bug found and fixed during verification: Leaflet's default marker icon 404s under Turbopack's static-image-import handling (`iconUrl not set in Icon options`) — fixed by serving the three marker PNGs from `public/leaflet/` instead of importing them (see DECISIONS)
+- All manual test users/schools created for this verification pass were deleted afterward (the hosted project has no leftover `phase2-verify-*` accounts or test schools)
 
 ## Environment / credentials status
 
-- `.env.local` (gitignored): Supabase URL, anon key, service-role key, **`SUPABASE_ACCESS_TOKEN`** (CLI auth — added during Phase 1; `npx supabase link` already done, project ref `vgyogyojxlvhiwujidhy`)
-- Google/VAPID/Resend/Zoho vars still unset (later phases)
-- No Docker on this machine → no local Supabase stack; everything runs against the hosted project
+Unchanged from Phase 1. Nothing in Phase 2 needed new env vars — Census and Nominatim are both free and keyless.
 
 ## Manual steps still owed (Supabase dashboard)
 
-1. **CPO seed**: after the real CPO signs up, run the SQL in `0003_seed_cpo.sql` with their user id. The CPO then promotes the first OM in-app (user-confirmed flow).
-2. **Resend SMTP cutover** (before onboarding at scale): create a Resend account, verify the sending domain, then Dashboard → Project Settings → Auth → SMTP: host `smtp.resend.com`, port 465, user `resend`, password = Resend API key; raise the email rate limit. Also add `RESEND_API_KEY` to `.env.local`/Vercel for Phase 7's direct sends.
-3. **When deploying**: Dashboard → Auth → URL Configuration: set Site URL to the production domain and add `https://<domain>/auth/confirm` to the redirect allowlist (localhost works out of the box).
+Same three items as Phase 1 (CPO seed, Resend SMTP cutover, production Site URL/redirect allowlist) — none of them are Phase 2's concern and none were touched.
 
 ## How to verify the current state yourself
 
 ```bash
 npm install
-npm run test:rls        # 16 RLS tests against the hosted project
-npm run dev             # then sign up / log in at localhost:3000
+npm run test:rls        # 32 tests (16 profiles + 16 schools) against the hosted project
+npm run dev              # then log in as an OM/RM/CPO and visit /lists
 ```

@@ -60,6 +60,29 @@ Signup verification uses Supabase's default sender — rate-limited (~2/hour) an
 ### RLS tests run against the hosted project, not CI
 No Docker on this machine ⇒ no local Supabase. `tests/rls.test.ts` (vitest) creates disposable confirmed users on the **hosted** project via the service-role key and deletes them in `afterAll`. Kept out of CI: it needs live secrets and mutates the shared project's user list. Run manually with `npm run test:rls` after any RLS-touching migration.
 
+## Implementation-level decisions (made during Phase 2 build)
+
+### Region write-access is trigger-enforced, reusing the Phase 1 pattern exactly
+"Region assignment OM/CPO only; immutable for RMs once set" is implemented identically to how Phase 1 locked `profiles.role`/`region`/`archived_at`: RLS lets any manager `UPDATE` a `schools` row (contact info, geofence radius, lat/lng override), and a `BEFORE UPDATE` trigger (`protect_school_region()`) specifically rejects a changed `region` column unless the caller is OM/CPO. The `INSERT` policy additionally requires `region is null` for non-OM/CPO callers, so an RM can add a school but never create one pre-assigned to a region. This means "immutable for RMs" is really "RMs can never write this column, full stop" — simpler than trying to distinguish "set" vs "changed" and matches the Phase 1 precedent closely enough that the RLS tests read almost like siblings of `tests/rls.test.ts`.
+
+### `teacher_directory()` RPC instead of syncing email onto `profiles` (user-confirmed)
+Profile popovers need a teacher's email, which lives in `auth.users`. Phase 1 punted this. Chose a `SECURITY DEFINER` SQL function over a sync trigger: no duplicated, driftable copy of auth data, and it follows the same helper pattern as `current_app_role()`/`current_app_region()`. Because `SECURITY DEFINER` bypasses RLS, the function manually re-implements the `profiles_select` region-scoping (RM: own-region teachers only; OM/CPO: everyone) rather than relying on the caller's RLS context.
+
+### No teacher↔school assignment table in Phase 2 (user-confirmed)
+The brief asked for "a teacher list per school," but no data links a teacher to a specific school yet — that's meant to come from Google Calendar event matching in Phase 3 (`calendar_events.teacher_id`/`school_id`). Rather than invent a manual assignment table that Phase 3 would then have to reconcile with calendar-derived links, Phase 2's Teachers list is grouped/filterable by region only (`profiles.region`, which already exists). See NEXT_STEPS.md for what Phase 3 should do once the real link exists.
+
+### Leaflet marker icons served from `public/leaflet/`, not bundled via `import`
+`react-leaflet`'s default marker icon references relative URLs that resolve against `leaflet`'s own package location, which 404s once bundled. The standard fix (`import markerIcon from "leaflet/dist/images/marker-icon.png"` then `L.icon({ iconUrl: markerIcon.src, ... })`) does not work on this Next.js/Turbopack version — it throws `iconUrl not set in Icon options` at runtime, discovered by actually opening `/lists` in a browser rather than trusting the build to catch it. Fixed by copying the three marker PNGs into `public/leaflet/` and referencing them as plain string paths (`/leaflet/marker-icon.png`). This also means the icons work offline once the PWA's service worker caches `public/`, which a CDN-hosted icon wouldn't.
+
+### Migration numbered `0005`, not `0003` as the original brief said
+The Phase 2 task brief (written before Phase 1 finished) said `supabase/migrations/0003_schools.sql`. By the time Phase 2 started, `0003` (CPO seed) and `0004` (promote target guards) were already taken — confirmed via `supabase migration list` and `NEXT_STEPS.md`, which was more current than the brief. Used `0005_schools.sql`.
+
+### `school_years` created standalone, not yet wired to `schools`
+The PRD schema line for `schools` mentions "school_year links," but nothing before Phase 9 (school-year lifecycle: create, link schedules/attendance, archive) actually consumes that relationship. Added `school_years` as its own table (name, start_date, end_date, archived) with RLS (OM/CPO write, all managers read) and left it unlinked rather than fabricating a foreign key nothing uses yet.
+
+### Nominatim throttled with a module-level timestamp, not a queue
+Nominatim's usage policy caps unauthenticated use at 1 req/s and requires a descriptive `User-Agent`. Since schools are added one at a time by a human (≤255 total, drip-fed per the plan's own risk register), a single `lastNominatimCallAt` timestamp with a `setTimeout` delay in `lib/geocode.ts` is sufficient — no request queue needed.
+
 ## Product-level decisions (confirmed with user before Phase 0, full detail in the plan file)
 
 | Area | Decision |
