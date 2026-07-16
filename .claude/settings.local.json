@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm --version)",
+      "Bash(npx --yes create-next-app@latest ymu-a --typescript --eslint --tailwind --app --src-dir --import-alias \"@/*\" --turbopack --use-npm --skip-install --yes)",
+      "Bash(rsync -a --exclude '.git' /private/tmp/claude-501/-Users-pepskq-Documents-YMU-A/ed365676-0965-47fb-a0ec-6f416a183fa0/scratchpad/ymu-a/ /Users/pepskq/Documents/YMU-A/)",
+      "Bash(mkdir -p /Users/pepskq/Documents/YMU-A/docs)",
+      "Bash(mv \"/Users/pepskq/Documents/YMU-A/PRD - YMU Attendance APP.md\" /Users/pepskq/Documents/YMU-A/docs/)",
+      "Bash(git -C /Users/pepskq/Documents/YMU-A init -b main)",
+      "Bash(npm install *)"
+    ]
+  }
+}
