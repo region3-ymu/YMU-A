@@ -1,35 +1,38 @@
 # NEXT_STEPS — YMU-A
 
-Where to pick up. Phase 2 (schools, regions, Lists tab) is done and verified — see `HANDOFF.md`. Next is **Phase 3: Google Calendar sync** from the approved plan (`/Users/pepskq/.claude/plans/in-the-file-directory-cozy-sparrow.md`).
+Where to pick up. Phase 3 (Google Calendar sync, Schedules tab) is **built and verified at every layer except the live-Google end-to-end**, which is blocked on the service-account credentials YMU is setting up — see `HANDOFF.md` ("Still owed"). Next is **Phase 4: Clocking flow (online) + in-app feedback gate** from the approved plan (`/Users/pepskq/.claude/plans/in-the-file-directory-cozy-sparrow.md`).
 
-## Phase 3 scope (from the plan)
+## Finish Phase 3 first (small, credential-gated)
 
-**Build**: Service-account client; initial full sync then incremental `syncToken` sync via pg_cron→Edge Function every 5 min; event→teacher matching by attendee email ↔ login email; event→school fuzzy match on the event's Location field; unmatched-event queue for managers; Schedules tab (teacher sees own; managers see all / by region), "currently in shift" indicator, event detail view (mirrors what clicking in Google Calendar shows); change detection (teacher/sub/time/location changed or event removed) emitting rows into `notification_queue`.
+Once `GOOGLE_SERVICE_ACCOUNT_KEY_BASE64` + `GOOGLE_CALENDAR_ID` are in `.env.local` and the calendar is shared to the service account:
+1. `npm run sync:calendar` — initial full sync; confirm rows land in `calendar_events` and the Schedules tab shows them.
+2. Edit/move/delete a test event (matching Location, a teacher's login email as attendee), re-run `npm run sync:calendar`, confirm the change reflects in-app and a `notification_queue` row exists for that teacher.
+3. Deploy the Edge Function + schedule the 5-min cron (HANDOFF "Manual steps").
+Then flip the HANDOFF "pending" note to verified.
 
-**Files**: `lib/google/calendar.ts`, `supabase/functions/calendar-sync/`, `app/schedules/*` (replaces the Phase 1 stub at `src/app/(app)/schedules/`), `supabase/migrations/0006_events.sql` (next number after `0005_schools.sql`).
+## Phase 4 scope (from the plan)
 
-**Done when**: editing/moving/deleting an event in Google Calendar is reflected in-app within ~5 min and queues a notification row for the affected teacher.
+**Build**: Clocking tab — next-class card (time in/out, date, school); Clock-In → browser geolocation (permission-denied / GPS-off / low-accuracy states with retry) → Leaflet map (teacher pin, school pin, 200 m circle) → haversine check → allow/deny with "move closer"; precise clock-in timestamp; status (on-time ±5 min, late after +5, configurable); Clock-Out gated by the **in-app feedback form** (unsubmitted form persists as a blocking "Demand" across logout/login and blocks the next clock-in).
 
-## Things Phase 2 left that Phase 3 should know
+**Files**: `app/clocking/*`, `components/geo-map.tsx`, `lib/attendance/status.ts`, `app/feedback/*`, `supabase/migrations/0007_attendance.sql` (next number after `0006_events.sql`).
 
-- **This is where the teacher↔school link finally appears.** Phase 2 deliberately did *not* invent a manual teacher↔school assignment table (user-confirmed call — see DECISIONS) because Phase 3's event→teacher and event→school matching was always meant to be the real source of that link, via `calendar_events.teacher_id` / `calendar_events.school_id`. When this lands, revisit:
-  - `src/app/(app)/lists/lists-explorer.tsx` — the Teachers section currently says "Grouped by region for now — per-school rosters arrive once Google Calendar sync (Phase 3) links teachers to schools via their scheduled events." Once `calendar_events` exists, consider adding a per-school roster derived from it.
-  - `profiles_select` RLS policy (`0002_profiles_rls.sql`) — RM→teacher visibility still keys on `profiles.region`. Decide whether it should additionally/instead derive from schools in the RM's region once that link exists, and update `tests/rls.test.ts` if so.
-- **Reuse, don't rebuild**: `requireRole()`/`requireProfile()` (`src/lib/auth/dal.ts`), `MANAGER_ROLES`/`REGIONS`/labels (`src/lib/auth/roles.ts`), `current_app_role()`/`current_app_region()` SQL helpers, and now also `schools` (id, name, address, lat/lng, region, geofence_radius_m) and `teacher_directory()` for anywhere Phase 3 needs a teacher's email (e.g. matching attendee email → login email) — don't re-derive it from `auth.users` again, the RPC already does the manager-gated version and a service-role Edge Function can just query `auth.users`/`profiles` directly since it bypasses RLS anyway.
-- **Fuzzy school matching**: `schools.address` is a free-text string as typed by the manager (post-geocode); Google Calendar's Location field will be free text too. Budget time for picking a fuzzy-match approach (e.g. trigram similarity via `pg_trgm`, or a simpler normalized-substring match) — nothing in Phase 2 built this, `schools` just has the columns to match against.
-- **`geofence_radius_m`** (default 200, editable per school via the Lists tab's contact editor) is unused until Phase 4/5's clock-in geofence check. `haversine_meters()` (SQL) and `haversineMeters()` (TS, `src/lib/geo/haversine.ts`) both exist and are unit-consistent (meters) — Phase 4 should call the SQL one server-side, not reimplement it.
-- **Leaflet marker icons**: don't reintroduce a static `import` of `leaflet/dist/images/*.png` — it throws `iconUrl not set in Icon options` under this Next.js/Turbopack version. The fix already in place (`src/app/(app)/lists/leaflet-map.tsx`) serves them from `public/leaflet/*.png` as plain URL strings; reuse that pattern (or the same map components) for Phase 4's clock-in geo-map.
-- **`school_years`** exists (table + RLS, OM/CPO write / all-managers read) but nothing links to it yet — Phase 2 left it standalone on purpose since no phase before Phase 9 (school-year lifecycle) consumes it. Don't feel obligated to wire it into `schools` or `calendar_events` unless Phase 3 actually needs it for something (e.g. scoping sync to a current school year).
-- **Migration numbering**: next is `0006_...`.
-- **RLS tests**: `npm run test:rls` runs `tests/rls.test.ts tests/schools-rls.test.ts`; widen the script glob again if adding `tests/events-rls.test.ts` or similar.
+**Done when**: full clock-in→teach→feedback→clock-out cycle works on a phone at a real (or devtools-spoofed) location; out-of-range denial verified; logging out with a pending form re-prompts on login.
+
+## Things Phase 3 leaves that Phase 4 should know
+
+- **The teacher↔school link now exists** via `calendar_events` (`teacher_ids`, `school_id`, `start_at`/`end_at`). Phase 4's "next class" card is a query over it: the caller's upcoming non-cancelled event with a matched `school_id`. The `page.tsx` in `schedules/` shows the exact select shape.
+- **Reuse the geofence primitives**: `schools.lat/lng` + `geofence_radius_m` (default 200) and the SQL `haversine_meters()` — Phase 4 should call the SQL function server-side for the authoritative in-fence check, and the TS `haversineMeters()` client-side for the live "move closer" UI. Don't reimplement either.
+- **Teachers can already read their scheduled schools' coordinates**: the `schools_select` policy was extended with `teacher_has_scheduled_school()` (see `0006`), so a teacher's client can fetch the school pin for the map without a manager RPC. That was added specifically so Phase 4's clock-in map works under RLS.
+- **Leaflet marker icons**: reuse the `public/leaflet/*.png` string-URL pattern from `src/app/(app)/lists/leaflet-map.tsx` (a static `import` throws `iconUrl not set` under this Turbopack version) for the clock-in map.
+- **Region is derived from events, not `profiles`** (user-confirmed): a teacher's region(s) come from the schools their events are at, so `profiles.region` was left untouched. If Phase 8 reports need per-teacher region rollups, derive them from `calendar_events → schools.region` (a teacher can be in several).
+- **`notification_queue` is ready for Phase 7**: `type` + `payload` + `send_at` + `status`. Phase 3 writes `time_changed`/`location_changed`/`teacher_changed`/`event_cancelled`; Phase 7 adds reminder types and the dispatcher. Don't change its shape without checking `sync.ts`'s `queueNotifications`.
+- **`school_years`** still standalone (unused until Phase 9).
+- **Migration numbering**: next is `0007_...`.
+- **RLS tests**: `npm run test:rls` runs the three files; widen the glob again if adding `tests/attendance-rls.test.ts`.
 
 ## Standing manual steps (also in HANDOFF)
 
 - CPO seed SQL (`0003_seed_cpo.sql`) once the real CPO signs up; CPO promotes the first OM in-app.
-- Resend SMTP cutover in the Supabase dashboard before onboarding at scale (built-in sender ≈ 2 emails/hour and rejects test domains).
+- Resend SMTP cutover in the Supabase dashboard before onboarding at scale.
 - On first deploy: production Site URL + `/auth/confirm` redirect in the Supabase auth allowlist.
-- **New for Phase 3**: `GOOGLE_SERVICE_ACCOUNT_KEY_BASE64` / `GOOGLE_CALENDAR_ID` env vars are still unset (placeholders exist in `.env.example`); someone at YMU needs to share a Google Calendar with the service-account email ("See all event details") before sync can run against anything real.
-
-## After Phase 3
-
-Phase 4 (Clocking flow) — needs `schools` (lat/lng, geofence_radius_m) for the geofence check and `calendar_events` for the "next class" card.
+- **Phase 3 finishers** (above): Google service account + shared calendar; deploy `calendar-sync` + set Edge secrets; schedule the 5-min `pg_cron` job.

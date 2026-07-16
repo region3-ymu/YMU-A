@@ -83,6 +83,35 @@ The PRD schema line for `schools` mentions "school_year links," but nothing befo
 ### Nominatim throttled with a module-level timestamp, not a queue
 Nominatim's usage policy caps unauthenticated use at 1 req/s and requires a descriptive `User-Agent`. Since schools are added one at a time by a human (≤255 total, drip-fed per the plan's own risk register), a single `lastNominatimCallAt` timestamp with a `setTimeout` delay in `lib/geocode.ts` is sufficient — no request queue needed.
 
+## Implementation-level decisions (made during Phase 3 build)
+
+### Dependency-free, isomorphic Google client instead of `googleapis`
+`src/lib/google/calendar.ts` signs the service-account JWT with WebCrypto (`crypto.subtle`, RS256) and calls the Calendar v3 REST API with `fetch` — no `googleapis` package. Reason: the identical code must run in Next.js (Node) **and** the Supabase Edge Function (Deno), and `googleapis` is Node-oriented and heavy. This matches the project's established dependency-minimalism (cf. the hand-written PNG encoder in Phase 0). The module is also written in **erasable-only TS syntax** (explicit class fields, not constructor parameter properties) so Node's native TS stripping executes it directly — that's what lets `scripts/sync-calendar.ts` import it with no build step. `tsconfig` gained `allowImportingTsExtensions` so the runner can import `sync.ts`/`calendar.ts` with explicit `.ts` extensions (required by Node's resolver); harmless for the app, which imports via the `@/` alias.
+
+### Edge Function is the artifact; a Node runner shares the exact core (no Docker)
+The sync logic lives in `supabase/functions/calendar-sync/sync.ts` as `syncCalendar(supabase, env)`, written isomorphic (clients passed in, not constructed). `index.ts` is the Deno `Deno.serve` wrapper for pg_cron. Because this machine has no Docker (so no `supabase functions serve`), `scripts/sync-calendar.ts` (`npm run sync:calendar`) drives the **same** `syncCalendar()` from Node against the hosted DB — that's the local verification path and the command for the end-to-end acceptance test. The Edge Function imports the shared client via a relative out-of-tree path (`../../../src/lib/google/calendar.ts`); the `supabase` CLI bundler follows it. `supabase/functions` is excluded from Next's `tsconfig`/ESLint (Deno modules, `npm:` imports), and `sync.ts`/`index.ts` carry `// @ts-nocheck`.
+
+### syncToken handling: full → incremental, 410 → full resync, first-import notification suppression
+No stored token ⇒ full sync (user chose to ingest **everything**, so no `timeMin`). A stored token ⇒ incremental. A `410 GONE` clears the token and re-runs a full sync **while preserving `full_synced_at`**. Change/removal notifications are gated on `Boolean(full_synced_at)` (`detectChanges`): the very first import establishes the baseline silently (no notifying every teacher about every existing class), but a post-410 recovery — which has a `full_synced_at` — still emits real changes. Full-sync **deletion reconciliation** finds events not re-touched this pass via `synced_at < syncStartedAt` (every seen event is stamped with the run's start time), marks them cancelled, and notifies — this is the only way a full sync learns about removals, since incremental sync gets explicit `cancelled` stubs.
+
+### Fuzzy school match: pg_trgm, name-word-similarity ∨ address-similarity, threshold 0.5
+`match_school()` normalizes both strings (lowercase, strip punctuation, collapse whitespace) and scores each school as `greatest(word_similarity(name, location), similarity(address, location))`. `word_similarity` (not plain `similarity`) on the name is deliberate: Google Location is usually `"School Name, 450 Bird Rd, City"`, i.e. the name is a substring of a longer string, which plain trigram similarity scores poorly. The 0.5 threshold lives in `sync.ts` (`SCHOOL_MATCH_THRESHOLD`), so it's tunable in one place; below it the event lands in the manager unmatched queue. A **manual** assignment (`school_match_source='manual'`) survives subsequent syncs unless the event's Location text itself changes, which re-runs the fuzzy match.
+
+### `teacher_ids uuid[]`, region derived from the event's school (both user-confirmed)
+An event's matched teachers are stored as an array of every attendee whose email matches a login email — the regular teacher and any substitute are simply two matched teachers; Google has no primary/substitute distinction to import, and a "teacher or substitute changed" notification falls out of an array set-difference. Teachers can span multiple regions, so **a teacher's region is derived from the schools their events are at**, not from `profiles.region` (left untouched). Consequently event RLS/visibility and the Schedules "by region" filter key off the event's `school.region`, and a `teacher_has_scheduled_school()` helper extends `schools_select` so a teacher can read the schools they're scheduled at (their own schedule + Phase 4 clock-in map).
+
+### `notification_queue` generic + service-role-only; Phase 3 enqueues only
+`type` + `payload` (jsonb) + `send_at` + `status`, so Phase 7's reminder types reuse the same table without a schema change. Phase 3 writes `time_changed`/`location_changed`/`teacher_changed`/`event_cancelled` rows; sending is Phase 7. The table has no authenticated grants at all (service-role writes from the sync); the RLS test asserts authenticated reads are denied.
+
+### `assign_event_school` is `SECURITY DEFINER`; RMs confined to their region on both ends
+Authenticated users have no UPDATE grant on `calendar_events`, so manual matching goes through this RPC and its role/region checks are the whole authorization story (same pattern as `promote_user`). A Regional Manager can only touch an event whose **current** school is in their region (or unassigned) and can only assign a **destination** school in their region; OM/CPO are unrestricted.
+
+### Event detail renders the description as plain text, not Google's HTML
+Google Calendar descriptions can contain HTML. The detail view renders `description` as `whitespace-pre-wrap` plain text rather than injecting HTML — no sanitizer dependency, no XSS surface. Trade-off: a description authored with rich HTML shows its tags literally; acceptable for a scheduling tool and reversible later if a vetted sanitizer is added.
+
+### Migration numbered `0006`, not `0004` as the brief said
+The Phase 3 brief (written before Phase 1 finished) said `0004_events.sql`; `0004` was taken by `promote_target_guards` and `0005` by schools. Used `0006_events.sql`, consistent with `NEXT_STEPS.md`.
+
 ## Product-level decisions (confirmed with user before Phase 0, full detail in the plan file)
 
 | Area | Decision |

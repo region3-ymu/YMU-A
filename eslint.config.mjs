@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Supabase Edge Functions are Deno modules (including npm:/ URL imports),
+    // not Next.js application code. They are bundled/checked by the Supabase
+    // CLI when served or deployed, rather than by Next's ESLint config.
+    "supabase/functions/**",
   ]),
 ]);
 

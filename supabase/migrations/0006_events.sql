@@ -27,7 +27,7 @@ create extension if not exists pg_net;
 create table public.calendar_events (
   id uuid primary key default gen_random_uuid(),
   calendar_id text not null,
-  google_event_id text not null unique,
+  google_event_id text not null,
   ical_uid text,
   recurring_event_id text,
   summary text,
@@ -65,6 +65,8 @@ comment on table public.calendar_events is
   'Google Calendar event instances, synced by supabase/functions/calendar-sync. teacher_ids = attendees matched by login email; school via fuzzy Location match or manual assignment.';
 
 create index calendar_events_start_at_idx on public.calendar_events (start_at);
+create unique index calendar_events_calendar_google_event_key
+  on public.calendar_events (calendar_id, google_event_id);
 create index calendar_events_teacher_ids_idx on public.calendar_events using gin (teacher_ids);
 create index calendar_events_school_id_idx on public.calendar_events (school_id);
 
@@ -109,6 +111,9 @@ create table public.notification_queue (
   -- only the service-role sync code writes here.
   type text not null,
   payload jsonb not null default '{}'::jsonb,
+  -- When Phase 7 adds the dispatcher, reminders can be scheduled in the
+  -- future while the Phase 3 change notifications are ready immediately.
+  send_at timestamptz not null default now(),
   -- 'pending' | 'sent' | 'failed' — only 'pending' is written until Phase 7.
   status text not null default 'pending',
   created_at timestamptz not null default now(),
@@ -235,6 +240,7 @@ as $$
 declare
   v_role public.app_role := public.current_app_role();
   v_school_region public.region;
+  v_event_school_region public.region;
 begin
   if coalesce(
     v_role in ('regional_manager', 'operations_manager', 'cpo'),
@@ -245,6 +251,26 @@ begin
 
   select region into strict v_school_region
   from public.schools where id = p_school_id;
+
+  select s.region into v_event_school_region
+  from public.calendar_events e
+  left join public.schools s on s.id = e.school_id
+  where e.id = p_event_id;
+
+  if not found then
+    raise exception 'event not found';
+  end if;
+
+  -- An event without a matched school is intentionally visible to every
+  -- manager as an unmatched item. Once it is matched, an RM can only alter
+  -- it from within that school's region (or while the school itself remains
+  -- unassigned).
+  if v_role = 'regional_manager'
+     and v_event_school_region is not null
+     and v_event_school_region is distinct from public.current_app_region()
+  then
+    raise exception 'regional managers can only assign events in their own region';
+  end if;
 
   if v_role = 'regional_manager'
      and v_school_region is not null
@@ -258,12 +284,43 @@ begin
          school_match_source = 'manual',
          school_match_score = null
    where id = p_event_id;
-
-  if not found then
-    raise exception 'event not found';
-  end if;
 end;
 $$;
 
 revoke execute on function public.assign_event_school(uuid, uuid) from public, anon;
 grant execute on function public.assign_event_school(uuid, uuid) to authenticated;
+
+-- Teachers need the matched school's name/address on their own schedule and
+-- later in Phase 4's clock-in flow. A direct schools-policy subquery into
+-- calendar_events would recurse back through calendar_events_select, so this
+-- SECURITY DEFINER helper makes the narrowly-scoped relationship explicit.
+create or replace function public.teacher_has_scheduled_school(p_school_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select exists (
+    select 1
+    from public.calendar_events e
+    where e.school_id = p_school_id
+      and e.status <> 'cancelled'
+      and auth.uid() = any (e.teacher_ids)
+  );
+$$;
+
+revoke execute on function public.teacher_has_scheduled_school(uuid) from public, anon;
+grant execute on function public.teacher_has_scheduled_school(uuid) to authenticated;
+
+drop policy schools_select on public.schools;
+create policy schools_select on public.schools
+  for select to authenticated
+  using (
+    public.current_app_role() in ('operations_manager', 'cpo')
+    or (
+      public.current_app_role() = 'regional_manager'
+      and (region is null or region = public.current_app_region())
+    )
+    or public.teacher_has_scheduled_school(id)
+  );

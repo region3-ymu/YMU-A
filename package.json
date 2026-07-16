@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:rls": "vitest run tests/rls.test.ts tests/schools-rls.test.ts"
+    "sync:calendar": "node --env-file=.env.local scripts/sync-calendar.ts",
+    "test:rls": "vitest run tests/rls.test.ts tests/schools-rls.test.ts tests/events-rls.test.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.3",

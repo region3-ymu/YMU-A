@@ -23,6 +23,12 @@ max_rows = 1000
 # deprecated and the field is removed on 2026-10-30 once the always-revoked behaviour is permanent.
 # auto_expose_new_tables = true
 
+[functions.calendar-sync]
+# See supabase/functions/calendar-sync/index.ts: pg_cron/pg_net calls this
+# protected machine endpoint with the calendar-sync secret instead of a user
+# JWT.
+verify_jwt = false
+
 [api.tls]
 # Enable HTTPS endpoints locally using a self-signed certificate.
 enabled = false

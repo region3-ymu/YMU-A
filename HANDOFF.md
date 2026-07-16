@@ -1,57 +1,85 @@
 # HANDOFF — YMU-A
 
-Snapshot of the repo at the end of **Phase 2 (schools, regions, Lists tab)**. Phase 1 notes are superseded by this file (see git history for the prior `HANDOFF.md` if you need Phase 1 detail); everything below was verified by running it — RLS test suite (32/32) + driving the real dev server in a browser as OM and RM — not from memory.
+Snapshot of the repo at the end of **Phase 3 (Google Calendar sync, Schedules tab)**. Phase 1/2 notes are superseded by this file (see git history for the prior `HANDOFF.md` if you need earlier detail). Everything below was verified by running it — the full RLS suite (40/40) plus driving the real dev server in a browser as an Operations Manager **and** as a Teacher against seeded events — except the live-Google end-to-end sync, which is **pending credentials** (see "Still owed" below).
 
 ## What exists right now
 
-Everything from Phase 1 (auth, roles, RBAC — `src/app/(auth)/*`, `src/lib/auth/*`, `src/proxy.ts`, the Team page) is unchanged and still verified working; see the "Phase 1" section of git history for that detail.
+Everything from Phases 1–2 (auth/RBAC, schools, regions, Lists tab, geocoding) is unchanged and still verified.
 
-**Schools & Lists tab (new in Phase 2)** — replaces the Phase 1 stub at `src/app/(app)/lists/`:
+**Google Calendar client** — `src/lib/google/calendar.ts`:
+- Dependency-free and **isomorphic**: runs unchanged in Next.js (Node) and the Supabase Edge Function (Deno). Uses only WebCrypto + `fetch` — no `googleapis` package.
+- Service-account auth: signs an RS256 JWT (`crypto.subtle`), exchanges it for an access token via the OAuth2 JWT-bearer grant, then calls the Calendar v3 REST API. Token cached in-memory until ~5 min before expiry.
+- `GoogleCalendarClient.listEvents({ calendarId, syncToken?, pageToken?, timeMin? })` returns one page (`items`, `nextPageToken`, `nextSyncToken`); the sync core drives pagination. `singleEvents=true` (recurring events expanded to instances), `showDeleted=true` (so incremental sync sees cancellations). A `410` surfaces as `GoogleCalendarError` with `.status === 410`.
+- Written in **erasable-only TS syntax** (explicit fields, not constructor parameter properties) so Node's native TS stripping runs it directly — that's what lets the local runner work without a build step.
 
-- `page.tsx` — server component; `requireRole(...MANAGER_ROLES)`, fetches `schools` (RLS-scoped) and `teacher_directory()` (RPC) in parallel, renders `ListsExplorer`
-- `lists-explorer.tsx` — client component: the search box (client-side filter over already-fetched schools/teachers — dataset is small, ≤255 schools + ~100 teachers, no server-side search needed) plus the Add-school form, Schools list, Teachers list
-- `add-school-form.tsx` — name/address/contact fields → `addSchool` server action → geocode → insert
-- `school-card.tsx` — one school's info: map preview, region (editable `<select>` via `RegionForm` for OM/CPO, read-only badge for everyone else), an expandable "Edit contact / pin" section with `ContactEditor` (contact name/phone/geofence radius — any manager) and `LocationEditor` (manual lat/lng override, shows a "moves the pin ~N m" hint computed client-side with `haversineMeters`)
-- `teacher-popover.tsx` — click-to-expand card showing email/phone, fed by `teacher_directory()` data already loaded server-side (no extra round-trip)
-- `map-preview.tsx` / `leaflet-map.tsx` — Leaflet map preview. `map-preview.tsx` is the client-only `next/dynamic(..., { ssr: false })` wrapper (required because `ssr: false` only works from a Client Component per the Next.js lazy-loading guide); `leaflet-map.tsx` has the actual `MapContainer`/`Marker`. Marker icons are served from `public/leaflet/*.png` (copied from `node_modules/leaflet/dist/images`) rather than bundled via static `import` — Turbopack's static-image-import object shape didn't give Leaflet a usable `iconUrl` string and threw `iconUrl not set in Icon options` at runtime (see DECISIONS)
-- `actions.ts` — server actions: `addSchool`, `updateSchoolLocation`, `updateSchoolContact`, `assignSchoolRegion` (each independently calls `requireRole` — the UI hiding a control is not the security boundary, RLS/triggers are)
-- `types.ts` — `School`/`Teacher` row shapes shared across the tab's client components
+**Sync core + Edge Function** — `supabase/functions/calendar-sync/`:
+- `sync.ts` — `syncCalendar(supabase, env)` is the whole sync, written isomorphic (takes its clients as args). Full sync when there's no stored `syncToken`; incremental with the token otherwise; a `410` clears the token and re-runs a full sync (keeping `full_synced_at`, so recovery still emits change notifications). Matches attendee emails → teacher profile ids, fuzzy-matches the Location → a school, detects time/location/teacher(+substitute)/cancellation changes into `notification_queue`, and on a full sync reconciles removals (events no longer returned by Google → cancelled + notify).
+- `index.ts` — the Deno `Deno.serve` entry. Auth via an `x-calendar-sync-secret` header (`verify_jwt=false` because pg_cron/pg_net calls carry no user JWT). Reads `GOOGLE_*` + service-role from `Deno.env`.
+- **Local runner** — `scripts/sync-calendar.ts`, run via `npm run sync:calendar`. Calls the exact same `syncCalendar()` core against the hosted DB with the service-role key, so sync can be verified locally without Docker / `supabase functions serve`. This is the command to run for the end-to-end test once credentials exist.
 
-**Geocoding** — `src/lib/geocode.ts`, server-only (only ever imported from `actions.ts`): tries the US Census Bureau one-line address geocoder first, falls back to Nominatim (required `User-Agent` header, throttled to ≤1 req/s via a module-level last-call timestamp — sufficient because schools are added one at a time by a human, drip-fed). Both upstreams were exercised for real during verification.
+**Schedules tab** — `src/app/(app)/schedules/` (replaces the Phase 1 stub):
+- `page.tsx` — server component; loads non-cancelled events ending today or later (RLS-scoped) with the matched school embedded, plus the school list for filters. `requireProfile()` (not role-gated — teachers and managers both see it, scoped differently by RLS).
+- `schedules-explorer.tsx` — client component: day-grouped event cards, a per-minute `now` tick driving the **"Currently in shift"** badge, and (managers only) region/school filters + the unmatched-event queue.
+- `unmatched-event-queue.tsx` — manager panel listing events below the auto-match threshold, each with a school `<select>` → `assignEventSchool` action.
+- `[id]/page.tsx` — event detail mirroring Google Calendar: title, date/time, location (school + raw + address), description (rendered as **plain text**, XSS-safe), organizer, guest list with RSVP status, video-call link if present, and an "Open in Google Calendar" link (`htmlLink`).
+- `actions.ts` — `assignEventSchool` server action → `assign_event_school` RPC (manager-gated, region-checked in SQL).
+- `format.ts` / `types.ts` — time/day formatting and shared row types.
 
-**Haversine** — `src/lib/geo/haversine.ts` (TypeScript) and `haversine_meters()` (SQL, in the migration) are deliberately kept as two implementations, per the plan. The TS one currently powers the "moved N meters" override hint; the SQL one isn't consumed by anything yet (no geofence check exists before Phase 4/5) but exists now per the Phase 2 file list so those phases can call it for server-side re-validation.
+**Database** (`0006_events.sql`, applied to hosted project `vgyogyojxlvhiwujidhy`; history in sync through `0006`):
+- `calendar_events` — one row per event instance. `google_event_id` unique per `(calendar_id, google_event_id)`; `teacher_ids uuid[]` (all matched attendees — regular teacher *and* substitute); `school_id` + `school_match_source` (`fuzzy`|`manual`|null) + `school_match_score`; `attendees`/`raw` jsonb for the detail view; `status` keeps `cancelled` rows.
+- `calendar_sync_state` — per-calendar `sync_token`, `full_synced_at`, `last_status`/`last_error`.
+- `notification_queue` — `recipient_id`, `event_id`, `type`, `payload` jsonb, `send_at`, `status`. Phase 3 only enqueues; Phase 7 drains it. Service-role-only.
+- `pg_trgm` + `match_school(location_text)` — normalizes both sides, scores `greatest(word_similarity(name, location), similarity(address, location))`, returns the best school; threshold **0.5** lives in `sync.ts` (`SCHOOL_MATCH_THRESHOLD`), below which the event goes to the unmatched queue.
+- `assign_event_school(event, school)` — `SECURITY DEFINER` RPC for manual assignment; RMs restricted to their own region (both the event's current school region and the destination school region).
+- `teacher_has_scheduled_school()` + an extended `schools_select` policy — teachers can now read schools they're scheduled at (needed for their own schedule and Phase 4 clock-in).
+- RLS on `calendar_events`: teacher sees rows where their uid is in `teacher_ids`; RM sees events at schools in their region, at region-less schools, or unmatched (school unknown); OM/CPO see all.
 
-**Database** (all migrations applied to hosted project `vgyogyojxlvhiwujidhy`; local/remote history in sync through `0005`):
-
-- `0005_schools.sql` — `schools` (name, address, contact_name, contact_phone, lat, lng, geocode_source, geofence_radius_m default 200, region, created_by, timestamps) and `school_years` (name, start_date, end_date, archived) tables + RLS; `protect_school_region()` trigger (region writable only by OM/CPO, same pattern as Phase 1's `protect_privileged_profile_columns`); `teacher_directory()` security-definer RPC (email from `auth.users`, region-scoped the same way `profiles_select` is); `haversine_meters()` SQL function
-  - Note: the original Phase 2 brief said `0003_schools.sql`, but `0003`/`0004` were already taken by the end of Phase 1 — used `0005` per `NEXT_STEPS.md`, which was more current
-
-**Tests** — `tests/schools-rls.test.ts` (vitest, same disposable-hosted-user pattern as `tests/rls.test.ts`): 16 tests covering region-immutability (RM can insert unassigned, cannot insert/change a region even in-region, OM can set and re-set it, RM keeps write access to non-region columns), region-scoped `SELECT` visibility (RM sees own-region + unassigned, not other regions; OM/CPO see all), `teacher_directory()` scoping (teacher gets nothing back, RM gets own-region only, OM gets everyone including region-less teachers), and `school_years` write-gating (OM/CPO only; all managers can read). `npm run test:rls` now runs both files — **32/32 passing**. Still not in CI (needs live hosted credentials, mutates the shared project's user list).
-
-**CI** — unchanged from Phase 0/1.
+**Tests** — `tests/events-rls.test.ts` (8 tests, same disposable-hosted-user pattern): teacher-only visibility, RM own-region + shared unmatched queue, OM sees all, teacher can read a scheduled school but not an unrelated one, RM manual-assign in region, RM rejected cross-region, `notification_queue` has no authenticated read. `npm run test:rls` now runs all three files — **40/40 passing**.
 
 ## Verified working (browser, dev server, hosted project)
 
-- OM added a real school ("Coral Gables Senior High School", 450 Bird Rd, Coral Gables, FL 33146) by name+address; the pin landed exactly on the school on the map tile (visually confirmed — the OSM tile itself labels that building "Coral Gables Senior High School")
-- OM assigned a region ("East") to that school through the UI; persisted and re-rendered correctly on reload
-- RM (region east) saw the same school with region shown as a **read-only badge**, not an editable control — no region `<select>` is rendered for non-OM/CPO roles
-- RM saw a teacher in their own region via `teacher_directory()`; clicking the teacher's row expanded a popover showing real email and phone
-- Search box filtered correctly: typing "gables" kept the matching school and hid the non-matching teacher, confirming the client-side filter checks name/address/contact fields and name/email/phone fields respectively
-- One real runtime bug found and fixed during verification: Leaflet's default marker icon 404s under Turbopack's static-image-import handling (`iconUrl not set in Icon options`) — fixed by serving the three marker PNGs from `public/leaflet/` instead of importing them (see DECISIONS)
-- All manual test users/schools created for this verification pass were deleted afterward (the hosted project has no leftover `phase2-verify-*` accounts or test schools)
+Seeded a manager + teacher + three events (matched-upcoming, in-shift-now, unmatched) directly into `calendar_events`, then drove the real dev server:
+- **OM view**: region/school filters, the "School matching needs attention" queue with a working school `<select>`, day-grouped cards, the green "Currently in shift" badge on the in-progress event, `N matched teacher · Region` metadata, and the role-accent (orange OM) chrome.
+- **Teacher view**: subtitle "Your upcoming classes", **no** filters/unmatched-queue/manager metadata, only their own events, same in-shift badge — confirming the teacher scoping renders as intended.
+- **Detail view**: school + raw Location + geocoded address, description, organizer, guest with "Accepted" RSVP, "Open in Google Calendar" link.
+- `match_school` exercised live on the hosted DB (an unrelated school scored 0.04 for a Coral Gables query — correctly below threshold → unmatched).
+- All seeded users/events deleted afterward (no `phase3-*` leftovers).
 
-## Environment / credentials status
+> Note: the login **form** couldn't be driven by the browser-automation harness (the client component's server-action submit didn't fire under automation — a harness quirk, not a product bug; real-user login was verified in Phase 2). Verification used an injected `@supabase/ssr` session cookie generated by that same library, which the app's server client reads normally.
 
-Unchanged from Phase 1. Nothing in Phase 2 needed new env vars — Census and Nominatim are both free and keyless.
+## Still owed before Phase 3 is fully "done"
 
-## Manual steps still owed (Supabase dashboard)
+1. **Google service account + shared calendar** (only YMU can do this — it's account creation):
+   - Create a service account in Google Cloud, enable the Calendar API, download a JSON key.
+   - Share the schedule calendar with the service-account email as **"See all event details"**.
+   - Set `GOOGLE_SERVICE_ACCOUNT_KEY_BASE64` (base64 of the JSON key) and `GOOGLE_CALENDAR_ID` in `.env.local`.
+2. **Run the end-to-end acceptance test** (the "done when"): `npm run sync:calendar` for the initial full sync, then edit/move/delete a test event on the calendar with a matching Location and a teacher's login email as an attendee, run `npm run sync:calendar` again, and confirm the change is reflected in `/schedules` and a `notification_queue` row was created for the affected teacher. The sync code path is identical to the deployed Edge Function's.
 
-Same three items as Phase 1 (CPO seed, Resend SMTP cutover, production Site URL/redirect allowlist) — none of them are Phase 2's concern and none were touched.
+## Manual steps still owed (Supabase dashboard) — for the 5-min cron
+
+The sync logic is built as an Edge Function but the pg_cron trigger is **not deployed** (needs the function live + secrets). When ready:
+1. `supabase functions deploy calendar-sync` (the CLI bundles the Deno function; it follows the relative import into `src/lib/google/calendar.ts`).
+2. Set Edge secrets: `supabase secrets set CALENDAR_SYNC_SECRET=… GOOGLE_CALENDAR_ID=… GOOGLE_SERVICE_ACCOUNT_KEY_BASE64=…` (`SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` are auto-injected into Edge Functions).
+3. Schedule it (store the secret in Supabase Vault rather than inline in the cron row):
+   ```sql
+   select cron.schedule('calendar-sync-5min', '*/5 * * * *', $$
+     select net.http_post(
+       url := 'https://vgyogyojxlvhiwujidhy.supabase.co/functions/v1/calendar-sync',
+       headers := jsonb_build_object('Content-Type','application/json',
+                                     'x-calendar-sync-secret', (select decrypted_secret from vault.decrypted_secrets where name='calendar_sync_secret')),
+       body := '{}'::jsonb
+     );
+   $$);
+   ```
+
+Plus the three standing items from Phase 1 (CPO seed, Resend SMTP cutover, production Site URL/redirect allowlist) — untouched, still owed.
 
 ## How to verify the current state yourself
 
 ```bash
 npm install
-npm run test:rls        # 32 tests (16 profiles + 16 schools) against the hosted project
-npm run dev              # then log in as an OM/RM/CPO and visit /lists
+npm run test:rls        # 40 tests (16 profiles + 16 schools + 8 events) against the hosted project
+npm run build           # compiles the Schedules tab + detail route
+# with GOOGLE_* set in .env.local:
+npm run sync:calendar   # runs the real sync core against the hosted DB
 ```
