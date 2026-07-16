@@ -9,15 +9,18 @@
   --accent-foreground: #ffffff;
 }
 
-:root[data-role="regional_manager"] {
+/* Set on the (app) layout's wrapper div rather than <html>: the root layout
+   is not re-rendered on soft navigations (e.g. the post-login redirect), so an
+   attribute there would go stale. The group layout mounts fresh on login. */
+[data-role="regional_manager"] {
   --accent: #0d9488;
 }
 
-:root[data-role="operations_manager"] {
+[data-role="operations_manager"] {
   --accent: #b45309;
 }
 
-:root[data-role="cpo"] {
+[data-role="cpo"] {
   --accent: #be123c;
 }
 

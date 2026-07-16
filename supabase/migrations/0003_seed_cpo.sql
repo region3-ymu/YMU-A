@@ -1,0 +1,26 @@
+-- Phase 1: CPO seed — intentionally empty.
+--
+-- The CPO role has no signup path (PRD §1) and promote_user() refuses to
+-- assign it, so the single CPO account is set manually. Procedure:
+--
+--   1. The CPO signs up through the normal in-app signup form and verifies
+--      their email. This creates a teacher profile.
+--   2. Find their user id (Supabase dashboard → Authentication → Users, or:
+--        select id, email from auth.users where email = 'cpo@example.org';
+--      )
+--   3. Run the following against the project database (SQL editor or psql),
+--      replacing <USER_ID>:
+--
+--        update public.profiles
+--        set role = 'cpo', region = null
+--        where id = '<USER_ID>';
+--
+--        update auth.users
+--        set raw_app_meta_data =
+--          coalesce(raw_app_meta_data, '{}'::jsonb)
+--          || jsonb_build_object('app_role', 'cpo')
+--        where id = '<USER_ID>';
+--
+--   4. The CPO signs out and back in (or waits for token refresh) so their
+--      JWT picks up the new role, then promotes the first Operations Manager
+--      from the in-app Team page (/users).
