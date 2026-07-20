@@ -56,8 +56,11 @@ export default async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // Skip static assets and PWA infrastructure (service worker, manifest,
-    // icons); everything else goes through the auth checks above.
-    "/((?!_next/static|_next/image|favicon\\.ico|serwist|icons|manifest\\.webmanifest|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    // Skip static assets, PWA infrastructure (service worker, manifest,
+    // icons), and /api/* — route handlers under /api are server-to-server
+    // (e.g. the Zoho feedback webhook) or otherwise do their own auth, and
+    // must never be redirected to /login for an unauthenticated caller.
+    // Everything else goes through the auth checks above.
+    "/((?!_next/static|_next/image|favicon\\.ico|serwist|icons|manifest\\.webmanifest|api|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };

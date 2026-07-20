@@ -90,6 +90,7 @@ export function navForRole(role: AppRole): NavItem[] {
 // src/proxy.ts and echoed authoritatively by requireRole() in each page.
 export const ROUTE_ROLES: Record<string, readonly AppRole[]> = {
   "/clocking": ["teacher"],
+  "/feedback": ["teacher"],
   "/lists": MANAGER_ROLES,
   "/users": ["operations_manager", "cpo"],
 };

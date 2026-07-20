@@ -44,7 +44,24 @@
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
       "Bash(git push *)",
-      "Bash(git remote *)"
+      "Bash(git remote *)",
+      "Bash(npx supabase *)",
+      "Bash(grep -nA6 '\"paths\"' tsconfig.json)",
+      "Bash(sed -E 's#\\(KEY=|TOKEN=|PASSWORD=\\).*#\\\\1***#')",
+      "Bash(grep -nA3 '\\\\[db\\\\]' supabase/config.toml)",
+      "Bash(NEXT_PUBLIC_SUPABASE_URL=\"https://placeholder.supabase.co\" NEXT_PUBLIC_SUPABASE_ANON_KEY=\"placeholder\" npm run build)",
+      "Bash(npm run *)",
+      "mcp__mcp-registry__search_mcp_registry",
+      "Bash(find / -maxdepth 3 -iname \"*cozy-sparrow*\")",
+      "Read(//Users/**)",
+      "mcp__supabase__list_migrations",
+      "mcp__supabase__get_project_url",
+      "mcp__supabase__list_tables",
+      "mcp__supabase__apply_migration",
+      "mcp__supabase__get_advisors",
+      "mcp__supabase__execute_sql",
+      "Bash(node /private/tmp/claude-502/-Users-Region3-YMU-A/eac0c413-c937-4d65-a251-a8a668488365/scratchpad/seed-acceptance.mjs)",
+      "Bash(node seed-acceptance.mjs)"
     ]
   }
 }

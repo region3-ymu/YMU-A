@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireProfile } from "@/lib/auth/dal";
 import { ROLE_LABELS } from "@/lib/auth/roles";
+import BackButton from "@/components/back-button";
 import { signOut } from "../(auth)/actions";
 
 // Shell for every signed-in page. data-role drives the per-role accent color
@@ -14,9 +15,12 @@ export default async function AppLayout({
   return (
     <div data-role={profile.role} className="flex flex-1 flex-col">
       <header className="flex items-center justify-between gap-3 border-b border-foreground/10 px-6 py-3">
-        <Link href="/" className="font-bold tracking-tight">
-          YMU-A
-        </Link>
+        <div className="flex items-center gap-4">
+          <BackButton />
+          <Link href="/" className="font-bold tracking-tight">
+            YMU-A
+          </Link>
+        </div>
         <div className="flex items-center gap-3">
           <span className="rounded-full bg-accent px-2.5 py-0.5 text-xs font-semibold text-accent-foreground">
             {ROLE_LABELS[profile.role]}

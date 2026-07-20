@@ -1,6 +1,36 @@
 # NEXT_STEPS — YMU-A
 
-Where to pick up. Phase 3 (Google Calendar sync, Schedules tab) is built. **Multi-calendar sync is live-verified against the real service account, the real ~72-school roster, and the real 68 shared school calendars.** Current state: **50/68 calendars pinned to a school**, **17 genuinely open** (catalogued in [`calendar-sync-open-issues.csv`](calendar-sync-open-issues.csv) — not committed, local review artifact), 1 dismissed (`schedule@ymu.org`, not a school calendar). Two real matching bugs were found and fixed against live data along the way — see `DECISIONS.md` ("Two more real bugs..."). Event-sync is still catching up: only 9/50 pinned calendars have completed their initial full sync so far (each `npm run sync:calendar` run has a 4-minute budget and picks up more next time) — run it a few more times, or deploy the cron, before expecting every school's events to show. Next after that is **Phase 4: Clocking flow (online) + in-app feedback gate** from the approved plan (`/Users/pepskq/.claude/plans/in-the-file-directory-cozy-sparrow.md`).
+Where to pick up. **Phase 4 (Clocking flow + feedback gate) is fully built and verified**, including the hosted parts — see HANDOFF.md for the full description and verification writeup (migration `0008` applied, `npm run test:rls` 60/60, live browser acceptance cycle against the real hosted project). A real, unrelated security bug in the Phase 3 calendar-match column protection was also found and fixed along the way (migration `0009`; see DECISIONS.md).
+
+**Feedback was then reworked to a Zoho-hosted form + webhook** (product change, PRD-confirmed), and then two UX fixes landed on top (redirect home instead of straight into the feedback form after clock-in, a "Back" button on every page) — see "Finish the Zoho feedback setup" below for the one remaining thing to confirm (the webhook round-trip). Next feature work after that is **Phase 5** from the approved plan (`/Users/pepskq/.claude/plans/in-the-file-directory-cozy-sparrow.md`) — read the plan for its scope.
+
+Still-open pre-Phase-4 work also remains: Phase 3's multi-calendar sync review queue and the initial event-sync catch-up (below). **Multi-calendar sync is live-verified**: **50/68 calendars pinned**, **17 genuinely open** ([`calendar-sync-open-issues.csv`](calendar-sync-open-issues.csv), local artifact), 1 dismissed. Event-sync is still catching up (only ~9/50 pinned calendars had finished their initial full sync at last run) — keep running `npm run sync:calendar` or deploy the cron.
+
+## Finish the Zoho feedback setup (one thing left to confirm)
+
+Everything code-side is built. The real, fixed form URL (`https://zfrmz.com/MIVJGi5IlokeTf8oTsDR`, the one already embedded in every calendar event's description) is set in `ZOHO_FEEDBACK_FORM_URL`, and confirmed **live, twice** (once in an automated browser check, once by a teacher actually reaching `/clocking` with a real open session): the iframe renders the real Zoho form correctly. An earlier `curl -I` check on that URL had shown `X-Frame-Options: SAMEORIGIN`, which looked like a hard blocker (the initial iframe attempt did fail with `net::ERR_ABORTED`) — but it renders fine now in every subsequent check, so whatever caused that first failure isn't reproducing (possibly `curl`'s no-redirect response differing from where a browser ends up after following redirects into the actual form page). Not fully explained, but no longer blocking.
+
+**What's NOT yet confirmed: the full round-trip.** A teacher has confirmed the form *displays* correctly with the right class prefilled, but no one has actually filled it out and submitted it for real yet — so whether Zoho's webhook fires, with what payload shape, and whether `src/app/api/zoho-feedback/route.ts` parses it correctly, is still unverified beyond a simulated `curl` delivery (see DECISIONS.md). Do this once the webhook is configured (step below):
+
+1. **Build the form in Zoho Forms** with these fields — name each field's **Link Name** (in the field's properties in Zoho's form builder) to match, or note the actual names you use so the env vars below can be set to match instead:
+   - `session_id` — single-line text, hidden (prefilled from the app, echoed back in the webhook so we know which class the feedback is for)
+   - `school` — single-line text (prefilled with the school name)
+   - `teacher` — single-line text (prefilled with the teacher's name)
+   - `date` — date field (prefilled as `MM/DD/YYYY` — Zoho's commonly-documented prefill format, unverified against this specific field)
+   - `class` — single-line text (prefilled with the class name)
+   - `rating` — number, 1–5 (teacher fills in)
+   - `summary` — multi-line text, required (teacher fills in)
+   - `challenges` — multi-line text, optional (teacher fills in)
+   - `students_present` — number, optional (teacher fills in)
+2. **If any Link Name differs from the defaults above**, set the matching `ZOHO_FEEDBACK_FIELD_SESSION` / `_SCHOOL` / `_TEACHER` / `_DATE` / `_CLASS` / `_RATING` / `_SUMMARY` / `_CHALLENGES` / `_STUDENTS_PRESENT` env var.
+3. **Configure the webhook**: Zoho Forms → Integrations → Webhooks → Configure Webhook.
+   - Webhook URL: `https://<your-deployed-domain>/api/zoho-feedback`
+   - Content Type: **application/json**
+   - Payload Parameters: select `session_id`, `rating`, `summary`, `challenges`, `students_present` (the four feedback fields the teacher actually fills in, plus the session id — school/teacher/date/class don't need to round-trip back)
+   - Custom Headers: add `x-zoho-feedback-secret` = the same value you set for `ZOHO_FEEDBACK_WEBHOOK_SECRET`
+4. **Test it for real**: log in as a teacher with an open session, load `/clocking`, confirm the Zoho form actually renders inside the page (not the "form isn't configured yet" message, and not a blank box) with school/teacher/date/class already filled in. Submit it, and confirm the page updates to "Feedback received" within a few seconds (it polls every 4s) — if it doesn't, check the webhook delivery log in Zoho and compare the actual payload shape against what `src/app/api/zoho-feedback/route.ts` expects (this hasn't been tested against a real Zoho delivery, only a simulated `curl` one — the payload shape may need adjusting, see the comments at the top of that file and in `src/lib/attendance/zoho-feedback.ts`).
+5. **Test the offline path too**: go offline (DevTools → Network → Offline) with an open session, fill and save the local draft form, go back online, and confirm the Zoho form loads prefilled with those answers too.
+6. Decide whether the old Phase 9 "push feedback to Zoho via API" plan (and the `ZOHO_CLIENT_ID`/`SECRET`/`REFRESH_TOKEN` env vars, and `attendance_sessions.zoho_synced_at`) is still needed — probably not, now that feedback originates in Zoho instead of being pushed there. See DECISIONS.md.
 
 ## What's left for multi-calendar sync (in order)
 
@@ -17,25 +47,17 @@ Discovered live: sharing a calendar with the service account (Apps Script bulk-s
 1. Share the calendar with `ymu-calendar-sync@cosmic-antenna-502619-u6.iam.gserviceaccount.com` (Apps Script bulk-share script, or manually via Calendar's sharing UI for a single new school).
 2. Run `node --env-file=.env.local scripts/subscribe-calendars.ts <calendar-ids.json>` with the new calendar id(s) — this is what actually makes it discoverable. Safe to re-run with the full list any time (idempotent). See `DECISIONS.md` ("`calendarList` vs ACL") for why this exists.
 
-## Phase 4 scope (from the plan)
+## Things Phase 4 leaves that Phase 5 (and later) should know
 
-**Build**: Clocking tab — next-class card (time in/out, date, school); Clock-In → browser geolocation (permission-denied / GPS-off / low-accuracy states with retry) → Leaflet map (teacher pin, school pin, 200 m circle) → haversine check → allow/deny with "move closer"; precise clock-in timestamp; status (on-time ±5 min, late after +5, configurable); Clock-Out gated by the **in-app feedback form** (unsubmitted form persists as a blocking "Demand" across logout/login and blocks the next clock-in).
-
-**Files**: `app/clocking/*`, `components/geo-map.tsx`, `lib/attendance/status.ts`, `app/feedback/*`, `supabase/migrations/0008_attendance.sql` (next number after `0007_calendar_sync_issues.sql`, added by the multi-calendar sync work — see below).
-
-**Done when**: full clock-in→teach→feedback→clock-out cycle works on a phone at a real (or devtools-spoofed) location; out-of-range denial verified; logging out with a pending form re-prompts on login.
-
-## Things Phase 3 leaves that Phase 4 should know
-
-- **The teacher↔school link now exists** via `calendar_events` (`teacher_ids`, `school_id`, `start_at`/`end_at`). Phase 4's "next class" card is a query over it: the caller's upcoming non-cancelled event with a matched `school_id`. The `page.tsx` in `schedules/` shows the exact select shape.
-- **Reuse the geofence primitives**: `schools.lat/lng` + `geofence_radius_m` (default 200) and the SQL `haversine_meters()` — Phase 4 should call the SQL function server-side for the authoritative in-fence check, and the TS `haversineMeters()` client-side for the live "move closer" UI. Don't reimplement either.
-- **Teachers can already read their scheduled schools' coordinates**: the `schools_select` policy was extended with `teacher_has_scheduled_school()` (see `0006`), so a teacher's client can fetch the school pin for the map without a manager RPC. That was added specifically so Phase 4's clock-in map works under RLS.
-- **Leaflet marker icons**: reuse the `public/leaflet/*.png` string-URL pattern from `src/app/(app)/lists/leaflet-map.tsx` (a static `import` throws `iconUrl not set` under this Turbopack version) for the clock-in map.
-- **Region is derived from events, not `profiles`** (user-confirmed): a teacher's region(s) come from the schools their events are at, so `profiles.region` was left untouched. If Phase 8 reports need per-teacher region rollups, derive them from `calendar_events → schools.region` (a teacher can be in several).
-- **`notification_queue` is ready for Phase 7**: `type` + `payload` + `send_at` + `status`. Phase 3 writes `time_changed`/`location_changed`/`teacher_changed`/`event_cancelled`; Phase 7 adds reminder types and the dispatcher. Don't change its shape without checking `sync.ts`'s `queueNotifications`.
+- **Attendance data now exists** in `attendance_sessions` (Phase 4): one row per clock-in→out cycle, with `clock_in_at`/`clock_out_at`, `clock_in_status`, `clock_in_distance_m`, and the feedback columns. Phase 8 reports (hours, on-time rates, feedback) query this table. RLS already scopes it (teacher own / RM by region / OM+CPO all). An **open** row (`clock_out_at IS NULL`) is a teacher still on the clock / owing feedback — treat it specially in any hours rollup.
+- **Only two RPCs mutate it** — `clock_in` and `clock_out_with_feedback`. Don't add a raw client write path; authenticated users have `select`-only. If a later phase needs an admin correction (e.g. a manager fixing a bad clock-out), add another SECURITY DEFINER RPC rather than granting UPDATE.
+- **The on-time window is `ON_TIME_GRACE_MINUTES` (5)** in `src/lib/attendance/status.ts` + `clock_in`'s `p_grace_minutes` default. If a settings phase makes it truly per-school/global, thread a stored value into both (and pass it from the clock-in action).
+- **Zoho export is unbuilt**: `attendance_sessions.zoho_synced_at` is a reserved nullable seam. The `ZOHO_*` creds are already in `.env.local`. Whichever phase owns integrations should build the exporter (submitted feedback → Zoho form API → stamp `zoho_synced_at`).
+- **Offline clock-in is not built** (Phase 4 was online-only per the plan). The pieces are seeded for it: `client_key` idempotency on the table + RPC, and the PWA/service-worker from Phase 0. A later offline phase can queue clock-ins client-side (Dexie is already a dep) and replay them through `clock_in(p_client_key)` on reconnect; the server re-validates the geofence on replay.
+- **`notification_queue` is ready for Phase 7**: `type` + `payload` + `send_at` + `status`. Phase 3 writes `time_changed`/`location_changed`/`teacher_changed`/`event_cancelled`; Phase 7 adds reminder types and the dispatcher.
 - **`school_years`** still standalone (unused until Phase 9).
-- **Migration numbering**: `0007_calendar_sync_issues.sql` (multi-calendar sync, see below) is taken; next available is `0008_...`.
-- **RLS tests**: `npm run test:rls` runs four files (profiles, schools, events, calendar-sync-issues); widen the glob again if adding `tests/attendance-rls.test.ts`. Non-hosted unit tests (no credentials needed) run via plain `npm run test`.
+- **Migration numbering**: `0008_attendance.sql` is taken; next available is `0009_...`.
+- **RLS tests**: `npm run test:rls` now runs five files (profiles, schools, events, calendar-sync-issues, attendance); `npm run test` runs the credential-free unit tests (calendar client, classifier, attendance status). Widen the globs in `package.json` when adding more.
 
 ## Standing manual steps (also in HANDOFF)
 
