@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { createClient } from "npm:@supabase/supabase-js@2.110.6";
-import { syncCalendar } from "./sync.ts";
+import { syncAllCalendars } from "./sync.ts";
 
 declare const Deno: {
   env: { get(key: string): string | undefined };
@@ -40,8 +40,7 @@ Deno.serve(async (request) => {
   });
 
   try {
-    const result = await syncCalendar(supabase, {
-      GOOGLE_CALENDAR_ID: Deno.env.get("GOOGLE_CALENDAR_ID"),
+    const result = await syncAllCalendars(supabase, {
       GOOGLE_SERVICE_ACCOUNT_KEY_BASE64: Deno.env.get("GOOGLE_SERVICE_ACCOUNT_KEY_BASE64"),
     });
     return json(result);

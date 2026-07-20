@@ -6,10 +6,29 @@
 import {
   GoogleCalendarClient,
   GoogleCalendarError,
+  listAllCalendars,
   parseServiceAccount,
+  type GoogleCalendarListEntry,
 } from "../../../src/lib/google/calendar.ts";
 
 const SCHOOL_MATCH_THRESHOLD = 0.5;
+// Separate from SCHOOL_MATCH_THRESHOLD: that constant is tuned for free-text
+// event Location strings, while a calendar summary is a short, structured
+// name -- placeholder until validated against the real planned calendar
+// names (see classifyDiscoveredCalendar below).
+const CALENDAR_MATCH_THRESHOLD = 0.5;
+// If the top two candidates score within this margin of each other, treat
+// the match as ambiguous rather than guessing.
+const AMBIGUITY_MARGIN = 0.08;
+// Soft ceiling on one syncAllCalendars run, leaving headroom under the Edge
+// Function execution limit and the 5-minute cron cadence. Calendars skipped
+// because of this are picked up on the next tick -- safe, since each
+// calendar's sync-token bookkeeping is independent and idempotent.
+const SYNC_TIME_BUDGET_MS = 4 * 60_000;
+// Small pacing delay between calendars, on top of googleFetchWithRetry's
+// per-request backoff.
+const CALENDAR_SYNC_DELAY_MS = 200;
+const LOCK_LEASE_MINUTES = 5;
 const PAGE_SIZE = 1_000;
 
 type DatabaseEvent = {
@@ -334,18 +353,14 @@ async function saveSyncState(
   if (error) throw new Error(`Could not update calendar sync state: ${error.message}`);
 }
 
-export async function syncCalendar(
+async function syncOneCalendar(
   supabase: any,
-  env: Record<string, string | undefined>,
+  google: GoogleCalendarClient,
+  calendarId: string,
+  teachersByEmail: Map<string, string>,
+  syncStartedAt: string,
   options: { recoveredExpiredToken?: boolean } = {},
 ): Promise<SyncResult> {
-  const calendarId = requireEnv(env, "GOOGLE_CALENDAR_ID");
-  const serviceAccount = parseServiceAccount(
-    requireEnv(env, "GOOGLE_SERVICE_ACCOUNT_KEY_BASE64"),
-  );
-  const google = new GoogleCalendarClient(serviceAccount);
-  const syncStartedAt = new Date().toISOString();
-
   const { data: state, error: stateError } = await supabase
     .from("calendar_sync_state")
     .select("*")
@@ -359,7 +374,6 @@ export async function syncCalendar(
   // teacher. A full recovery after 410 retains full_synced_at and therefore
   // still emits real changes/removals.
   const detectChanges = Boolean(priorState?.full_synced_at);
-  const teachersByEmail = await loadTeachers(supabase);
 
   let pageToken: string | undefined;
   let nextSyncToken: string | undefined;
@@ -391,7 +405,9 @@ export async function syncCalendar(
         last_status: "error",
         last_error: "Google sync token expired (410); starting a full resync.",
       });
-      return syncCalendar(supabase, env, { recoveredExpiredToken: true });
+      return syncOneCalendar(supabase, google, calendarId, teachersByEmail, syncStartedAt, {
+        recoveredExpiredToken: true,
+      });
     }
     await saveSyncState(supabase, {
       calendar_id: calendarId,
@@ -437,4 +453,243 @@ export async function syncCalendar(
     queuedNotifications,
     syncToken: nextSyncToken,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Multi-calendar discovery and matching (calendar <-> school, distinct from
+// the event <-> school Location match above). Pin-then-skip (user-confirmed):
+// a calendar already pinned to a school (schools.google_calendar_id) is never
+// re-matched -- only newly discovered/unpinned calendars are classified here.
+// ---------------------------------------------------------------------------
+
+export type CalendarMatchCandidate = { school_id: string; school_name: string; score: number };
+
+export type DiscoveredCalendarDecision =
+  | { action: "already_pinned" }
+  | { action: "auto_match"; schoolId: string; score: number }
+  | {
+      action: "flag_issue";
+      reason: "no_matching_school" | "ambiguous_match" | "school_already_linked";
+      candidates: CalendarMatchCandidate[];
+    };
+
+// Pure and synchronous so it's unit-testable against synthetic
+// calendars/schools with no Google or Supabase involved -- also where
+// CALENDAR_MATCH_THRESHOLD/AMBIGUITY_MARGIN get validated against the real
+// planned calendar-summary strings before this goes live.
+//
+// pinnedSchoolIds guards against two distinct Google Calendars sharing the
+// same (or a very similar) name -- e.g. two calendars both literally named
+// "South Dade Senior High" -- both independently scoring a perfect match
+// against the one real school. Without this check, whichever one is
+// processed second would silently overwrite the first's link on the next
+// run; this downgrades it to a flagged issue instead.
+export function classifyDiscoveredCalendar(
+  calendarId: string,
+  pinnedCalendarIds: ReadonlySet<string>,
+  candidates: CalendarMatchCandidate[],
+  pinnedSchoolIds: ReadonlySet<string> = new Set(),
+): DiscoveredCalendarDecision {
+  if (pinnedCalendarIds.has(calendarId)) return { action: "already_pinned" };
+
+  const [top, second] = candidates;
+  if (!top || top.score < CALENDAR_MATCH_THRESHOLD) {
+    return { action: "flag_issue", reason: "no_matching_school", candidates };
+  }
+  if (second && top.score - second.score < AMBIGUITY_MARGIN) {
+    return { action: "flag_issue", reason: "ambiguous_match", candidates };
+  }
+  if (pinnedSchoolIds.has(top.school_id)) {
+    return { action: "flag_issue", reason: "school_already_linked", candidates };
+  }
+  return { action: "auto_match", schoolId: top.school_id, score: top.score };
+}
+
+async function matchSchoolCalendar(
+  supabase: any,
+  summary: string | undefined,
+): Promise<CalendarMatchCandidate[]> {
+  if (!summary?.trim()) return [];
+  const { data, error } = await supabase.rpc("match_school_calendar", { calendar_summary: summary });
+  if (error) throw new Error(`Could not fuzzy-match calendar: ${error.message}`);
+  return (data ?? []) as CalendarMatchCandidate[];
+}
+
+// Single-row lease (supabase/migrations/0007) instead of pg_advisory_lock:
+// Edge Function DB connections aren't guaranteed to hold one long-lived
+// session, which makes session-scoped advisory locks unreliable here. The
+// atomic UPDATE ... WHERE only lets one concurrent caller acquire the row.
+async function acquireSyncLock(supabase: any): Promise<boolean> {
+  const now = new Date().toISOString();
+  const lockedUntil = new Date(Date.now() + LOCK_LEASE_MINUTES * 60_000).toISOString();
+  const { data, error } = await supabase
+    .from("calendar_sync_lock")
+    .update({ locked_until: lockedUntil })
+    .eq("id", true)
+    .or(`locked_until.is.null,locked_until.lt.${now}`)
+    .select("id");
+  if (error) throw new Error(`Could not acquire calendar sync lock: ${error.message}`);
+  return Boolean(data?.length);
+}
+
+async function releaseSyncLock(supabase: any) {
+  const { error } = await supabase
+    .from("calendar_sync_lock")
+    .update({ locked_until: new Date().toISOString() })
+    .eq("id", true);
+  if (error) throw new Error(`Could not release calendar sync lock: ${error.message}`);
+}
+
+type SchoolRow = { id: string; google_calendar_id: string | null };
+
+export type CalendarSyncSummary =
+  | { skipped: true }
+  | {
+      skipped: false;
+      discovered: number;
+      autoMatched: number;
+      issuesRaised: number;
+      partial: boolean;
+      synced: Array<{ calendarId: string; schoolId: string; result?: SyncResult; error?: string }>;
+    };
+
+export async function syncAllCalendars(
+  supabase: any,
+  env: Record<string, string | undefined>,
+  options: { dryRun?: boolean } = {},
+): Promise<CalendarSyncSummary> {
+  const dryRun = Boolean(options.dryRun);
+  if (!dryRun && !(await acquireSyncLock(supabase))) return { skipped: true };
+
+  try {
+    const serviceAccount = parseServiceAccount(
+      requireEnv(env, "GOOGLE_SERVICE_ACCOUNT_KEY_BASE64"),
+    );
+    const google = new GoogleCalendarClient(serviceAccount);
+    const runStartedAt = Date.now();
+
+    const calendars: GoogleCalendarListEntry[] = await listAllCalendars(google);
+
+    const { data: schools, error: schoolsError } = await supabase
+      .from("schools")
+      .select("id, google_calendar_id");
+    if (schoolsError) throw new Error(`Could not load schools: ${schoolsError.message}`);
+    const pinnedCalendarIds = new Set(
+      (schools as SchoolRow[] ?? [])
+        .map((school) => school.google_calendar_id)
+        .filter((id): id is string => Boolean(id)),
+    );
+    const pinnedSchoolIds = new Set(
+      (schools as SchoolRow[] ?? [])
+        .filter((school) => Boolean(school.google_calendar_id))
+        .map((school) => school.id),
+    );
+
+    let autoMatched = 0;
+    let issuesRaised = 0;
+    for (const calendar of calendars) {
+      if (pinnedCalendarIds.has(calendar.id)) continue;
+
+      const candidates = await matchSchoolCalendar(supabase, calendar.summary);
+      const decision = classifyDiscoveredCalendar(calendar.id, pinnedCalendarIds, candidates, pinnedSchoolIds);
+
+      if (decision.action === "already_pinned") continue;
+
+      if (decision.action === "auto_match") {
+        if (!dryRun) {
+          const { error } = await supabase
+            .from("schools")
+            .update({
+              google_calendar_id: calendar.id,
+              calendar_match_source: "fuzzy",
+              calendar_match_score: decision.score,
+              calendar_matched_at: new Date().toISOString(),
+            })
+            .eq("id", decision.schoolId);
+          if (error) throw new Error(`Could not pin matched calendar: ${error.message}`);
+
+          // This calendar may have been flagged as an open issue in an
+          // earlier run (e.g. before its matching school existed yet).
+          // Resolve it now -- otherwise it sits open forever even though
+          // the calendar is successfully matched, since nothing else in
+          // this loop ever revisits an already-pinned calendar_id.
+          const { error: resolveError } = await supabase
+            .from("calendar_sync_issues")
+            .update({ resolved_at: new Date().toISOString() })
+            .eq("calendar_id", calendar.id)
+            .is("resolved_at", null);
+          if (resolveError) {
+            throw new Error(`Could not resolve stale issue for auto-matched calendar: ${resolveError.message}`);
+          }
+        }
+        pinnedCalendarIds.add(calendar.id);
+        pinnedSchoolIds.add(decision.schoolId);
+        autoMatched += 1;
+      } else {
+        if (!dryRun) {
+          const { error } = await supabase
+            .from("calendar_sync_issues")
+            .upsert(
+              {
+                calendar_id: calendar.id,
+                calendar_summary: calendar.summary ?? null,
+                reason: decision.reason,
+                candidates: decision.candidates,
+                detected_at: new Date().toISOString(),
+                resolved_at: null,
+                resolved_by: null,
+              },
+              { onConflict: "calendar_id" },
+            );
+          if (error) throw new Error(`Could not record calendar sync issue: ${error.message}`);
+        }
+        issuesRaised += 1;
+      }
+    }
+
+    if (dryRun) {
+      return { skipped: false, discovered: calendars.length, autoMatched, issuesRaised, partial: false, synced: [] };
+    }
+
+    const { data: syncableSchools, error: syncableError } = await supabase
+      .from("schools")
+      .select("id, google_calendar_id")
+      .not("google_calendar_id", "is", null);
+    if (syncableError) throw new Error(`Could not load schools to sync: ${syncableError.message}`);
+
+    const teachersByEmail = await loadTeachers(supabase);
+    const synced: Array<{ calendarId: string; schoolId: string; result?: SyncResult; error?: string }> = [];
+    let partial = false;
+
+    for (const school of (syncableSchools as SchoolRow[]) ?? []) {
+      if (!school.google_calendar_id) continue;
+      if (Date.now() - runStartedAt > SYNC_TIME_BUDGET_MS) {
+        partial = true;
+        break;
+      }
+
+      const syncStartedAt = new Date().toISOString();
+      try {
+        const result = await syncOneCalendar(
+          supabase,
+          google,
+          school.google_calendar_id,
+          teachersByEmail,
+          syncStartedAt,
+        );
+        synced.push({ calendarId: school.google_calendar_id, schoolId: school.id, result });
+      } catch (error) {
+        synced.push({
+          calendarId: school.google_calendar_id,
+          schoolId: school.id,
+          error: error instanceof Error ? error.message : "Unknown calendar sync error.",
+        });
+      }
+      await new Promise((resolve) => setTimeout(resolve, CALENDAR_SYNC_DELAY_MS));
+    }
+
+    return { skipped: false, discovered: calendars.length, autoMatched, issuesRaised, partial, synced };
+  } finally {
+    if (!dryRun) await releaseSyncLock(supabase);
+  }
 }

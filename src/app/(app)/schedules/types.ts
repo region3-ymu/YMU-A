@@ -5,6 +5,18 @@ export type ScheduleSchool = {
   name: string;
   address: string;
   region: Region | null;
+  google_calendar_id?: string | null;
+};
+
+export type CalendarSyncIssueCandidate = { school_id: string; school_name: string; score: number };
+
+export type CalendarSyncIssue = {
+  id: string;
+  calendar_id: string;
+  calendar_summary: string | null;
+  reason: "no_matching_school" | "ambiguous_match" | "school_already_linked" | "sync_error";
+  candidates: CalendarSyncIssueCandidate[];
+  detected_at: string;
 };
 
 export type ScheduleAttendee = {
@@ -38,6 +50,7 @@ export type ScheduleEvent = {
 export type SchedulesExplorerProps = {
   events: ScheduleEvent[];
   schools: ScheduleSchool[];
+  calendarIssues: CalendarSyncIssue[];
   callerRole: AppRole;
   now: string;
 };

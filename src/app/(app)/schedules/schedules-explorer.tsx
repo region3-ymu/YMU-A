@@ -4,10 +4,11 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { isManagerRole, REGION_LABELS, type Region } from "@/lib/auth/roles";
 import { dayHeading, dayKey, eventTitle, formatEventTime, isCurrentlyInShift } from "./format";
+import UnmatchedCalendarQueue from "./unmatched-calendar-queue";
 import UnmatchedEventQueue from "./unmatched-event-queue";
 import type { SchedulesExplorerProps, ScheduleEvent } from "./types";
 
-export default function SchedulesExplorer({ events, schools, callerRole, now: initialNow }: SchedulesExplorerProps) {
+export default function SchedulesExplorer({ events, schools, calendarIssues, callerRole, now: initialNow }: SchedulesExplorerProps) {
   const managersView = isManagerRole(callerRole);
   const [now, setNow] = useState(() => new Date(initialNow));
   const [region, setRegion] = useState<Region | "all">("all");
@@ -25,6 +26,7 @@ export default function SchedulesExplorer({ events, schools, callerRole, now: in
   }), [events, region, schoolId]);
   const groups = useMemo(() => groupByDay(visibleEvents), [visibleEvents]);
   const unmatched = managersView ? events.filter((event) => !event.school_id && event.status !== "cancelled") : [];
+  const schoolsWithoutCalendar = managersView ? schools.filter((school) => !school.google_calendar_id) : [];
 
   return (
     <div className="grid gap-6">
@@ -45,6 +47,7 @@ export default function SchedulesExplorer({ events, schools, callerRole, now: in
         </div>
       )}
 
+      {managersView && <UnmatchedCalendarQueue issues={calendarIssues} schools={schoolsWithoutCalendar} />}
       {managersView && <UnmatchedEventQueue events={unmatched} schools={schools} />}
 
       {groups.length ? (
