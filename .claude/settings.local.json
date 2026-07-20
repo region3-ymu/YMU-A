@@ -41,7 +41,10 @@
       "Read(//tmp/**)",
       "Bash(grep -v \"^TOTAL_ROWS\\\\|^$\" /tmp/calendar-issues-raw.txt)",
       "Bash(rm -f /tmp/calendar-issues-raw.txt /private/tmp/claude-502/-Users-Region3-YMU-A/20ec85e5-9725-4142-a655-b02b01459880/scratchpad/school-calendars.json)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(git remote *)"
     ]
   }
 }
