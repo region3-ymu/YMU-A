@@ -232,14 +232,14 @@ describe.runIf(configured)("attendance clocking RLS + RPCs", () => {
       .single();
     const { error } = await teacherA.client.rpc("close_session_from_zoho", {
       p_session_id: session!.id,
-      p_rating: 5,
-      p_summary: "Trying to self-close without going through Zoho.",
+      p_engagement: "Very engaged",
+      p_had_issue: "No",
     });
     // Not granted to `authenticated` at all -> PostgREST reports it as missing.
     expect(error).not.toBeNull();
   });
 
-  it("close_session_from_zoho (service-role only, called by the webhook) requires a rating and summary", async () => {
+  it("close_session_from_zoho (service-role only, called by the webhook) requires engagement and a valid had-issue value", async () => {
     const { data: session } = await teacherA.client
       .from("attendance_sessions")
       .select("id")
@@ -247,10 +247,17 @@ describe.runIf(configured)("attendance clocking RLS + RPCs", () => {
       .single();
     const { error } = await admin.rpc("close_session_from_zoho", {
       p_session_id: session!.id,
-      p_rating: 4,
-      p_summary: "   ",
+      p_engagement: "   ",
+      p_had_issue: "No",
     });
-    expect(error?.message ?? "").toMatch(/summary is required/i);
+    expect(error?.message ?? "").toMatch(/engagement is required/i);
+
+    const { error: badIssueError } = await admin.rpc("close_session_from_zoho", {
+      p_session_id: session!.id,
+      p_engagement: "Very engaged",
+      p_had_issue: "maybe",
+    });
+    expect(badIssueError?.message ?? "").toMatch(/yes or no/i);
   });
 
   it("closes the session via close_session_from_zoho, then allows the next clock-in", async () => {
@@ -261,23 +268,25 @@ describe.runIf(configured)("attendance clocking RLS + RPCs", () => {
       .single();
     const { data: closed, error: outError } = await admin.rpc("close_session_from_zoho", {
       p_session_id: session!.id,
-      p_rating: 5,
-      p_summary: "Worked on scales and a duet.",
-      p_students_present: 7,
+      p_engagement: "Very engaged",
+      p_had_issue: "Yes",
+      p_issue_status: "In Progress: Efforts are currently underway to address and resolve the issue.",
+      p_notes: "Need a new snare head.",
     });
     expect(outError).toBeNull();
     expect(closed?.clock_out_at).not.toBeNull();
-    expect(closed?.feedback_rating).toBe(5);
+    expect(closed?.feedback_engagement).toBe("Very engaged");
+    expect(closed?.feedback_had_issue).toBe("Yes");
 
     // A retried webhook delivery for the same (now-closed) session is a
     // harmless no-op, not an error.
     const { data: retried, error: retryError } = await admin.rpc("close_session_from_zoho", {
       p_session_id: session!.id,
-      p_rating: 1,
-      p_summary: "Different data — must be ignored, already closed.",
+      p_engagement: "Not engaged",
+      p_had_issue: "No",
     });
     expect(retryError).toBeNull();
-    expect(retried?.feedback_rating).toBe(5);
+    expect(retried?.feedback_engagement).toBe("Very engaged");
 
     // With no open session, clock-in is possible again.
     const { error: reError } = await teacherA.client.rpc("clock_in", {

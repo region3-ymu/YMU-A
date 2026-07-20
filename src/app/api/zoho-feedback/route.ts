@@ -7,6 +7,12 @@ import { createAdminClient } from "@/lib/supabase/admin";
 // value as ZOHO_FEEDBACK_WEBHOOK_SECRET here and as a Custom Header on the
 // Zoho webhook (header name below).
 //
+// Field Link Names read directly from the real "TeacherFeedback" form's
+// rendered HTML (not guessed — see DECISIONS.md). session_id is a hidden
+// field that must still be added to the real form (no such field exists yet
+// as of writing this) so this handler can correlate a submission back to the
+// right attendance_sessions row.
+//
 // UNVERIFIED against a real Zoho delivery: Zoho's own docs don't pin down a
 // single fixed payload shape (it varies with the "Content Type" and "Payload
 // Parameters" the operator selects when configuring the webhook in Zoho's
@@ -14,8 +20,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 // selected Payload Parameters to use the field Link Names below (flat body,
 // OR wrapped one level under "data" — both are accepted since some Zoho
 // integrations wrap submission data that way and we can't test against a
-// real delivery here). Confirm the actual shape once a real form + webhook
-// exist and adjust extraction below if it differs.
+// real delivery here). Confirm the actual shape once the webhook is
+// configured and adjust extraction below if it differs.
 
 const SECRET_HEADER = "x-zoho-feedback-secret";
 
@@ -56,47 +62,39 @@ export async function POST(request: Request) {
   }
 
   const sessionField = process.env.ZOHO_FEEDBACK_FIELD_SESSION || "session_id";
-  const ratingField = process.env.ZOHO_FEEDBACK_FIELD_RATING || "rating";
-  const summaryField = process.env.ZOHO_FEEDBACK_FIELD_SUMMARY || "summary";
-  const challengesField = process.env.ZOHO_FEEDBACK_FIELD_CHALLENGES || "challenges";
-  const studentsField = process.env.ZOHO_FEEDBACK_FIELD_STUDENTS_PRESENT || "students_present";
+  const engagementField = process.env.ZOHO_FEEDBACK_FIELD_ENGAGEMENT || "MultipleChoice";
+  const hadIssueField = process.env.ZOHO_FEEDBACK_FIELD_HAD_ISSUE || "MultipleChoice1";
+  const issueStatusField = process.env.ZOHO_FEEDBACK_FIELD_ISSUE_STATUS || "MultipleChoice2";
+  const notesField = process.env.ZOHO_FEEDBACK_FIELD_NOTES || "MultiLine";
 
   const sessionId = pickField(body, sessionField);
   if (!isUuid(sessionId)) {
     return Response.json({ error: "Missing or invalid session id." }, { status: 400 });
   }
 
-  const ratingRaw = pickField(body, ratingField);
-  const rating = Number(ratingRaw);
-  if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
-    return Response.json({ error: "Rating must be an integer from 1 to 5." }, { status: 400 });
+  const engagement = String(pickField(body, engagementField) ?? "").trim();
+  if (!engagement) {
+    return Response.json({ error: "Engagement is required." }, { status: 400 });
   }
 
-  const summary = String(pickField(body, summaryField) ?? "").trim();
-  if (!summary) {
-    return Response.json({ error: "Summary is required." }, { status: 400 });
+  const hadIssue = String(pickField(body, hadIssueField) ?? "").trim();
+  if (hadIssue !== "Yes" && hadIssue !== "No") {
+    return Response.json({ error: "Had issue must be Yes or No." }, { status: 400 });
   }
 
-  const challengesRaw = pickField(body, challengesField);
-  const challenges = challengesRaw ? String(challengesRaw).trim() || null : null;
+  const issueStatusRaw = pickField(body, issueStatusField);
+  const issueStatus = issueStatusRaw ? String(issueStatusRaw).trim() || null : null;
 
-  const studentsRaw = pickField(body, studentsField);
-  let studentsPresent: number | null = null;
-  if (studentsRaw !== undefined && studentsRaw !== null && studentsRaw !== "") {
-    const n = Number(studentsRaw);
-    if (!Number.isInteger(n) || n < 0) {
-      return Response.json({ error: "Students present must be a non-negative whole number." }, { status: 400 });
-    }
-    studentsPresent = n;
-  }
+  const notesRaw = pickField(body, notesField);
+  const notes = notesRaw ? String(notesRaw).trim() || null : null;
 
   const admin = createAdminClient();
   const { error } = await admin.rpc("close_session_from_zoho", {
     p_session_id: sessionId,
-    p_rating: rating,
-    p_summary: summary,
-    p_challenges: challenges,
-    p_students_present: studentsPresent,
+    p_engagement: engagement,
+    p_had_issue: hadIssue,
+    p_issue_status: issueStatus,
+    p_notes: notes,
   });
   if (error) {
     return Response.json({ error: error.message }, { status: 400 });

@@ -21,7 +21,12 @@ export async function saveFeedbackDraft(sessionId: string, draft: FeedbackDraft)
 export async function getFeedbackDraft(sessionId: string): Promise<FeedbackDraft | null> {
   const row = await db.drafts.get(sessionId);
   if (!row) return null;
-  return { rating: row.rating, summary: row.summary, challenges: row.challenges, studentsPresent: row.studentsPresent };
+  return {
+    engagement: row.engagement,
+    hadIssue: row.hadIssue,
+    issueStatus: row.issueStatus,
+    notes: row.notes,
+  };
 }
 
 export async function clearFeedbackDraft(sessionId: string): Promise<void> {

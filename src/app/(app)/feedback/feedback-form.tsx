@@ -7,6 +7,8 @@ import { STATUS_LABELS, type AttendanceStatus } from "@/lib/attendance/status";
 import {
   buildZohoFeedbackUrl,
   EMPTY_DRAFT,
+  ENGAGEMENT_OPTIONS,
+  ISSUE_STATUS_OPTIONS,
   type FeedbackDraft,
   type ZohoFeedbackConfig,
 } from "@/lib/attendance/zoho-feedback";
@@ -171,7 +173,8 @@ function OfflineDraftForm({
   const save = useCallback(
     async (e: FormEvent) => {
       e.preventDefault();
-      if (draft.rating == null || !draft.summary.trim()) return;
+      if (!draft.engagement || !draft.hadIssue) return;
+      if (draft.hadIssue === "Yes" && !draft.issueStatus) return;
       await saveFeedbackDraft(sessionId, draft);
       onSaved(draft);
       setSaved(true);
@@ -187,68 +190,80 @@ function OfflineDraftForm({
         until that final submission goes through.
       </p>
 
+      <label className="grid gap-1 text-sm">
+        <span className="font-medium">
+          How engaged were the students? <span className="opacity-60">(required)</span>
+        </span>
+        <select
+          required
+          value={draft.engagement ?? ""}
+          onChange={(e) => setDraftState((d) => ({ ...d, engagement: e.target.value || null }))}
+          className="rounded-lg border border-foreground/20 bg-background px-3 py-2 text-sm"
+        >
+          <option value="" disabled>
+            Select…
+          </option>
+          {ENGAGEMENT_OPTIONS.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+      </label>
+
       <fieldset>
-        <legend className="text-sm font-medium">How did the class go?</legend>
-        <div className="mt-2 flex gap-1.5" role="radiogroup" aria-label="Rating from 1 to 5">
-          {[1, 2, 3, 4, 5].map((n) => (
-            <label
-              key={n}
-              className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-lg border border-foreground/20 text-sm font-semibold has-[:checked]:border-accent has-[:checked]:bg-accent has-[:checked]:text-accent-foreground has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent"
-            >
+        <legend className="text-sm font-medium">
+          Did you encounter any issues during today&apos;s class? <span className="opacity-60">(required)</span>
+        </legend>
+        <div className="mt-2 flex gap-3" role="radiogroup">
+          {(["Yes", "No"] as const).map((option) => (
+            <label key={option} className="flex items-center gap-1.5 text-sm">
               <input
                 type="radio"
-                name="rating"
-                value={n}
-                checked={draft.rating === n}
-                onChange={() => setDraftState((d) => ({ ...d, rating: n }))}
+                name="had_issue"
+                value={option}
+                checked={draft.hadIssue === option}
+                onChange={() => setDraftState((d) => ({ ...d, hadIssue: option, issueStatus: option === "No" ? null : d.issueStatus }))}
                 required
-                className="sr-only"
               />
-              {n}
+              {option}
             </label>
           ))}
         </div>
-        <p className="mt-1 text-xs opacity-60">1 = poor · 5 = excellent</p>
       </fieldset>
 
+      {draft.hadIssue === "Yes" && (
+        <label className="grid gap-1 text-sm">
+          <span className="font-medium">
+            What is the current status of this issue? <span className="opacity-60">(required)</span>
+          </span>
+          <select
+            required
+            value={draft.issueStatus ?? ""}
+            onChange={(e) => setDraftState((d) => ({ ...d, issueStatus: e.target.value || null }))}
+            className="rounded-lg border border-foreground/20 bg-background px-3 py-2 text-sm"
+          >
+            <option value="" disabled>
+              Select…
+            </option>
+            {ISSUE_STATUS_OPTIONS.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+
       <label className="grid gap-1 text-sm">
         <span className="font-medium">
-          What did you cover? <span className="opacity-60">(required)</span>
+          Notes or comments / instrument needs or repairs? <span className="opacity-60">(optional)</span>
         </span>
         <textarea
-          required
           rows={3}
-          value={draft.summary}
-          onChange={(e) => setDraftState((d) => ({ ...d, summary: e.target.value }))}
+          value={draft.notes}
+          onChange={(e) => setDraftState((d) => ({ ...d, notes: e.target.value }))}
           className="rounded-lg border border-foreground/20 bg-background px-3 py-2 text-sm"
-          placeholder="Repertoire, technique, what the students worked on…"
-        />
-      </label>
-
-      <label className="grid gap-1 text-sm">
-        <span className="font-medium">
-          Any challenges? <span className="opacity-60">(optional)</span>
-        </span>
-        <textarea
-          rows={2}
-          value={draft.challenges}
-          onChange={(e) => setDraftState((d) => ({ ...d, challenges: e.target.value }))}
-          className="rounded-lg border border-foreground/20 bg-background px-3 py-2 text-sm"
-          placeholder="Attendance, materials, behaviour, anything a manager should know…"
-        />
-      </label>
-
-      <label className="grid gap-1 text-sm">
-        <span className="font-medium">
-          Students present <span className="opacity-60">(optional)</span>
-        </span>
-        <input
-          type="number"
-          min={0}
-          inputMode="numeric"
-          value={draft.studentsPresent}
-          onChange={(e) => setDraftState((d) => ({ ...d, studentsPresent: e.target.value }))}
-          className="w-28 rounded-lg border border-foreground/20 bg-background px-3 py-2 text-sm"
         />
       </label>
 

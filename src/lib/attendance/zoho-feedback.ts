@@ -1,40 +1,58 @@
 // Config + URL-building for the embedded Zoho feedback form. Zoho Forms
 // supports prefilling a field by appending `?<FieldLinkName>=<value>` to the
-// form's embed URL (confirmed via Zoho's own community docs on prefilling
-// embedded forms — field "Link Name", not label, is what the query param
-// must match; this is set per-field in the Zoho form builder's field
-// properties). The operator must name each field's Link Name to match the
-// *_FIELD env vars below when building the form in Zoho.
+// form's embed URL (field "Link Name", not label). Field Link Names and
+// choice values below were read directly out of the real form's rendered
+// HTML (the "TeacherFeedback" form at https://forms.zohopublic.com/
+// ymuclassroomyoungmusi1/form/TeacherFeedback/...), not guessed — see
+// DECISIONS.md for how and why an earlier version of this file (which
+// invented a rating/summary/challenges/students_present schema without ever
+// seeing the real form) was wrong.
 //
 // The form itself is ONE fixed, shared URL for every submission (user
 // confirmed: the same https://zfrmz.com/... link is embedded in every
-// calendar event's description already) — it is not looked up per event. What
-// varies per submission is what's prefilled: session id (for the webhook to
-// correlate back to the right attendance_sessions row) plus school, teacher,
-// date, and class name, so the teacher only has to fill in the actual
-// feedback (rating/summary/challenges/students present).
+// calendar event's description already) — it is not looked up per event.
 //
-// UNVERIFIED against the real form for the school/teacher/date/class fields
-// specifically: the *_FIELD Link Names below are placeholders (rating/
-// summary/challenges/students_present/session_id were already exercised via
-// a simulated webhook delivery — see DECISIONS.md — but the newly-added
-// prefill fields have not been). Confirm each Link Name against the real
-// Zoho form once available, and adjust the matching env var if it differs.
-// The date format sent (MM/DD/YYYY) is Zoho's commonly documented prefill
-// format for a Date field; also unverified against this specific form.
+// STILL UNCONFIRMED: whether Zoho actually applies these URL-param prefills
+// to Dropdown/MultipleChoice (choice) fields the same way it does for plain
+// text fields — Zoho's own community threads note this is unreliable for
+// some field types (Lookup fields specifically). Date/School/Program are
+// Dropdowns here, not Lookups, which is the better-supported case, but this
+// hasn't been confirmed with a real render showing the values pre-selected.
+// A hidden "session_id" field must be added to the real form (by whoever has
+// Zoho Forms access) for the webhook to correlate a submission back to the
+// right attendance_sessions row — there is no such field yet.
+
+// Exact choice text from the real form — used both for the offline draft
+// picker (so a saved draft's values are always one of the form's own valid
+// choices) and for prefilling those choices into the live form via the same
+// draft mechanism.
+export const ENGAGEMENT_OPTIONS = [
+  "Very engaged",
+  "Somewhat engaged",
+  "For some period of time engaged",
+  "Not engaged",
+  "No answer due to class cancellation",
+] as const;
+
+export const ISSUE_STATUS_OPTIONS = [
+  "Resolved: The issue has been completely resolved and is no longer a concern.",
+  "In Progress: Efforts are currently underway to address and resolve the issue.",
+  "Ongoing: The issue is still present and has not been resolved yet. (Please expand in the comments section)",
+  "Escalated: The issue has been escalated to higher authorities.",
+] as const;
 
 export type FeedbackDraft = {
-  rating: number | null;
-  summary: string;
-  challenges: string;
-  studentsPresent: string;
+  engagement: string | null;
+  hadIssue: "Yes" | "No" | null;
+  issueStatus: string | null;
+  notes: string;
 };
 
 export const EMPTY_DRAFT: FeedbackDraft = {
-  rating: null,
-  summary: "",
-  challenges: "",
-  studentsPresent: "",
+  engagement: null,
+  hadIssue: null,
+  issueStatus: null,
+  notes: "",
 };
 
 export type FeedbackPrefill = {
@@ -51,44 +69,50 @@ export type ZohoFeedbackConfig = {
   teacherField: string;
   dateField: string;
   classField: string;
-  ratingField: string;
-  summaryField: string;
-  challengesField: string;
-  studentsPresentField: string;
+  engagementField: string;
+  hadIssueField: string;
+  issueStatusField: string;
+  notesField: string;
 };
 
 // Server-only (reads plain, non-NEXT_PUBLIC_ env vars); called from the
 // feedback/clocking server components and passed down as props. Returns null
 // if the form isn't configured yet, so the UI can show a clear "not set up"
-// state instead of an iframe pointed at an empty URL.
+// state instead of an iframe pointed at an empty URL. Defaults are the real
+// Link Names read from the live form; override via env var only if the form
+// is rebuilt with different ones.
 export function getZohoFeedbackConfig(): ZohoFeedbackConfig | null {
   const formUrl = process.env.ZOHO_FEEDBACK_FORM_URL;
   if (!formUrl) return null;
   return {
     formUrl,
     sessionField: process.env.ZOHO_FEEDBACK_FIELD_SESSION || "session_id",
-    schoolField: process.env.ZOHO_FEEDBACK_FIELD_SCHOOL || "school",
-    teacherField: process.env.ZOHO_FEEDBACK_FIELD_TEACHER || "teacher",
-    dateField: process.env.ZOHO_FEEDBACK_FIELD_DATE || "date",
-    classField: process.env.ZOHO_FEEDBACK_FIELD_CLASS || "class",
-    ratingField: process.env.ZOHO_FEEDBACK_FIELD_RATING || "rating",
-    summaryField: process.env.ZOHO_FEEDBACK_FIELD_SUMMARY || "summary",
-    challengesField: process.env.ZOHO_FEEDBACK_FIELD_CHALLENGES || "challenges",
-    studentsPresentField: process.env.ZOHO_FEEDBACK_FIELD_STUDENTS_PRESENT || "students_present",
+    schoolField: process.env.ZOHO_FEEDBACK_FIELD_SCHOOL || "Dropdown1",
+    teacherField: process.env.ZOHO_FEEDBACK_FIELD_TEACHER || "Dropdown",
+    dateField: process.env.ZOHO_FEEDBACK_FIELD_DATE || "Date",
+    classField: process.env.ZOHO_FEEDBACK_FIELD_CLASS || "Dropdown2",
+    engagementField: process.env.ZOHO_FEEDBACK_FIELD_ENGAGEMENT || "MultipleChoice",
+    hadIssueField: process.env.ZOHO_FEEDBACK_FIELD_HAD_ISSUE || "MultipleChoice1",
+    issueStatusField: process.env.ZOHO_FEEDBACK_FIELD_ISSUE_STATUS || "MultipleChoice2",
+    notesField: process.env.ZOHO_FEEDBACK_FIELD_NOTES || "MultiLine",
   };
 }
 
+// The real field's own hidden `date_format` hint (dd-MMM-yyyy) is what its
+// date picker displays; matching that for the prefill value, though this
+// specific field's URL-prefill format is still unconfirmed against a live
+// render (see file header).
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 function formatDateForZoho(date: Date): string {
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
   const dd = String(date.getDate()).padStart(2, "0");
-  return `${mm}/${dd}/${date.getFullYear()}`;
+  return `${dd}-${MONTHS[date.getMonth()]}-${date.getFullYear()}`;
 }
 
 // Builds the iframe src: always prefills the session id (so the webhook can
 // correlate the submission back to the right row) plus school/teacher/date/
-// class so the teacher doesn't have to retype them; also prefills any saved
-// offline draft, so a teacher who answered while offline just has to review
-// and hit submit inside the Zoho form once they're back online.
+// class so the teacher doesn't have to reselect them; also prefills any
+// saved offline draft, so a teacher who answered while offline just has to
+// review and hit submit inside the Zoho form once they're back online.
 export function buildZohoFeedbackUrl(
   config: ZohoFeedbackConfig,
   sessionId: string,
@@ -102,10 +126,10 @@ export function buildZohoFeedbackUrl(
   url.searchParams.set(config.dateField, formatDateForZoho(prefill.classDate));
   url.searchParams.set(config.classField, prefill.className);
   if (draft) {
-    if (draft.rating != null) url.searchParams.set(config.ratingField, String(draft.rating));
-    if (draft.summary) url.searchParams.set(config.summaryField, draft.summary);
-    if (draft.challenges) url.searchParams.set(config.challengesField, draft.challenges);
-    if (draft.studentsPresent) url.searchParams.set(config.studentsPresentField, draft.studentsPresent);
+    if (draft.engagement) url.searchParams.set(config.engagementField, draft.engagement);
+    if (draft.hadIssue) url.searchParams.set(config.hadIssueField, draft.hadIssue);
+    if (draft.issueStatus) url.searchParams.set(config.issueStatusField, draft.issueStatus);
+    if (draft.notes) url.searchParams.set(config.notesField, draft.notes);
   }
   return url.toString();
 }

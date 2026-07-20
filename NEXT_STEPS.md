@@ -6,31 +6,25 @@ Where to pick up. **Phase 4 (Clocking flow + feedback gate) is fully built and v
 
 Still-open pre-Phase-4 work also remains: Phase 3's multi-calendar sync review queue and the initial event-sync catch-up (below). **Multi-calendar sync is live-verified**: **50/68 calendars pinned**, **17 genuinely open** ([`calendar-sync-open-issues.csv`](calendar-sync-open-issues.csv), local artifact), 1 dismissed. Event-sync is still catching up (only ~9/50 pinned calendars had finished their initial full sync at last run) — keep running `npm run sync:calendar` or deploy the cron.
 
-## Finish the Zoho feedback setup (one thing left to confirm)
+## Finish the Zoho feedback setup (two things left)
 
-Everything code-side is built. The real, fixed form URL (`https://zfrmz.com/MIVJGi5IlokeTf8oTsDR`, the one already embedded in every calendar event's description) is set in `ZOHO_FEEDBACK_FORM_URL`, and confirmed **live, twice** (once in an automated browser check, once by a teacher actually reaching `/clocking` with a real open session): the iframe renders the real Zoho form correctly. An earlier `curl -I` check on that URL had shown `X-Frame-Options: SAMEORIGIN`, which looked like a hard blocker (the initial iframe attempt did fail with `net::ERR_ABORTED`) — but it renders fine now in every subsequent check, so whatever caused that first failure isn't reproducing (possibly `curl`'s no-redirect response differing from where a browser ends up after following redirects into the actual form page). Not fully explained, but no longer blocking.
+The app's schema/webhook/prefill were rebuilt to match the REAL "TeacherFeedback" form (read directly out of its live HTML, not guessed — see DECISIONS.md for the full comparison against an earlier, wrong, invented schema). The real form asks: Teacher Name (dropdown), Date, School (dropdown), Choose program (dropdown), student engagement (5-choice scale), whether there was an issue (Yes/No), issue status (conditional), and optional notes.
 
-**What's NOT yet confirmed: the full round-trip.** A teacher has confirmed the form *displays* correctly with the right class prefilled, but no one has actually filled it out and submitted it for real yet — so whether Zoho's webhook fires, with what payload shape, and whether `src/app/api/zoho-feedback/route.ts` parses it correctly, is still unverified beyond a simulated `curl` delivery (see DECISIONS.md). Do this once the webhook is configured (step below):
+The real, fixed form URL (`https://zfrmz.com/MIVJGi5IlokeTf8oTsDR`, the one already embedded in every calendar event's description) is set in `ZOHO_FEEDBACK_FORM_URL`, with the real field Link Names as defaults in `zoho-feedback.ts` (`Dropdown`/`Date`/`Dropdown1`/`Dropdown2`/`MultipleChoice`/`MultipleChoice1`/`MultipleChoice2`/`MultiLine`).
 
-1. **Build the form in Zoho Forms** with these fields — name each field's **Link Name** (in the field's properties in Zoho's form builder) to match, or note the actual names you use so the env vars below can be set to match instead:
-   - `session_id` — single-line text, hidden (prefilled from the app, echoed back in the webhook so we know which class the feedback is for)
-   - `school` — single-line text (prefilled with the school name)
-   - `teacher` — single-line text (prefilled with the teacher's name)
-   - `date` — date field (prefilled as `MM/DD/YYYY` — Zoho's commonly-documented prefill format, unverified against this specific field)
-   - `class` — single-line text (prefilled with the class name)
-   - `rating` — number, 1–5 (teacher fills in)
-   - `summary` — multi-line text, required (teacher fills in)
-   - `challenges` — multi-line text, optional (teacher fills in)
-   - `students_present` — number, optional (teacher fills in)
-2. **If any Link Name differs from the defaults above**, set the matching `ZOHO_FEEDBACK_FIELD_SESSION` / `_SCHOOL` / `_TEACHER` / `_DATE` / `_CLASS` / `_RATING` / `_SUMMARY` / `_CHALLENGES` / `_STUDENTS_PRESENT` env var.
-3. **Configure the webhook**: Zoho Forms → Integrations → Webhooks → Configure Webhook.
+1. **Add a hidden `session_id` field to the real form** (doesn't exist yet) — in Zoho Forms' editor, drag a **Hidden Field** (not a hidden text field — Zoho has a dedicated component for this) onto the "TeacherFeedback" form, set its Link Name to exactly `session_id`, save. Without this, the webhook has no reliable way to know which attendance session a submission belongs to.
+2. **Configure the webhook**: Zoho Forms → Integrations → Webhooks → Configure Webhook.
    - Webhook URL: `https://<your-deployed-domain>/api/zoho-feedback`
    - Content Type: **application/json**
-   - Payload Parameters: select `session_id`, `rating`, `summary`, `challenges`, `students_present` (the four feedback fields the teacher actually fills in, plus the session id — school/teacher/date/class don't need to round-trip back)
+   - Payload Parameters: select `session_id` (the new hidden field), `MultipleChoice` (engagement), `MultipleChoice1` (had issue), `MultipleChoice2` (issue status), `MultiLine` (notes) — School/Teacher/Date/Program don't need to round-trip back, the app already knows them.
    - Custom Headers: add `x-zoho-feedback-secret` = the same value you set for `ZOHO_FEEDBACK_WEBHOOK_SECRET`
-4. **Test it for real**: log in as a teacher with an open session, load `/clocking`, confirm the Zoho form actually renders inside the page (not the "form isn't configured yet" message, and not a blank box) with school/teacher/date/class already filled in. Submit it, and confirm the page updates to "Feedback received" within a few seconds (it polls every 4s) — if it doesn't, check the webhook delivery log in Zoho and compare the actual payload shape against what `src/app/api/zoho-feedback/route.ts` expects (this hasn't been tested against a real Zoho delivery, only a simulated `curl` one — the payload shape may need adjusting, see the comments at the top of that file and in `src/lib/attendance/zoho-feedback.ts`).
-5. **Test the offline path too**: go offline (DevTools → Network → Offline) with an open session, fill and save the local draft form, go back online, and confirm the Zoho form loads prefilled with those answers too.
-6. Decide whether the old Phase 9 "push feedback to Zoho via API" plan (and the `ZOHO_CLIENT_ID`/`SECRET`/`REFRESH_TOKEN` env vars, and `attendance_sessions.zoho_synced_at`) is still needed — probably not, now that feedback originates in Zoho instead of being pushed there. See DECISIONS.md.
+3. **Test it for real**: log in as a teacher with an open session, load `/clocking`, confirm the real form renders with School/Date/Program pre-selected (Teacher Name prefill is a best-effort — see caveat below). Fill in the rest and submit, and confirm the page updates to "Feedback received" within a few seconds (it polls every 4s). If it doesn't, check the webhook delivery log in Zoho and compare the actual payload shape against what `src/app/api/zoho-feedback/route.ts` expects — this still hasn't been tested against a real Zoho delivery, only a simulated `curl` one.
+4. **Test the offline path too**: go offline (DevTools → Network → Offline) with an open session, fill and save the local draft form (engagement/issue/notes), go back online, and confirm the real form loads prefilled with those answers too.
+5. Decide whether the old Phase 9 "push feedback to Zoho via API" plan (and the `ZOHO_CLIENT_ID`/`SECRET`/`REFRESH_TOKEN` env vars) is still needed — probably not, now that feedback originates in Zoho instead of being pushed there. See DECISIONS.md.
+
+**Caveats to know about, not yet resolved:**
+- **Teacher Name prefill is unreliable by design, not a bug** (user-confirmed): the real dropdown's choices are teacher full names tied to specific emails (e.g. "Jefferson Joseph" ↔ `jeffadamjoseph@gmail.com`), but the calendar event only carries the teacher's Google account email, and our own `profiles.full_name` may not exactly match the dropdown's registered spelling. If it doesn't match exactly, the dropdown just won't show anything pre-selected — the teacher picks their own name manually, which is an acceptable fallback, not a broken feature.
+- **Dropdown/choice-field prefill via URL params is unconfirmed to actually apply the selection** — Zoho's own community threads note this can be unreliable for some field types. The URL the app builds is confirmed correct (checked directly: `?session_id=...&Dropdown1=<school>&Dropdown=<teacher>&Date=<dd-MMM-yyyy>&Dropdown2=<program>`), but whether Zoho's live form actually pre-selects those dropdown values on load — as opposed to just ignoring unrecognized query params — needs a real check in an actual browser (an automated headless check in this environment hit an inconsistent `net::ERR_ABORTED` on the iframe load that didn't reproduce for a real person in a real browser earlier, so this needs a human to actually look).
 
 ## What's left for multi-calendar sync (in order)
 
