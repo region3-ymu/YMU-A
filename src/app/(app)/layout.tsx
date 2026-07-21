@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireProfile } from "@/lib/auth/dal";
 import { ROLE_LABELS } from "@/lib/auth/roles";
 import BackButton from "@/components/back-button";
+import GpsCheckSampler from "@/components/gps-check-sampler";
 import { signOut } from "../(auth)/actions";
 
 // Shell for every signed-in page. data-role drives the per-role accent color
@@ -36,6 +37,10 @@ export default async function AppLayout({
         </div>
       </header>
       {children}
+      {/* Silent, renders nothing — only teachers have gps_checks rows at
+          all (RLS-scoped), so this is a no-op for managers. Mounted here
+          (not per-page) so sampling continues across in-app navigation. */}
+      {profile.role === "teacher" && <GpsCheckSampler />}
     </div>
   );
 }

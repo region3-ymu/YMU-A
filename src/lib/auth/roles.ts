@@ -76,6 +76,13 @@ export function navForRole(role: AppRole): NavItem[] {
     { href: "/reports", label: "Reports", note: "Hours & attendance" },
     { href: "/settings", label: "Settings", note: "Notifications & theme" },
   );
+  if (isManagerRole(role)) {
+    items.push({
+      href: "/flags",
+      label: "Flags",
+      note: "GPS & late clock-in escalations",
+    });
+  }
   if (role === "operations_manager" || role === "cpo") {
     items.push({
       href: "/users",
@@ -92,6 +99,7 @@ export const ROUTE_ROLES: Record<string, readonly AppRole[]> = {
   "/clocking": ["teacher"],
   "/feedback": ["teacher"],
   "/lists": MANAGER_ROLES,
+  "/flags": MANAGER_ROLES,
   "/users": ["operations_manager", "cpo"],
 };
 

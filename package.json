@@ -9,7 +9,7 @@
     "lint": "eslint",
     "sync:calendar": "node --env-file=.env.local scripts/sync-calendar.ts",
     "test": "vitest run tests/google-calendar-client.test.ts tests/calendar-sync-classify.test.ts tests/attendance-status.test.ts",
-    "test:rls": "vitest run tests/rls.test.ts tests/schools-rls.test.ts tests/events-rls.test.ts tests/calendar-sync-rls.test.ts tests/attendance-rls.test.ts"
+    "test:rls": "vitest run tests/rls.test.ts tests/schools-rls.test.ts tests/events-rls.test.ts tests/calendar-sync-rls.test.ts tests/attendance-rls.test.ts tests/gps-checks-rls.test.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.3",
