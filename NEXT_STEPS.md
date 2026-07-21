@@ -17,6 +17,22 @@ Everything server-side is applied and test-verified; this is the one thing the s
 
 **Feedback was then reworked to a Zoho-hosted form + webhook** (product change, PRD-confirmed), corrected once to match the real Zoho form's actual fields (migration `0011`, see DECISIONS.md), and had two UX fixes land on top (redirect home instead of straight into the feedback form after clock-in, a "Back" button on every page). All of that is done from the app's side — what's left is a short list of **manual Zoho-side steps** ("Finish the Zoho feedback setup" below); none of it blocks moving on.
 
+## 🔴 The app is now deployed, but the Zoho webhook is STILL not configured on Zoho's side (blocks every clock-out)
+
+The app is live at **`https://ymu-a-navy.vercel.app`**. `ZOHO_FEEDBACK_FORM_URL` and `ZOHO_FEEDBACK_WEBHOOK_SECRET` are set in **Vercel → Settings → Environment Variables** (values match what's in the developer's local `.env.local`). That only prepares *our* side — nothing has been configured on **Zoho's** side yet, and the user confirmed they don't currently have access to the Zoho Forms account to do it.
+
+**Symptom this causes**: a teacher clocks in, fills out and submits the real Zoho feedback form, and *nothing happens* — the session never closes, the "clock out" gate never clears, because Zoho never actually calls our webhook (it isn't configured to). This is not a bug in the app; confirmed live twice — once against `localhost` (where it's expected, since Zoho can't reach a local machine) and once against the Vercel deployment (where it should have worked, but the Zoho-side webhook was never set up at all — the user only touched Vercel, never opened Zoho Forms' own Integrations tab).
+
+**Next session, as soon as there's access to the Zoho Forms account, do this** (Zoho Forms → the "TeacherFeedback" form → **Integrations → Webhooks → Configure Webhook**):
+1. **Webhook URL**: `https://ymu-a-navy.vercel.app/api/zoho-feedback`
+2. **Content Type**: `application/json`
+3. **Custom Header**: `x-zoho-feedback-secret` = the same value stored in Vercel's `ZOHO_FEEDBACK_WEBHOOK_SECRET` (ask the person who set up Vercel for the value, or rotate it — see "Rotate note" pattern used for Phase 5's Edge Function secrets, same idea: update it in Vercel AND in Zoho's header together).
+4. **Payload Parameters**: select `session_id`, `MultipleChoice` (engagement), `MultipleChoice1` (had issue), `MultipleChoice2` (issue status), `MultiLine` (notes).
+5. **Verify the hidden `session_id` field actually exists on the form.** As of the last check (Phase 4 rework) it did **not** — this needs a **Hidden Field** component (not a hidden text field — Zoho has a dedicated component) with Link Name exactly `session_id`, added in the form editor and saved, before step 4 above can even select it as a payload parameter.
+6. **Test it for real**: clock in as a teacher against the deployed app, submit the real Zoho form, confirm `/clocking` shows "Feedback received" within ~4s (it polls), and confirm in the DB: `select clock_out_at, feedback_engagement, origin from attendance_sessions where id = '<session_id>';` shows the row closed.
+
+**Known currently-stuck test session** (leftover from this debugging pass, safe to leave or manually close via SQL/RPC once someone has DB access): `attendance_sessions.id = f8e52696-2000-41dd-972c-808ac51ffae8`, open since `2026-07-20 22:24:41 UTC`. It will never close on its own since no webhook can reach it retroactively — either close it manually (`update attendance_sessions set clock_out_at = now(), feedback_engagement = '...', feedback_had_issue = 'No', feedback_submitted_at = now() where id = '...'` via the service-role client, since there's no authenticated update grant) or leave it; it only blocks that one teacher from clocking into a new class until closed.
+
 ## Finish Phase 5 (one thing left)
 
 1. ~~Deploy the two new Edge Functions~~ — done via the Supabase MCP `deploy_edge_function` tool: `check-closeout` and `late-detect` are both `ACTIVE` on the hosted project (`verify_jwt: false`, same as `calendar-sync`).

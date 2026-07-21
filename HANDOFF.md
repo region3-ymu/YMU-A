@@ -2,6 +2,10 @@
 
 Snapshot of the repo at the end of **Phase 6 (Offline mode & sync)**. Phase 5 (GPS checks & late escalation) and Phase 4 (Clocking flow + feedback gate, then reworked to a Zoho-hosted form + webhook) are unchanged and retained below. Phase 1/2 notes are superseded (see git history); Phase 3 + multi-calendar sync detail is retained below unchanged. Next up is **Phase 7** (notification dispatcher — drain `notification_queue` via Web Push + Resend email).
 
+## The app is now deployed — but Zoho's webhook still isn't configured (🔴 see NEXT_STEPS.md)
+
+Since the last handoff, the app was deployed to Vercel at **`https://ymu-a-navy.vercel.app`**, and `ZOHO_FEEDBACK_FORM_URL`/`ZOHO_FEEDBACK_WEBHOOK_SECRET` were added to Vercel's Environment Variables (previously only in the developer's local `.env.local`, which — being gitignored — never reaches any other machine or deployment on its own). That's necessary but not sufficient: **no one has configured the webhook on Zoho Forms' own side yet** (Integrations → Webhooks, plus the still-missing hidden `session_id` field), and the user currently lacks access to that Zoho account. Until that happens, every real Zoho feedback submission is a no-op — the session never closes, no matter how correctly the app itself is deployed. Full step-by-step for whoever gets Zoho access next is in NEXT_STEPS.md's 🔴 section. One test session is left stuck open as a result (`f8e52696-2000-41dd-972c-808ac51ffae8`) — harmless, documented there.
+
 ## Phase 6 — Offline mode & sync (built this phase)
 
 Offline clock-ins and GPS-check results are captured locally and replayed on reconnect, exactly-once. **Feedback/clock-out was deliberately NOT routed through the new sync queue** (user-confirmed) — the Phase 4 rework made Zoho's webhook the only path that closes a session, and feedback already has its own offline story (a Dexie draft prefilled into the Zoho form on reconnect, see Phase 4 below). Re-adding a teacher-side close path just to fit the brief's literal four-item list would have contradicted that. So the offline queue covers the two purely-teacher-authenticated RPCs: **clock-ins and GPS samples**. See DECISIONS.md.

@@ -336,6 +336,15 @@ Adding `p_origin`/`p_clock_in_at` via `create or replace` with a longer arg list
 ### Migration numbered `0013`, hosted version timestamp-stamped
 `0013_offline_sync.sql` locally; applied via the Supabase MCP `apply_migration` tool, which stamps a timestamp-based version on the hosted project (`2026072114...`) — same local-sequential-vs-hosted-timestamp split documented for every phase since `0008`. Not a re-run risk; the local name and hosted version key are allowed to differ.
 
+## Debugging finding (post-Phase-6): "clock out does nothing" traced to two separate, unrelated Zoho config gaps — neither is a Phase 6 bug
+
+After Phase 6 shipped, the user tried the real end-to-end feedback flow and reported clock-out silently doing nothing — the session never closed. Root-caused across two follow-up sessions, confirmed each time by checking `attendance_sessions` directly (the same open test session, `f8e52696-2000-41dd-972c-808ac51ffae8`, never changed across both):
+
+1. **First pass (testing on `localhost`)**: `ZOHO_FEEDBACK_WEBHOOK_SECRET` was blank in the developer's `.env.local` (the route hard-rejects any call with `500 "Webhook not configured"` when it's empty — confirmed by simulating the webhook with `curl` and getting exactly that error). Separately and more fundamentally, `localhost` is never reachable from Zoho's servers at all, so even with the secret fixed, a real submission could never land.
+2. **Second pass (after deploying to Vercel at `https://ymu-a-navy.vercel.app` and setting the same two env vars there)**: same symptom, same untouched DB row. This time the app's own side was actually ready — the gap was that **nothing had configured the webhook on Zoho Forms' own side** (Integrations → Webhooks tab inside the Zoho form editor). Setting env vars in Vercel only prepares the *receiving* end; Zoho still has to be told, on its own UI, to *call* that URL with that header. The user confirmed they'd only ever touched Vercel, never opened Zoho's Integrations tab, and currently has no access to that Zoho account to fix it — deferred to whoever gets access next (see NEXT_STEPS.md's 🔴 section for the exact steps, including re-checking whether the hidden `session_id` field — flagged as missing since the Phase 4 rework — has been added yet).
+
+Neither issue is a defect in anything built during Phase 4 or Phase 6 — both are the same category of gap called out since the original Phase 4 rework entries above ("full webhook round-trip still unconfirmed with a real Zoho submission"): a webhook has **two** independent sides that must both be configured and kept in sync (URL + shared secret), and this is the first time both were actually attempted end-to-end rather than simulated with `curl`. Worth remembering for Phase 7's own webhook/dispatcher surfaces if any: verify both sides explicitly, don't assume one side being correct implies progress on the other.
+
 ## Product-level decisions (confirmed with user before Phase 0, full detail in the plan file)
 
 | Area | Decision |
