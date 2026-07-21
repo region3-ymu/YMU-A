@@ -1,13 +1,15 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { haversineMeters } from "@/lib/geo/haversine";
 import {
   STATUS_LABELS,
   computeClockInStatus,
   minutesLate,
 } from "@/lib/attendance/status";
+import { cacheNextClass, enqueueClockIn } from "@/lib/offline/queue";
+import { syncNow } from "@/lib/offline/sync";
 import { clockIn, type ClockInState } from "./actions";
 
 // Leaflet touches window at import time, so the map is client-only. ssr:false
@@ -81,6 +83,43 @@ export default function ClockingClient({
   const [clientKey] = useState(() => crypto.randomUUID());
   const [state, formAction, pending] = useActionState(clockIn, initialState);
 
+  // navigator.onLine can't be read during SSR, so assume online for the first
+  // render (matching the server) and sync the real value in an effect — same
+  // hydration-safe pattern as feedback-form.tsx / offline-indicator.tsx.
+  const [online, setOnline] = useState(true);
+  const [offlineSaved, setOfflineSaved] = useState(false);
+  const [savingOffline, setSavingOffline] = useState(false);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- navigator.onLine is unreadable during SSR.
+    setOnline(navigator.onLine);
+    const goOnline = () => setOnline(true);
+    const goOffline = () => setOnline(false);
+    window.addEventListener("online", goOnline);
+    window.addEventListener("offline", goOffline);
+    return () => {
+      window.removeEventListener("online", goOnline);
+      window.removeEventListener("offline", goOffline);
+    };
+  }, []);
+
+  // Cache this clockable class + its school coordinates while online, so the
+  // on-device geofence check still works if connectivity drops on this screen.
+  useEffect(() => {
+    if (!online) return;
+    void cacheNextClass({
+      event_id: eventId,
+      summary: className,
+      start_at: startAt,
+      end_at: null,
+      school_id: school.id,
+      school_name: school.name,
+      school_lat: school.lat,
+      school_lng: school.lng,
+      school_radius_m: school.radiusM,
+    });
+  }, [online, eventId, className, startAt, school.id, school.name, school.lat, school.lng, school.radiusM]);
+
   const hasSchoolCoords = school.lat != null && school.lng != null;
 
   function locate() {
@@ -127,6 +166,41 @@ export default function ClockingClient({
 
   const previewStatus = computeClockInStatus(startAt ? new Date(startAt) : null, new Date());
   const lateBy = minutesLate(startAt ? new Date(startAt) : null, new Date());
+
+  // Offline clock-in: the browser can't reach the server, so record it locally
+  // in the sync queue (idempotent client_key) after the same on-device
+  // geofence check gated the button. The server re-validates the fence and the
+  // timestamp when the queue drains on reconnect — this is optimistic, not the
+  // authority. crypto.randomUUID inside enqueueClockIn is the session's key.
+  async function clockInOffline() {
+    if (!position || !canClockIn) return;
+    setSavingOffline(true);
+    await enqueueClockIn({
+      event_id: eventId,
+      school_id: school.id,
+      lat: position.lat,
+      lng: position.lng,
+      accuracy: position.accuracy,
+      clock_in_at: new Date().toISOString(),
+    });
+    setSavingOffline(false);
+    setOfflineSaved(true);
+    // If connectivity returned between render and tap, drain immediately.
+    void syncNow();
+  }
+
+  if (offlineSaved) {
+    return (
+      <div className="rounded-xl border border-green-500/40 bg-green-500/5 p-4">
+        <p className="font-semibold text-green-700 dark:text-green-400">Clocked in — saved offline</p>
+        <p className="mt-1 text-sm opacity-80">
+          You&apos;re clocked in to <span className="font-medium">{className}</span>. This is saved on your device
+          and will sync automatically the moment you&apos;re back online — no need to do anything. Your GPS checks
+          will be captured on this device in the meantime.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="grid gap-4">
@@ -215,20 +289,36 @@ export default function ClockingClient({
                 </span>
                 .
               </p>
-              <form action={formAction} className="mt-3">
-                <input type="hidden" name="event_id" value={eventId} />
-                <input type="hidden" name="lat" value={position.lat} />
-                <input type="hidden" name="lng" value={position.lng} />
-                <input type="hidden" name="accuracy" value={position.accuracy} />
-                <input type="hidden" name="client_key" value={clientKey} />
-                <button
-                  type="submit"
-                  disabled={pending || !canClockIn}
-                  className="rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-accent-foreground disabled:opacity-50"
-                >
-                  {pending ? `Clocking in to ${className}…` : "Clock in"}
-                </button>
-              </form>
+              {online ? (
+                <form action={formAction} className="mt-3">
+                  <input type="hidden" name="event_id" value={eventId} />
+                  <input type="hidden" name="lat" value={position.lat} />
+                  <input type="hidden" name="lng" value={position.lng} />
+                  <input type="hidden" name="accuracy" value={position.accuracy} />
+                  <input type="hidden" name="client_key" value={clientKey} />
+                  <button
+                    type="submit"
+                    disabled={pending || !canClockIn}
+                    className="rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-accent-foreground disabled:opacity-50"
+                  >
+                    {pending ? `Clocking in to ${className}…` : "Clock in"}
+                  </button>
+                </form>
+              ) : (
+                <div className="mt-3">
+                  <p className="mb-2 text-xs text-amber-700 dark:text-amber-400">
+                    You&apos;re offline — this will be saved on your device and synced when you reconnect.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={clockInOffline}
+                    disabled={savingOffline || !canClockIn}
+                    className="rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-accent-foreground disabled:opacity-50"
+                  >
+                    {savingOffline ? "Saving…" : "Clock in (offline)"}
+                  </button>
+                </div>
+              )}
             </div>
           )}
 

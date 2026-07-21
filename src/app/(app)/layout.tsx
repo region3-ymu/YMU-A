@@ -3,6 +3,7 @@ import { requireProfile } from "@/lib/auth/dal";
 import { ROLE_LABELS } from "@/lib/auth/roles";
 import BackButton from "@/components/back-button";
 import GpsCheckSampler from "@/components/gps-check-sampler";
+import OfflineIndicator from "@/components/offline-indicator";
 import { signOut } from "../(auth)/actions";
 
 // Shell for every signed-in page. data-role drives the per-role accent color
@@ -23,6 +24,7 @@ export default async function AppLayout({
           </Link>
         </div>
         <div className="flex items-center gap-3">
+          <OfflineIndicator />
           <span className="rounded-full bg-accent px-2.5 py-0.5 text-xs font-semibold text-accent-foreground">
             {ROLE_LABELS[profile.role]}
           </span>
