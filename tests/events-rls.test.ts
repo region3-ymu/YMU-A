@@ -174,7 +174,15 @@ describe.runIf(configured)("calendar event RLS", () => {
   });
 
   it("an operations manager sees every event", async () => {
-    const { data } = await om.client.from("calendar_events").select("id");
+    // Filtered to the seeded ids specifically — the hosted project's real
+    // calendar_events table has grown past PostgREST's default 1000-row
+    // page (1746+ real synced events per HANDOFF.md), so an unfiltered
+    // select().arrayContaining() check would flake once the seeded rows
+    // fall outside the first page, regardless of RLS correctness.
+    const { data } = await om.client
+      .from("calendar_events")
+      .select("id")
+      .in("id", [centralEventId, eastEventId, unmatchedEventId]);
     const ids = (data ?? []).map((event) => event.id);
     expect(ids).toEqual(expect.arrayContaining([centralEventId, eastEventId, unmatchedEventId]));
   });
@@ -205,9 +213,13 @@ describe.runIf(configured)("calendar event RLS", () => {
     expect(error).not.toBeNull();
   });
 
-  it("notification_queue has no authenticated read access", async () => {
-    const { data, error } = await teacherCentral.client.from("notification_queue").select("id");
-    expect(data ?? []).toHaveLength(0);
-    expect(error).not.toBeNull();
+  it("a teacher can read their own notification_queue rows (Phase 9: no longer blocked entirely)", async () => {
+    // Phase 9 (0018_calendar_and_notification_visibility.sql) intentionally
+    // granted authenticated access, scoped to own rows / managers — see
+    // DECISIONS.md. Not asserting a specific row count: this hosted project
+    // runs live cron jobs (notify-dispatch etc.) that can enqueue a real
+    // reminder for this disposable teacher's seeded event mid-test-run.
+    const { error } = await teacherCentral.client.from("notification_queue").select("id");
+    expect(error).toBeNull();
   });
 });

@@ -1,313 +1,354 @@
 # HANDOFF — YMU-A
 
-Snapshot of the repo at the end of **Phase 8 (Reports, dashboard, exports)**. Phase 7 (Notifications), Phase 6 (Offline mode & sync), Phase 5 (GPS checks & late escalation), and Phase 4 (Clocking flow + feedback gate, then reworked to a Zoho-hosted form + webhook) are unchanged and retained below. Phase 1/2 notes are superseded (see git history); Phase 3 + multi-calendar sync detail is retained below unchanged. Next up is **Phase 9**.
-
-## Phase 8 — Reports, dashboard, exports (built this phase)
-
-Attendance aggregation (hours worked, attendance rate %, on-time/late/missed counts) computed weekly, monthly, and per 9-week quarter anchored to each school year's start date; a teacher self-report; Regional Manager per-teacher/region reports scoped to their own region; an Operations Manager/CPO master report (combined totals + one section per active teacher + an archived-teachers section); server-side CSV export and client-side PDF export (`@react-pdf/renderer`, new dependency); a Manager Dashboard (teachers scheduled today, currently clocked in, late, missing clock-ins, pending feedback, upcoming classes); and a search box (classes, attendance records, schools) mounted on both Reports and the Dashboard.
-
-**Migration `supabase/migrations/0016_reports.sql`** (applied to the hosted project `vgyogyojxlvhiwujidhy` via the Supabase MCP `apply_migration` tool). Deliberately just one view + one RPC — all weekly/monthly/quarterly bucketing and the hours/rate math happen in TypeScript over the raw rows these return, not in SQL:
-- **`attendance_period_rows`** (view, `security_invoker = true` as defence in depth on PG 17) — one row per (matched teacher, non-cancelled, school-matched class), left-joined to that teacher's `attendance_sessions` row if one exists, with a computed `attendance_status` (`on_time`/`late` from the session, `missed` if the class already ended with no session, `upcoming` otherwise) and `hours_worked` (only set once `clock_out_at` is; a still-open session's hours are `null`, matching raw data literally rather than fabricating partial credit). Its `WHERE` clause **hand-mirrors `attendance_sessions_select`'s authorization exactly** (self / RM by school region / OM+CPO all) rather than trusting the underlying tables' RLS — a real leak this specifically guards against: the view's `join lateral unnest(ce.teacher_ids)` would otherwise let a teacher see a co-taught colleague's row too, since `calendar_events` RLS is row-level (passes once *any* of an event's `teacher_ids` matches the caller), not array-element-level. Verified directly: `tests/reports-rls.test.ts`'s "array-unnest leak check" seeds a two-teacher event and confirms each teacher's own query returns only their own row.
-- **`report_teacher_roster(p_include_archived boolean)`** (RPC, `security definer`) — deliberately **not** a reuse of `teacher_directory()` (Phase 2): that function scopes a Regional Manager by `profiles.region`, which Phase 3's own DECISIONS.md entry documents as stale now that a teacher's region is derived from the schools they're scheduled at, not `profiles.region` (most teachers have `profiles.region = null` today). Reusing it here would have silently returned an empty roster for every RM. This scopes RMs the same way `attendance_period_rows` does — via `calendar_events` → `schools.region` — and optionally includes archived teachers (`profiles.archived_at is not null`) for the OM/CPO master report's archived section.
-
-**`src/lib/reports/`**:
-- `types.ts` — `ReportRow` (mirrors the view column-for-column), `SchoolYear`, `Granularity`, `PeriodSummary`, `RosterTeacher`.
-- `aggregate.ts` — `bucketReportRows(rows, granularity, schoolYears?, combineTeachers?)`, pure and dependency-free (no date library, matching this project's minimalism precedent). Weekly = UTC Monday-start week, monthly = UTC calendar month (same no-per-school-timezone convention as `schedules/format.ts`'s `dayKey` and Phase 7's UTC email-cap boundary) — quarterly = 9-week (63-day) blocks anchored to each `school_years.start_date`; a class outside every known school year's range lands in a "No school year" bucket rather than blocking the report (hosted `school_years` has 0 rows currently, so this fallback is what every live quarterly report shows today — see NEXT_STEPS.md). `combineTeachers` merges every teacher into one set of period totals instead of the default one-bucket-per-teacher grouping — used only for the "combined" synthetic sections (see the CSV double-counting bug below for why this matters). Unit-tested in `tests/reports-aggregate.test.ts` (9 tests, credential-free, added to `npm run test`) — weekly/monthly grouping, quarter-anchoring math (including the exact 63rd/64th-day boundary and end-of-school-year capping), the null-rate-when-nothing-scheduled-yet case, and that different teachers never merge into the same bucket by default.
-- `queries.ts` — RLS-scoped server reads: `getReportRows({teacherId?, from?, to?})` (the view), `getReportRoster(includeArchived)` (the RPC), `getSchoolYears()`.
-- `build.ts` — `buildReportSections(profile, teacherId?)`, the **single source of truth** shared by the Reports page and the CSV export route so both always show/export identical data. Branches on role: teacher → their own one section; RM → either one drilled-into teacher (`?teacher=<id>`) or an "All teachers in my region" combined section (`combineTeachers: true`); OM/CPO → `["All teachers (combined)", ...one section per active teacher, ...one section per archived teacher]`, fetching roster + rows in exactly two queries total (per-teacher sections filter the same already-fetched row array in memory, not N separate queries).
-- `search.ts` / `search-action.ts` — `searchAll(query)` runs three parallel RLS-scoped queries (`calendar_events` by summary/location, `schools` by name, `profiles` by teacher name → their `attendance_sessions`, plus a direct `feedback_notes`/`feedback_engagement` text match) and returns categorized results; `search-action.ts` is a thin `"use server"` wrapper so `src/components/search-box.tsx` (client) can call it directly.
-
-**`src/lib/export/`**:
-- `csv.ts` — `periodSummariesToCsv(rows, teacherNameById)`, hand-rolled RFC 4180 quoting (no dependency, matching the Phase 0 PNG-encoder precedent).
-- `pdf.tsx` — `@react-pdf/renderer` (new dependency, brief-specified, not a dependency-minimalism exception the way Phase 7's `web-push` was — rendering a table layout to PDF isn't worth hand-rolling). `ReportPdfDocument` + `downloadReportPdf()`, rendered **entirely client-side** from `PeriodSummary[]` data already loaded on the page (no extra fetch, unlike the CSV route).
-
-**`src/app/(app)/reports/`** (replaces the Phase 1 stub) — `page.tsx` (role-aware via `buildReportSections`), `report-view.tsx` (client: weekly/monthly/quarterly picker recomputes `bucketReportRows` locally with no round-trip, a CSV link to the export route, and a PDF button). An RM sees a native `<select>` of their region's roster (`report_teacher_roster(false)`) to drill into one teacher, submitted via a plain GET form (`?teacher=<id>`, no JS needed).
-
-**`src/app/api/reports/export/route.ts`** — the CSV route, cookie-authenticated exactly like `/api/sync/route.ts` (`getUser()` → 401 if signed out). Calls the **same** `buildReportSections()` the page renders from, so what a Regional Manager can export is bounded by the identical RLS-backed scoping as what they can see on screen. **Buckets each section independently before concatenating** — see the double-counting bug below for why that's load-bearing, not a style choice.
-
-**`src/app/(app)/dashboard/`** (new; deliberately **not** `app/(manager)/dashboard/*` as the brief's file list said — same deviation Phase 5 made putting `/flags` under the existing `(app)` route group rather than starting a second one, to reuse the shared header/nav/back-button chrome) — manager-only (`ROUTE_ROLES["/dashboard"] = MANAGER_ROLES`, a "Dashboard" nav tile added ahead of "Lists" for managers). `queries.ts` sources every widget from an **existing** RLS-scoped table/view rather than inventing new SQL: open `attendance_sessions` rows (`clock_out_at is null`) serve both "clocked in now" and "pending feedback" (Phase 4's "open session IS the Demand" — one query, two cards); unresolved `flags` where `type = 'late_clock_in'` (Phase 5) serve "Late"; today's `attendance_period_rows` (this phase) with `attendance_status = 'missed'` serve "Missing clock-ins"; `calendar_events` with `start_at > now()` serve "Upcoming classes". "Today" uses the same UTC-day-boundary convention as the rest of the aggregation code.
-
-**`src/lib/auth/roles.ts`** — `/dashboard` added to `ROUTE_ROLES` (`MANAGER_ROLES`); `navForRole()` gains a "Dashboard" tile for managers.
-
-**Tests**: `tests/reports-aggregate.test.ts` (9 tests, credential-free, `npm run test`) — see `aggregate.ts` above. `tests/reports-rls.test.ts` (7 tests, hosted, `npm run test:rls`) — same disposable-user-via-service-role pattern as every other RLS suite: a teacher's own `attendance_period_rows` reconcile **exactly** against seeded raw hours/status (1 h on-time, 2 h late, a missed class with no session, an upcoming class); the co-scheduled-teacher array-unnest leak check; a Regional Manager sees only their region's rows (not the other region's), confirmed both directions; OM sees both regions; `report_teacher_roster` scopes an RM by school region (not stale `profiles.region`); `report_teacher_roster(false)` excludes an archived teacher while `report_teacher_roster(true)` includes them; an archived teacher's historical rows are still visible to OM via `attendance_period_rows` regardless of their archived status. All 7 pass standalone against the hosted project (the pre-existing multi-suite `signInWithPassword` rate-limit caveat — documented since Phase 5 — reproduced when run alongside the other seven RLS files in one process; not a regression, same known environment characteristic). `npm run test` (41/41) and `npm run build` both clean.
-
-### Phase 8 — verified live (real browser, disposable data, hosted project)
-
-Seeded a disposable teacher + RM (central) + OM plus a school and five classes (on-time/late/missed/upcoming/currently-open) directly via the service-role client, then drove the real dev server as each role (login form works fine in this session's browser-automation harness, unlike the harness gap documented in earlier phases):
-- **Teacher self-report**: numbers reconciled exactly against the seeded raw rows (3.00 h, 2 on-time [one still-open session counts as on-time immediately, correctly excluded from hours until clocked out], 1 late, 1 missed, 75%). CSV download (`fetch` from the page itself, `Content-Type: text/csv`, `Content-Disposition: attachment`) matched the on-screen numbers byte-for-byte. PDF button completed with no console errors (Turbopack-bundled `@react-pdf/renderer` renders fine in a real browser).
-- **Regional Manager**: teacher picker offered only in-region teachers; "All teachers in my region" combined total (80%, 2/2/1) correctly merged two teachers' numbers into one row rather than duplicating.
-- **Operations Manager**: `/dashboard` showed all six widgets reconciling against the seeded data (4 classes/1 teacher scheduled today, 2 clocked in now — including a real pre-existing stuck-open session from an earlier phase's test data, at an unrelated school, correctly surfaced — 0 late, 1 missing clock-in, 2 pending feedback, 1 upcoming). `/reports` master report showed the combined total, a correct per-teacher section per active teacher, and (confirmed via the RLS suite rather than live data, since no archived teacher existed in the live roster at verification time) the archived-teachers section logic. Search returned classes/attendance-records/schools correctly for a partial-name query.
-- **A real bug found and fixed during this verification, before it ever shipped**: the CSV export route originally flattened every section's raw rows together (`report.sections.flatMap(s => s.rows)`) before bucketing — for the master report, the "combined" section already contains every row, so a flattened union double-counted every active/archived teacher's classes (once via their own section, once via the combined one, landing in the same `(teacherId, period)` bucket key). Fixed by bucketing **each section independently** (matching what the page's `report-view.tsx` already did) and only concatenating the resulting `PeriodSummary` rows, never raw rows, across sections. Caught by comparing the CSV's numbers against what was on screen — see DECISIONS.md.
-- **A second thing found, not a bug**: the RM/OM demo accounts were promoted for this test by updating `profiles.role` directly via the service-role client (not through `promote_user()`), so — exactly as Phase 1's DECISIONS.md entry describes — the JWT's `app_metadata.app_role` claim stayed `teacher`, and the proxy's *optimistic* check (not the DAL/RLS, which read `profiles.role` correctly throughout) redirected `/dashboard` and `/flags` home. Fixed by updating `app_metadata` directly via the admin API and signing in fresh for a new JWT. Confirms the app behaved exactly as documented, not a Phase 8 defect — noted here so a future demo-data seed remembers to go through `promote_user()` (or update `app_metadata` too), not just `profiles.role`.
-- All seeded rows and disposable users deleted immediately after; confirmed zero leftover rows before finishing.
-
-## Phase 7 — Notifications (built this phase)
-
-Web Push subscriptions (with iOS home-screen onboarding), a `notify-dispatch` Edge Function draining `notification_queue` every minute, three new teacher-facing reminder types, a Settings tab (dark mode, per-type on/off + adjustable lead times, a Responsibility Check double-confirmation before disabling anything), and Resend email backup for schedule changes/cancellations/clock-out reminders, capped and trickled at 100/day. **Migration `0014_notifications.sql`** applied to the hosted project (`vgyogyojxlvhiwujidhy`, via the Supabase MCP `apply_migration` tool — hosted version-stamped as `notifications`), continuing the local-sequential-vs-hosted-name split every phase since 0008 has used.
-
-**Schema**:
-- **`push_subscriptions`** — one row per subscribed browser/device (`endpoint` unique, `p256dh`/`auth` keys, `user_agent`). RLS: strictly self-scoped (`user_id = auth.uid()`, `for all`) — no manager visibility, no RPC needed (there's nothing to validate server-side beyond ownership, same reasoning as any other purely-user-owned settings row). Managed directly by the client's own RLS-scoped calls (`src/lib/push.ts`), not a server action.
-- **`notification_preferences`** — one row per `(user_id, type)`, `type` restricted by a check constraint to the 5 user-facing types (`be_there_soon` | `clock_in_reminder` | `clock_out_reminder` | `schedule_changed` | `class_cancelled`). **Absence of a row means "enabled, default lead time"** — most users have zero rows; a row is only written the first time someone actually changes something. Same self-scoped RLS shape as `push_subscriptions`.
-- **`notification_queue` gains**: `email_status`/`email_sent_at` (the email-backup channel's own status, separate from the pre-existing `status`/`sent_at`, which as of this phase specifically means the *push* channel) and `attempts` (push retry counter, capped at 5). A **partial unique index** `(recipient_id, event_id, type) where type in ('be_there_soon','clock_in_reminder','clock_out_reminder')` makes a reminder fire at most once per teacher per class no matter how many 1-minute ticks it stays "due" for. **Backfilled**: pre-existing pending Phase-3 rows (`time_changed`/`location_changed`/`teacher_changed`/`event_cancelled`) got `email_status='pending'` too, so the backlog isn't push-only forever.
-- **`enqueue_reminder_notifications()`** (service_role only) — notify-dispatch's first step every run. Generates `be_there_soon` (default 15 min lead), `clock_in_reminder` (default 0 min = at class start, 30-min bounded window, only while no `attendance_sessions` row exists yet), and `clock_out_reminder` (default 0 min = at class end, 6-hour bounded window, only for a still-open session) rows for whatever's due right now, reading each teacher's own `lead_minutes` preference (default per type, `coalesce`d). Idempotent via the partial unique index (`ON CONFLICT ... DO NOTHING`). Deliberately does **not** check `enabled` — see DECISIONS.md for why preference enforcement is entirely a send-time concern, not an enqueue-time one.
-
-**`supabase/functions/notify-dispatch/`** — deployed (`ACTIVE`, `verify_jwt: false`), cron-scheduled every minute (`notify-dispatch-1min`, jobid 3, reading its shared secret out of Supabase Vault, same pattern as `check-closeout`/`late-detect`). Two files:
-- **`dispatch-logic.ts`** — pure, environment-agnostic decision logic (no Deno/Supabase imports), unit-tested with plain vitest against synthetic data (`tests/notify-dispatch-logic.test.ts`, 11 tests) — same "extract the pure function" pattern as `calendar-sync/sync.ts`'s `classifyDiscoveredCalendar`. Exports `planDispatch()` (given pending rows + a preference lookup + today's email-sent count, decides push/email eligibility per row — this is the **single enforcement point** for `enabled`, covering every type including the two Phase 3 already writes unconditionally), `notificationCopy()` (title/body/url per type), and the type-mapping/cap constants.
-- **`index.ts`** — the Deno entry. Calls `enqueue_reminder_notifications()`, fetches up to 500 pending rows, batches preference/subscription lookups, calls `planDispatch()`, then actually sends: **push via `npm:web-push@3.6.7`** (VAPID JWT signing + ECDH/HKDF/AES-128-GCM payload encryption — see DECISIONS.md for why this is a deliberate, user-confirmed exception to the project's usual dependency-free-WebCrypto convention) and **email via a direct `fetch` to Resend's REST API** (no SDK, matching the project's established minimalism elsewhere). A push send that 404/410s self-cleans the stale `push_subscriptions` row; a push that keeps failing stops retrying past `attempts >= 5`. Missing VAPID config hard-fails the whole function (`500`, matching `check-closeout`/`late-detect`'s pattern for their one capability); missing Resend config only skips the email channel — push still runs.
-
-**`src/lib/push.ts`** (client) — `getPushSupportState()` (`unsupported` | `ios-needs-install` | `ready`; iOS Safari only exposes the Push API to a PWA already added to the Home Screen, so `ios-needs-install` gets its own onboarding rather than a permission button that would silently do nothing), `subscribeToPush()` (must run as the first `await` in a click handler — iOS revokes the user-activation gesture flag after other async work), `saveSubscription()`/`unsubscribeFromPush()` (direct RLS-scoped client calls, no server action).
-
-**`src/app/sw.ts`** gains `push` (shows the notification from the `{title,body,url}` JSON payload `notificationCopy()` builds) and `notificationclick` (focuses an already-open app tab and navigates it, rather than always opening a new tab) listeners, alongside the existing Background Sync handler from Phase 6.
-
-**`src/app/(app)/settings/`** (replaces the Phase 0–6 stub):
-- `page.tsx` — server component, loads the caller's own `notification_preferences` rows.
-- `dark-mode-toggle.tsx` — **device-local only** (user-confirmed), no schema column. Reads/writes `localStorage` + sets `data-theme` on `<html>` directly; `src/app/layout.tsx` gained a `beforeInteractive` inline `<Script>` that applies any stored preference before hydration (avoids a flash + a hydration mismatch, since this attribute is never written by React).
-- `push-settings.tsx` — the subscribe/unsubscribe UI, branching on `getPushSupportState()` into the "unsupported" message, the iOS "Add to Home Screen first" onboarding steps, or the normal enable/disable button.
-
-**`src/components/push-onboarding-prompt.tsx`** (added post-launch, user-requested) — the same subscribe flow surfaced on the **home dashboard** instead of requiring a trip to Settings first. Mounted in `(app)/page.tsx` below the "Feedback required" banner (which stays the higher-priority prompt when both apply); shown to every role. Same branching as `push-settings.tsx` (iOS-not-installed vs. ready-to-subscribe), with a "Not now" dismiss persisted in `localStorage` so it doesn't re-nag every login — Settings remains available for anyone who dismissed it and changes their mind.
-- `notification-settings.tsx` — the 5-type list (toggle + a lead-time number input for the 3 reminder types), persisting via direct client-side `upsert`s into `notification_preferences` (same self-scoped-RLS-table reasoning as `push_subscriptions` — no server action).
-- `responsibility-check-dialog.tsx` — the required double-confirmation before disabling **any** type: step 1 states the consequence and requires "Continue"; step 2 requires ticking an explicit acknowledgement checkbox before "Turn off" is even clickable. Only gates turning something **off**; turning it back on is immediate.
-
-**Env vars**: `NOTIFY_DISPATCH_SECRET`, `RESEND_FROM_EMAIL` added to `.env.example` (blank) alongside the pre-existing VAPID/`RESEND_API_KEY` stubs from Phase 0. **VAPID keypair generated this session** (`NEXT_PUBLIC_VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY` in the developer's local `.env.local`, validated against the real `web-push` library's own key-format check) — see NEXT_STEPS.md for what's still owed to make it live (setting the same values as Edge Function secrets; a real Resend account).
-
-**Tests**: `tests/notify-dispatch-logic.test.ts` (11 tests, credential-free, added to `npm run test`) covers `planDispatch`'s preference gating, the 100/day trickle cap (FIFO, oldest-first), max-attempts backoff, and that `gps_out_of_fence`/`late_clock_in` (no Settings toggle exists for them) are never skipped. `tests/notifications-rls.test.ts` (12 tests, hosted, added to `npm run test:rls`) covers `push_subscriptions`/`notification_preferences` RLS (strictly self-scoped), that `enqueue_reminder_notifications` isn't authenticated-callable, the default-15-min-lead vs. a custom-shorter-lead split, no-duplicate-on-repeated-runs, `clock_in_reminder` stopping once a session exists, and `clock_out_reminder` setting `email_status='pending'`. All passing. `npm run test` (32/32) and `npm run build` both clean.
-
-### Phase 7 — hosted state (done except two dashboard-only steps)
-1. ~~Apply migration `0014`~~ — done via the Supabase MCP `apply_migration` tool; backfill UPDATE for pre-existing rows also run.
-2. ~~`npm run test:rls`~~ (`notifications-rls.test.ts`, 12/12) and ~~`npm run test`~~ (32/32, includes `notify-dispatch-logic.test.ts`) — both passing. The pre-existing `gps-checks-rls` suite's known timing flake (documented since Phase 5) was observed once and passed clean on retry — not a regression.
-3. ~~Deploy `notify-dispatch`~~ — `ACTIVE` via the Supabase MCP `deploy_edge_function` tool, `verify_jwt: false`.
-4. ~~Generate + store secrets~~ — `NOTIFY_DISPATCH_SECRET` (random) and a real VAPID keypair generated this session; the dispatch secret is in Supabase Vault (`notify_dispatch_secret`) and the cron job (`notify-dispatch-1min`, jobid 3, `* * * * *`) reads it from there, same pattern as `check-closeout`/`late-detect`. Confirmed via `curl`: the function returns `500 "Notification dispatch is not configured."` — proving the deploy + cron + secret-header check all work, and the only missing piece is the Edge Function's own runtime secrets.
-5. ~~Set the Edge Function secrets~~ — done by the user; confirmed live via `curl` (the function returns a normal result instead of the earlier "not configured" 500).
-5b. **Real bug found and fixed post-launch**: a live user got `"permission denied for table push_subscriptions"` tapping "Enable notifications" — `0014` granted `authenticated` only `select/insert/delete`, missing `update`, which `saveSubscription()`'s `upsert()` needs whenever it resolves to an UPDATE (re-subscribing on an already-known endpoint). Fixed in `supabase/migrations/0015_push_subscriptions_grant_fix.sql` (applied via the Supabase MCP `apply_migration` tool), confirmed with a real round-trip test and a new regression case in `tests/notifications-rls.test.ts` (12/12 passing). See DECISIONS.md.
-6. **Resend is set up but blocked**: `RESEND_API_KEY`/`RESEND_FROM_EMAIL` are set (`emailConfigured: true`, confirmed with a real seeded test send), but the actual send 403s — Resend reports the `ymu.org` sending domain isn't verified yet. Push is fully unaffected and working; only the email backup channel is blocked until the domain is verified in the Resend dashboard. See NEXT_STEPS.md for the exact fix.
-7. **Vercel's `NEXT_PUBLIC_VAPID_PUBLIC_KEY`**: the user reports this is set; couldn't be independently confirmed from this sandbox (attempted grepping the live production JS bundle for the key, inconclusive — see DECISIONS.md). Worth a direct check: try "Enable notifications" on the live `/settings` page, and remember `NEXT_PUBLIC_*` vars need a fresh deploy to take effect if they were added after the last one.
-8. **Still owed, live-device walkthrough only**: the "done when" criteria (locked-iPhone push 15 min before a test event; Responsibility Check gating a disable; a Google Calendar edit producing both a push and a backup email once Resend's domain verifies) need a real installed PWA and a verified Resend domain — nothing in this sandbox can exercise push delivery to a real device or a real inbox. Exact steps in NEXT_STEPS.md.
-
----
-
-
-
-## The app is now deployed — but Zoho's webhook still isn't configured (🔴 see NEXT_STEPS.md)
-
-Since the last handoff, the app was deployed to Vercel at **`https://ymu-a-navy.vercel.app`**, and `ZOHO_FEEDBACK_FORM_URL`/`ZOHO_FEEDBACK_WEBHOOK_SECRET` were added to Vercel's Environment Variables (previously only in the developer's local `.env.local`, which — being gitignored — never reaches any other machine or deployment on its own). That's necessary but not sufficient: **no one has configured the webhook on Zoho Forms' own side yet** (Integrations → Webhooks, plus the still-missing hidden `session_id` field), and the user currently lacks access to that Zoho account. Until that happens, every real Zoho feedback submission is a no-op — the session never closes, no matter how correctly the app itself is deployed. Full step-by-step for whoever gets Zoho access next is in NEXT_STEPS.md's 🔴 section. One test session is left stuck open as a result (`f8e52696-2000-41dd-972c-808ac51ffae8`) — harmless, documented there.
-
-## Phase 6 — Offline mode & sync (built this phase)
-
-Offline clock-ins and GPS-check results are captured locally and replayed on reconnect, exactly-once. **Feedback/clock-out was deliberately NOT routed through the new sync queue** (user-confirmed) — the Phase 4 rework made Zoho's webhook the only path that closes a session, and feedback already has its own offline story (a Dexie draft prefilled into the Zoho form on reconnect, see Phase 4 below). Re-adding a teacher-side close path just to fit the brief's literal four-item list would have contradicted that. So the offline queue covers the two purely-teacher-authenticated RPCs: **clock-ins and GPS samples**. See DECISIONS.md.
-
-**Migration `supabase/migrations/0013_offline_sync.sql`** (applied to hosted project `vgyogyojxlvhiwujidhy` via the Supabase MCP `apply_migration` tool, timestamp-stamped `2026072114...` on the hosted side — same local-sequential-vs-hosted-timestamp split as every phase since 0008). Adds only what offline needs on top of Phase 4/5:
-- **`origin text` column** (`'online'`|`'offline'`, default `'online'`, checked) on **both** `attendance_sessions` and `gps_checks` — a record created/resolved via a sync replay is labelled `offline`.
-- **`clock_in()` re-defined** (old 6-arg signature **dropped**, replaced by an 8-arg one; the two new params default so the existing online caller — which passes only `p_event_id`..`p_client_key` — still resolves by name). New params: `p_origin` and `p_clock_in_at`. For an offline replay it trusts the client-recorded clock-in moment so on_time/late reflects reality, **clamped**: never in the future, never more than 24h stale. The geofence is still re-derived server-side against the school's stored coords exactly as before (client lat/lng are an input, never the verdict). Idempotency (the `client_key` unique constraint + idempotent-replay SELECT) is unchanged — a replayed key returns the existing row instead of inserting a duplicate. **This is what makes a forcibly-replayed sync exactly-once.**
-- **`apply_gps_sample()`** (internal, security definer, no client grant) — the single resolution core factored out of Phase 5's `record_gps_check()`, so the online and offline GPS paths raise the out-of-fence flag + manager notifications through **one** code path, differing only in the `origin` label and `sampled_at`. `record_gps_check()` now delegates to it (external behaviour unchanged — the Phase 5 `gps-checks-rls` suite still passes 7/7, confirming no regression).
-- **`record_gps_check_offline(p_session_client_key, p_due_offset_min, p_lat, p_lng, p_accuracy_m, p_sampled_at)`** (authenticated, security definer) — resolves a due check from a queued offline sample. The offline client can't reference the server-side check id (for an offline clock-in the checks don't exist until the session itself syncs), so it addresses the check by **(session client_key, due offset in minutes)**, matching the check whose `due_at = clock_in_at + offset` (nearest-pending fallback if the exact `due_at` drifted). Idempotent via `apply_gps_sample` (a non-pending check is a no-op).
-
-**`src/lib/offline/db.ts`** — Dexie DB `ymu-a-offline` (separate from the `ymu-a-feedback-drafts` DB), two stores: `queue` (one row per offline mutation, PK the client-generated `client_key` UUID, indexed on `status`/`kind`) and `scheduleCache` (the next clockable class + school coords, one row, for offline rendering + on-device geofence).
-
-**`src/lib/offline/queue.ts`** — enqueue/list/count/mark/remove over the `queue` store, plus a same-tab `onQueueChanged` event bus (drives the pending-count badge without polling) and the schedule-cache read/write. `enqueueGpsCheck` dedupes per `(session_client_key, due_offset)` so repeated sampler polls don't pile up. `listSendable()` returns clock-ins **before** GPS samples so a sample whose session is clocked in within the same batch resolves against the freshly-created row.
-
-**`src/lib/offline/sync.ts`** — `syncNow()` drains the queue through `POST /api/sync` under a module-level single-flight lock (a burst of triggers can't double-send from one tab). Per-item results: `accepted` → delete from queue; `rejected` → keep with `status='rejected'` + `last_error` (never silently dropped); network/HTTP failure → revert to `pending` for the next trigger. `startSyncListeners()` wires the triggers: `online` event, `visibilitychange`→visible, an initial drain, a service-worker `message` (`'ymu-sync'`), and a best-effort Background Sync registration (`ymu-sync` tag; harmless where unsupported, e.g. Safari/Firefox).
-
-**`src/app/sw.ts`** — added a `sync` event listener (tag `ymu-sync`): rather than duplicate the IndexedDB queue + authenticated fetch in the worker, it wakes any open window client via `postMessage('ymu-sync')` and lets the page-context sync driver do the drain. Serwist's own listeners (`addEventListeners()`) are untouched.
-
-**`src/app/api/sync/route.ts`** — the replay endpoint. Runs as the teacher (cookie JWT via the SSR server client; `getUser()` → 401 if signed out), so every item goes through the **same** SECURITY DEFINER RPCs as the online path — RLS/authz identical whether a clock-in is live or replayed. Body `{ items: [{ client_key, kind, payload }] }`; sorts clock-ins first; routes `clock_in`/`gps_check` to `clock_in(p_origin='offline', p_clock_in_at=…)` / `record_gps_check_offline(…)`; returns `{ results: [{ client_key, status: 'accepted'|'rejected', error? }] }`. A malformed or server-refused item is reported individually and never fails the batch.
-
-**Client wiring:**
-- `src/components/offline-indicator.tsx` (new) — a header chip mounted in `src/app/(app)/layout.tsx` (all roles): shows an amber **"Offline"** badge when `navigator.onLine` is false and a **"N pending"** chip when the queue has unsynced items (visible on the dashboard, per the "done when"). It's also the single place `startSyncListeners()` is mounted. Hydration-safe (`online` initialised `true`, real value synced in an effect — same pattern as `feedback-form.tsx`).
-- `src/app/(app)/clocking/clocking-client.tsx` — when offline (and only then), the in-fence Clock-In button becomes **"Clock in (offline)"**, which enqueues locally after the same on-device geofence gate and shows a "saved offline, will sync" success panel. It also caches the class + school coords to Dexie while online so the on-device check still works if connectivity drops on the screen. The online path (server action → `clock_in`) is unchanged.
-- `src/components/gps-check-sampler.tsx` — the Phase 5 sampler now branches: online, it samples server-side checks as before; offline, it walks the queued offline clock-ins, works out which +5/10/…/25 min offsets have come due, takes one fix, and enqueues an offline GPS sample (server resolves it on sync). Same best-effort, foreground-only framing.
-
-**Tests**: `tests/offline-sync-rls.test.ts` (7 tests, same disposable-hosted-user pattern) added to `npm run test:rls`. Covers: offline clock-in stamps `origin='offline'` + honours the clamped client clock-in time (→ `late`); a replayed `client_key` returns the same session (exactly-once, count=1); a future client time is clamped back to ≤now; `record_gps_check_offline` verifies in-fence with `origin='offline'` and is idempotent on replay; an out-of-fence offline sample raises a flag tagged `origin='offline'` + queues the RM notification; the server still rejects an out-of-fence offline clock-in (geofence re-validated); and a `record_gps_check_offline` call against another teacher's session key is rejected. **All 7 pass** against the hosted project; the Phase 5 `gps-checks-rls` suite still passes 7/7 after the `record_gps_check` refactor; `npm run test` (unit) 21/21; `npm run build` clean (`/api/sync` compiles as a dynamic route).
-
-### Phase 6 — still owed (live-device walkthrough only)
-Everything server-side is applied and test-verified. The one thing this sandbox can't do is the real **airplane-mode-on-a-phone** walkthrough (no device/browser automation for toggling connectivity + GPS + the service worker's Background Sync). See NEXT_STEPS.md "Finish Phase 6" for the exact manual steps to confirm the "done when" on a real device.
-
----
-
-## Phase 5 — GPS checks & late escalation (built this phase)
-
-**Migration `supabase/migrations/0012_gps_checks_and_flags.sql`** (applied to hosted project `vgyogyojxlvhiwujidhy` via the Supabase MCP `apply_migration` tool — see DECISIONS.md on the local-vs-hosted version numbering, same as Phase 4). Two new tables, `clock_in()` extended (unchanged signature), five new functions:
-- **`gps_checks`** — 5 rows seeded per clock-in, due at +5/10/15/20/25 min. `status`: `pending` → `verified` (sampled, in-fence) | `out_of_fence` (sampled, outside fence — raises a flag) | `unverifiable` (never sampled by its due time — closed out neutrally, no flag). `school_id` is denormalized from the session at creation so RLS (teacher own / RM by region / OM+CPO all — same shape as `attendance_sessions_select`) doesn't need a join. No authenticated write grants; only `clock_in()` (creation) and `record_gps_check()`/`close_out_overdue_gps_checks()` (resolution) write it.
-- **`flags`** — manager-facing escalations only (`gps_out_of_fence` | `late_clock_in`); **no teacher-visible RLS policy at all** — this is a manager tool, not part of a teacher's own record (see DECISIONS.md). RLS: RM by region / OM+CPO all. A unique index on `(event_id, teacher_id) where type = 'late_clock_in'` makes re-flagging the same missed clock-in impossible even under concurrent cron runs.
-- **`clock_in()`** (re-defined, same signature) now also inserts the 5 `gps_checks` rows atomically with the session.
-- **`record_gps_check(p_check_id, p_lat, p_lng, p_accuracy_m)`** (authenticated, security definer) — the only way a teacher's own client resolves one of *their* pending checks. Re-derives the fence distance server-side (same `haversine_meters()` pattern as `clock_in`); on `out_of_fence` it inserts a `flags` row and one `notification_queue` row per recipient from `notify_recipients_for_school()`. Idempotent (a duplicate client call on an already-resolved check is a no-op).
-- **`close_out_overdue_gps_checks()`** (service_role only) — marks any still-`pending` check whose `due_at` has passed as `unverifiable`. The `check-closeout` Edge Function's entire body.
-- **`detect_late_clockins()`** (service_role only) — flags any scheduled, non-cancelled class more than 5 minutes past `start_at` with a matched teacher who has **no** `attendance_sessions` row for it at all (bounded to a 30-minute lookback so a long-down cron doesn't mass-flag old history), queuing an RM notification per new flag. The `late-detect` Edge Function's entire body.
-- **`resolve_flag(p_flag_id, p_notes)`** (authenticated, security definer) — manager-only, region-gated like `assign_event_school`; marks a flag resolved after a manager acts on it (e.g. makes the two escalation calls).
-- **`notify_recipients_for_school(p_school_id)`** — shared helper: Regional Manager(s) of the school's region if any exist, else OM/CPO (user-confirmed fallback, not silently dropped — see DECISIONS.md). Used by both `record_gps_check` and `detect_late_clockins`.
-
-**`supabase/functions/check-closeout/`** and **`supabase/functions/late-detect/`** — thin `Deno.serve` wrappers mirroring `calendar-sync/index.ts` exactly: a shared-secret header (`x-check-closeout-secret`/`CHECK_CLOSEOUT_SECRET` and `x-late-detect-secret`/`LATE_DETECT_SECRET`), a service-role client, one RPC call, a count in the JSON response. **Fully live**: both deployed (`ACTIVE`, `verify_jwt: false`, via the Supabase MCP `deploy_edge_function` tool), cron-scheduled (`check-closeout-1min`/`late-detect-1min`, `* * * * *`, reading their shared secret out of Supabase Vault each run — same shape as `calendar-sync`'s documented-but-still-undeployed cron), and their Edge Function secrets set by the user in the dashboard (Project Settings → Edge Functions → Secrets, matching the Vault-stored values). Confirmed end-to-end via `curl` (both return `200` with real RPC results, e.g. `{"closed":0}`/`{"flagged":0}`) and via `cron.job_run_details` showing repeated `succeeded` runs every minute for both jobs.
-
-**`src/components/gps-check-sampler.tsx`** — silent client component (`GpsCheckSampler`, renders nothing), mounted once in `src/app/(app)/layout.tsx` for teachers only. On mount and on `visibilitychange` → visible, starts a 30 s poll: checks the caller's own open session for `gps_checks` rows past `due_at` and still `pending`, takes one `getCurrentPosition` fix if any are due, and calls `record_gps_check` for each. Locking the phone (`visibilitychange` → hidden) stops the poll — due-but-unsampled checks just sit `pending` until the closeout job runs. `src/lib/gps-checks/actions.ts` holds the RLS-scoped reads/RPC calls it uses.
-
-**`src/app/(app)/flags/`** (manager-only, `MANAGER_ROLES` added to `ROUTE_ROLES` in `src/lib/auth/roles.ts`, plus a "Flags" nav tile) — lists open (`resolved_at is null`) flags newest-first. A `late_clock_in` flag renders the two-tap-to-call escalation card (`tel:` links built from `profiles.phone` and `schools.contact_phone`/`contact_name`); a `gps_out_of_fence` flag shows the teacher/school/distance. `resolve-flag-button.tsx` + `actions.ts` call `resolve_flag`. Built under the existing `(app)` route group rather than a new `(manager)` group — see DECISIONS.md ("`/flags` lives under the existing `(app)` route group").
-
-**Env vars**: `CHECK_CLOSEOUT_SECRET`/`LATE_DETECT_SECRET` added to `.env.example` (blank), same pattern as `CALENDAR_SYNC_SECRET`.
-
-**Tests**: `tests/gps-checks-rls.test.ts` (7 tests, same disposable-hosted-user pattern as every other RLS suite), added to `npm run test:rls`. Covers: clock-in seeds exactly 5 checks at the right offsets; in-fence `record_gps_check` verifies with no flag; out-of-fence raises a flag + RM notification and stays invisible to the teacher's own query; the in-region RM sees it, the other region's RM doesn't, OM sees it; `resolve_flag` enforces the region gate; `close_out_overdue_gps_checks` closes a backdated pending check as `unverifiable` with no flag; `detect_late_clockins` flags a missed clock-in exactly once even across repeated runs. All passing against the hosted project.
-
-### Phase 5 — hosted verification (done)
-1. ~~Apply migration `0012`~~ — applied via the Supabase MCP `apply_migration` tool.
-2. ~~`npm run test:rls`~~ — `tests/gps-checks-rls.test.ts` (7/7) passes standalone and alongside `tests/attendance-rls.test.ts`; the full six-file run can intermittently hit Supabase's own `signInWithPassword` rate limit when every suite's disposable users sign in back-to-back in one process (pre-existing, not introduced by this phase — see DECISIONS.md).
-3. `npm run build` passes; `/flags` compiles as a dynamic route.
-4. ~~Deploy + cron-wire `check-closeout`/`late-detect`~~ — both `ACTIVE` on the hosted project, both scheduled on 1-minute pg_cron jobs (`jobid` 1 and 2, confirmed `active` in `cron.job`).
-5. ~~Set the Edge Function secrets~~ — done by the user in the Supabase dashboard. Confirmed via `curl` (both functions now return `200` with real RPC results instead of `500 "not configured"`) and via `cron.job_run_details` (repeated `succeeded` runs, one minute apart, for both jobs).
-6. **Still not done, and can't be from this sandbox**: an actual live-browser walkthrough (kept-open foreground shift → 5 in-fence checks; locked phone → unverifiable; spoofed out-of-fence reading → flag + queued notification; missed clock-in → two-step call card in `/flags`).
-
----
-
-> **Feedback rework: Zoho-hosted form + webhook, not an in-app form.** The PRD calls for the class-feedback form to live in Zoho, embedded in the app; Zoho's own webhook (not the teacher's client) closes the attendance session. The first pass of this (RPC, webhook, offline draft, secret validation, idempotent retries — all exercised live via a simulated `curl` delivery) invented a feedback schema (1–5 rating, summary, challenges, students present) **without ever looking at the real Zoho form**. Once a screenshot of the real form surfaced, none of those fields existed on it — so the real form's HTML was fetched directly and its actual fields read out field-by-field (see DECISIONS.md for the full comparison): Teacher Name / School / Choose program (dropdowns), Date, a 5-choice student-engagement scale, a Yes/No "had an issue" question with a conditional issue-status follow-up, and optional notes. `close_session_from_zoho()` and the webhook were rebuilt to match this real schema exactly (migration `0011`), storing the engagement scale's exact text rather than inventing a numeric mapping (user-confirmed). **What's still unconfirmed**: no hidden `session_id` field exists on the real form yet (needed for the webhook to know which session a submission is for — see NEXT_STEPS.md for how to add it), nobody has filled out and submitted the real form yet so the actual webhook delivery is still only verified via simulated `curl`, and whether the school/teacher/date/program dropdown prefill actually applies on the real form (vs. Zoho silently ignoring it) hasn't been confirmed by a human looking at the rendered result. Two real bugs were found and fixed while building the webhook/proxy plumbing (see DECISIONS.md): the auth proxy was redirecting the webhook to `/login` (fixed by excluding `/api/*` from the proxy matcher), and a hydration mismatch from reading `navigator.onLine` at initial render (fixed by deferring the real value to an effect).
->
-> **Two UX fixes on top, both user-requested after trying the flow live**: (1) clocking in now redirects to the home dashboard instead of straight into the feedback form — the home page's re-prompt banner and a "Clock out" nav tile (replacing "Clocking" when a session is open) make the pending feedback clear without forcing the teacher into it immediately; (2) every `(app)` page now has a "Back" button in the header (`src/components/back-button.tsx`) — previously the only way back was clicking the "YMU-A" logo to go all the way home. Both verified live in a real browser.
-
-> **Phase 4 is now fully verified, including the hosted parts.** A later session gained a linked Supabase MCP connection (the earlier "no link in this sandbox" blocker no longer applies) and completed everything the first pass couldn't: `npx supabase db push`-equivalent (migration `0008` applied via `apply_migration`), `npm run test:rls` (all 5 files, **60/60 passing**), and the full live acceptance cycle driven through a real browser against the real hosted project (disposable teacher/school/event, created and deleted the same way the RLS tests do): out-of-fence denial with the "move closer" message and live distance readout, in-fence clock-in recorded `on_time`, immediate non-dismissable feedback form, **logging out mid-feedback and back in re-prompts the form** (confirmed — home dashboard shows the "Feedback required" card, `/clocking` offers only the feedback form, no new clock-in possible), and submitting feedback closes the session and allows a fresh clock-in. Confirmed directly in the DB (`attendance_sessions` row: `clock_in_status='on_time'`, `clock_in_distance_m=0`, `clock_out_at` set, feedback columns populated). Note: the feedback columns checked at the time were the original invented schema (`feedback_rating` etc.), since renamed/restructured in migration `0011` — see the callout above and DECISIONS.md.
->
-> **A real, unrelated security bug was found and fixed during this pass**: `0007_calendar_sync_issues.sql`'s column-level `REVOKE` on the four calendar-match columns (`google_calendar_id`, `calendar_match_source`, `calendar_match_score`, `calendar_matched_at`) never actually worked, on any environment — Postgres ignores a column-level REVOKE when the role already holds the table-wide privilege that `0005_schools.sql` grants (`grant select, insert, update on table public.schools to authenticated`). Any authenticated user could raw-`UPDATE` those columns despite `DECISIONS.md`'s stated intent. Fixed in `supabase/migrations/0009_calendar_column_revoke_fix.sql` (revoke the table-wide insert/update, re-grant explicit columns excluding the four protected ones) and confirmed via `tests/calendar-sync-rls.test.ts`'s previously-failing case now passing. See `DECISIONS.md` for the full writeup.
-
-## Phase 4 — Clocking flow + feedback gate (built this phase)
-
-**Migration `supabase/migrations/0008_attendance.sql`** — one table, `attendance_sessions`, and (originally) two RPCs; `clock_out_with_feedback` was later dropped and replaced by `close_session_from_zoho` (migration `0010`, then its parameters corrected in `0011` — see below). Deliberately **no separate "demand" table** (user-confirmed): an *open* session (`clock_out_at IS NULL`) IS the blocking feedback obligation. See DECISIONS.md ("The open session IS the Demand").
-- `attendance_sessions` — `teacher_id`, `event_id`, `school_id`, precise `clock_in_at`, the passing GPS fix (`clock_in_lat/lng/accuracy_m`), server-computed `clock_in_distance_m`, `clock_in_status` (`on_time`|`late`), a `scheduled_start_at` snapshot (keeps status auditable if the event is later re-synced), `clock_out_at`, the feedback columns (as of `0011`: `feedback_engagement` text, `feedback_had_issue` text `'Yes'`/`'No'`, `feedback_issue_status` text nullable, `feedback_notes` text nullable, `feedback_submitted_at`), a nullable `zoho_synced_at` seam (likely vestigial now, see DECISIONS.md), and a `client_key uuid unique` idempotency key. A **partial unique index** `on (teacher_id) where clock_out_at is null` enforces at most one open session per teacher at the DB level.
-- `clock_in(p_event_id, p_lat, p_lng, p_accuracy_m, p_client_key, p_grace_minutes default 5)` — verifies the caller is a matched teacher for the class, that they have **no open session** (else "submit feedback first"), that the school has coords, then re-runs the geofence check **server-side** with the existing `haversine_meters()` and rejects if `distance > geofence_radius_m` (friendly message with the metres). Computes `on_time`/`late` vs `start_at ± grace`. Idempotent on `client_key`. Returns the session row. Unchanged by the feedback rework.
-- `close_session_from_zoho(p_session_id, p_engagement, p_had_issue, p_issue_status, p_notes)` (migration `0010`, replacing `clock_out_with_feedback`; parameters corrected in `0011` to match the real form — see DECISIONS.md) — the ONLY way to close a session. **Not** `SECURITY DEFINER`, **not** granted to `authenticated`/`anon` at all — only `service_role` can call it, since the caller is now the Zoho webhook route handler (no teacher JWT), not the teacher directly. Idempotent: closing an already-closed session is a no-op success (webhooks retry).
-- RLS: `select` for authenticated (teacher sees own; RM by school region; OM/CPO all — same shape as `calendar_events_select`); no authenticated write grants at all. `clock_in` is the only authenticated-callable mutation; closing is service_role-only.
-
-**`src/lib/attendance/status.ts`** — `ON_TIME_GRACE_MINUTES = 5` (single source of truth for the configurable window) + `computeClockInStatus` / `minutesLate`. TS twin of the RPC's CASE; used client-side only to *preview* status. Unit-tested in `tests/attendance-status.test.ts` (in `npm run test`).
-
-**`src/lib/attendance/queries.ts`** — RLS-scoped server reads shared by all clock surfaces: `getOpenSession()` (the caller's open session + embedded event/school) and `getNextClass()` (soonest matched, not-ended, non-cancelled class with school coords).
-
-**`src/components/geo-map.tsx`** — Leaflet map: school pin, teacher `CircleMarker` + accuracy halo, and the geofence `Circle` (green inside / red outside), auto-fit to frame both. Reuses the `/public/leaflet/*.png` string-URL marker pattern; loaded via `next/dynamic({ ssr:false })`.
-
-**`src/app/(app)/clocking/`** — `page.tsx` (teacher-only): open session → renders the feedback form (clock-in not offered); else next-class card + `clocking-client.tsx`. `clocking-client.tsx` is the geolocation state machine — permission-denied / GPS-off / timeout / low-accuracy each an explicit error state with a **Try again** path, live distance readout + map, and a Clock-In form enabled only when inside the fence with a good fix. `actions.ts` → `clock_in` RPC.
-
-**`src/app/(app)/feedback/`** (reworked — see DECISIONS.md "Phase 4 feedback rework") — `page.tsx` (teacher-only): the dedicated form route (open session → `feedback-form.tsx`; none → "nothing pending"). `feedback-form.tsx` is the shared, **non-dismissable** clock-out gate — but the form itself is now a `<iframe>` embedding a Zoho-hosted form (`src/lib/attendance/zoho-feedback.ts` builds the prefilled URL), not a native React form. There's no server action posting to an RPC anymore (`actions.ts` was deleted): the component polls `attendance_sessions.clock_out_at` every 4s to detect the Zoho webhook having closed the session, since there's no reliable cross-origin "submitted" signal from inside the iframe. Offline, it falls back to a native draft form that saves to IndexedDB via Dexie (`src/lib/attendance/offline-feedback-db.ts`) and prefills the Zoho iframe once back online. The home page (`src/app/(app)/page.tsx`) shows a prominent re-prompt card for a teacher with an open session (the login pop-up), while leaving the nav reachable — gate scope is "block clock-in only" (user-confirmed, unchanged by the rework).
-
-**`src/app/api/zoho-feedback/route.ts`** (new) — the webhook target. Shared-secret authenticated (`x-zoho-feedback-secret` header, timing-safe compared against `ZOHO_FEEDBACK_WEBHOOK_SECRET`), validates the payload, calls `close_session_from_zoho` via a service-role client (`src/lib/supabase/admin.ts`, new — server-only, never import client-side). `src/proxy.ts`'s matcher now excludes `/api/*` entirely so this (and any future API route) isn't redirected to `/login` for its inherently-unauthenticated caller.
-
-**`/feedback` added to `ROUTE_ROLES` (teacher-only)** in `src/lib/auth/roles.ts`, alongside `/clocking`. Unchanged by the rework.
-
-**Post-rework UX fixes (user-requested after trying the live flow):**
-- `src/app/(app)/clocking/actions.ts`'s `clockIn` action now redirects to `/` after a successful clock-in, not `/clocking`. Previously the teacher was dropped straight into the feedback form the instant they clocked in; now they land back on the dashboard, which already shows the "Feedback required" banner, and can go fill it out when ready.
-- `src/app/(app)/page.tsx` — the home dashboard's nav grid now reflects an open session: the "Clocking" tile becomes **"Clock out" / "Submit feedback to finish"** instead of "Clocking" / "Next class & clock-in", still linking to `/clocking` (which shows the feedback form for an open session, unchanged).
-- `src/components/back-button.tsx` (new) — a "Back" control in the `(app)` layout header (`src/app/(app)/layout.tsx`), next to the "YMU-A" logo, on every page except home. Calls `router.back()`, falling back to `/` if there's no in-app history (e.g. a direct link). Previously the only way back from any page was clicking the logo all the way home.
-
-### Phase 4 — hosted verification (done)
-1. ~~`npx supabase db push`~~ — `0008_attendance.sql` applied to `vgyogyojxlvhiwujidhy` via the Supabase MCP connection. Note: this project's tracked migration history is missing `0007` (its tables/columns exist on the live DB but the version row isn't in `supabase_migrations.schema_migrations` — it was evidently applied out-of-band in an earlier session); `0008` and `0009` (below) were applied cleanly on top regardless.
-2. ~~`npm run test:rls`~~ — all 5 files, **60/60 passing** (including `tests/attendance-rls.test.ts`, 11/11).
-3. ~~Run the acceptance cycle~~ — done via a real browser session against the real hosted project with a disposable teacher/school/event (cleaned up after). See the callout above for the full walkthrough and result.
-
----
-
-## (Phase 3 + multi-calendar sync — retained, unchanged)
-
-Snapshot of the repo at the end of **Phase 3 (Google Calendar sync, Schedules tab) + multi-calendar sync**, both live-verified end-to-end against the real service account, real ~72-school roster, and real 68 shared school calendars — not just mocks or dry-runs. Everything below was verified by running it: the full RLS suite, driving the real dev server as an Operations Manager and a Teacher against seeded events, and the real multi-calendar sync against production Google Calendar + Supabase data (see "Still owed" below for what's left — mostly working through the 17-item review queue and letting the initial event sync finish catching up, not code gaps).
-
-## What exists right now
-
-Everything from Phases 1–2 (auth/RBAC, schools, regions, Lists tab, geocoding) is unchanged and still verified.
-
-**Google Calendar client** — `src/lib/google/calendar.ts`:
-- Dependency-free and **isomorphic**: runs unchanged in Next.js (Node) and the Supabase Edge Function (Deno). Uses only WebCrypto + `fetch` — no `googleapis` package.
-- Service-account auth: signs an RS256 JWT (`crypto.subtle`), exchanges it for an access token via the OAuth2 JWT-bearer grant, then calls the Calendar v3 REST API. Token cached in-memory until ~5 min before expiry.
-- `GoogleCalendarClient.listEvents({ calendarId, syncToken?, pageToken?, timeMin? })` returns one page (`items`, `nextPageToken`, `nextSyncToken`); the sync core drives pagination. `singleEvents=true` (recurring events expanded to instances), `showDeleted=true` (so incremental sync sees cancellations). A `410` surfaces as `GoogleCalendarError` with `.status === 410`.
-- Written in **erasable-only TS syntax** (explicit fields, not constructor parameter properties) so Node's native TS stripping runs it directly — that's what lets the local runner work without a build step.
-
-**Sync core + Edge Function** — `supabase/functions/calendar-sync/`:
-- `sync.ts` — `syncCalendar(supabase, env)` is the whole sync, written isomorphic (takes its clients as args). Full sync when there's no stored `syncToken`; incremental with the token otherwise; a `410` clears the token and re-runs a full sync (keeping `full_synced_at`, so recovery still emits change notifications). Matches attendee emails → teacher profile ids, fuzzy-matches the Location → a school, detects time/location/teacher(+substitute)/cancellation changes into `notification_queue`, and on a full sync reconciles removals (events no longer returned by Google → cancelled + notify).
-- `index.ts` — the Deno `Deno.serve` entry. Auth via an `x-calendar-sync-secret` header (`verify_jwt=false` because pg_cron/pg_net calls carry no user JWT). Reads `GOOGLE_*` + service-role from `Deno.env`.
-- **Local runner** — `scripts/sync-calendar.ts`, run via `npm run sync:calendar`. Calls the exact same `syncCalendar()` core against the hosted DB with the service-role key, so sync can be verified locally without Docker / `supabase functions serve`. This is the command to run for the end-to-end test once credentials exist.
-
-**Schedules tab** — `src/app/(app)/schedules/` (replaces the Phase 1 stub):
-- `page.tsx` — server component; loads non-cancelled events ending today or later (RLS-scoped) with the matched school embedded, plus the school list for filters. `requireProfile()` (not role-gated — teachers and managers both see it, scoped differently by RLS).
-- `schedules-explorer.tsx` — client component: day-grouped event cards, a per-minute `now` tick driving the **"Currently in shift"** badge, and (managers only) region/school filters + the unmatched-event queue.
-- `unmatched-event-queue.tsx` — manager panel listing events below the auto-match threshold, each with a school `<select>` → `assignEventSchool` action.
-- `[id]/page.tsx` — event detail mirroring Google Calendar: title, date/time, location (school + raw + address), description (rendered as **plain text**, XSS-safe), organizer, guest list with RSVP status, video-call link if present, and an "Open in Google Calendar" link (`htmlLink`).
-- `actions.ts` — `assignEventSchool` server action → `assign_event_school` RPC (manager-gated, region-checked in SQL).
-- `format.ts` / `types.ts` — time/day formatting and shared row types.
-
-**Database** (`0006_events.sql`, applied to hosted project `vgyogyojxlvhiwujidhy`; history in sync through `0006`):
-- `calendar_events` — one row per event instance. `google_event_id` unique per `(calendar_id, google_event_id)`; `teacher_ids uuid[]` (all matched attendees — regular teacher *and* substitute); `school_id` + `school_match_source` (`fuzzy`|`manual`|null) + `school_match_score`; `attendees`/`raw` jsonb for the detail view; `status` keeps `cancelled` rows.
-- `calendar_sync_state` — per-calendar `sync_token`, `full_synced_at`, `last_status`/`last_error`.
-- `notification_queue` — `recipient_id`, `event_id`, `type`, `payload` jsonb, `send_at`, `status`. Phase 3 only enqueues; Phase 7 drains it. Service-role-only.
-- `pg_trgm` + `match_school(location_text)` — normalizes both sides, scores `greatest(word_similarity(name, location), similarity(address, location))`, returns the best school; threshold **0.5** lives in `sync.ts` (`SCHOOL_MATCH_THRESHOLD`), below which the event goes to the unmatched queue.
-- `assign_event_school(event, school)` — `SECURITY DEFINER` RPC for manual assignment; RMs restricted to their own region (both the event's current school region and the destination school region).
-- `teacher_has_scheduled_school()` + an extended `schools_select` policy — teachers can now read schools they're scheduled at (needed for their own schedule and Phase 4 clock-in).
-- RLS on `calendar_events`: teacher sees rows where their uid is in `teacher_ids`; RM sees events at schools in their region, at region-less schools, or unmatched (school unknown); OM/CPO see all.
-
-**Tests** — `tests/events-rls.test.ts` (8 tests, same disposable-hosted-user pattern): teacher-only visibility, RM own-region + shared unmatched queue, OM sees all, teacher can read a scheduled school but not an unrelated one, RM manual-assign in region, RM rejected cross-region, `notification_queue` has no authenticated read. `npm run test:rls` now runs all three files — **40/40 passing**.
-
-## Multi-calendar sync (schools ↔ Google Calendars) — built on top of Phase 3
-
-Phase 3 above assumed one shared calendar for every school. This adds discovery and matching for **30-70 calendars, one per school**, layered on top of (not replacing) the event↔school Location match:
-
-- **`0007_calendar_sync_issues.sql`** — `schools` gains `google_calendar_id` (unique, nullable), `calendar_match_source`/`calendar_match_score`/`calendar_matched_at`. These four columns are write-protected via **column-level `REVOKE UPDATE/INSERT ... FROM authenticated`** (not a trigger like `protect_school_region` — see the migration's header comment for why a trigger would have blocked `resolve_calendar_issue()`'s own writes). New tables: `calendar_sync_issues` (the calendar-level twin of the unmatched-event queue; one row per `calendar_id`, reopened on rediscovery rather than duplicated) and `calendar_sync_lock` (single-row lease preventing overlapping sync runs). New SQL: `match_school_calendar()` (pg_trgm, top-3 candidates, name-only) and `resolve_calendar_issue()` (manager RPC: link a calendar to a school, or dismiss it as a non-school calendar).
-- **Pin-then-skip (user-confirmed)**: once a calendar is linked to a school, later syncs never re-match it — a manager must explicitly relink it via the new UI. No periodic re-validation.
-- **`src/lib/google/calendar.ts`** — added `listCalendars`/`listAllCalendars` (properly paginated, unlike a bug found in a reference implementation that silently truncated past one page) and a shared `googleFetchWithRetry` (exponential backoff + jitter on 429/5xx/rate-limited 403, used by both event and calendar listing). Also added `subscribeToCalendar()` and widened `CALENDAR_SCOPE` — see "Live-verified" below, this was a real gap found only by running against real calendars.
-- **`sync.ts`** — `syncCalendar` renamed to `syncOneCalendar` (parameterized, unchanged internals); new `syncAllCalendars(supabase, env, { dryRun? })` orchestrates: acquire the lease → discover all calendars → classify each unpinned one (`classifyDiscoveredCalendar`, a pure/unit-tested function — auto-match / flag ambiguous / flag unmatched) → sequentially sync every pinned school's events with a ~200ms pacing delay and a 4-minute soft time budget (skipped calendars just pick up next tick) → release the lease. `CALENDAR_MATCH_THRESHOLD`/`AMBIGUITY_MARGIN` are separate constants from `SCHOOL_MATCH_THRESHOLD` — both start as **untuned placeholders (0.5 / 0.08)** and must be validated against the real planned calendar-summary strings before relying on them in production.
-- **`GOOGLE_CALENDAR_ID` is obsolete** — the service account's calendars are discovered directly. `scripts/sync-calendar.ts` gained a `CALENDAR_SYNC_DRY_RUN` mode (discovery/matching only, no writes) for validating discovery against the real service account before turning writes on.
-- **Admin UI** — `unmatched-calendar-queue.tsx` (new, twin of `unmatched-event-queue.tsx`) on `/schedules`, backed by `resolveCalendarIssue` in `actions.ts`. Same manager-only gating, same dropdown-plus-submit interaction, plus a "Not a school calendar" dismiss path for shared/admin calendars (e.g. holidays) that aren't tied to any school.
-- **Tests** — `tests/google-calendar-client.test.ts` (mocked-`fetch` pagination + backoff, no network), `tests/calendar-sync-classify.test.ts` (pure classifier, no DB), `tests/calendar-sync-rls.test.ts` (hosted, added to `npm run test:rls`): queue visibility (shared, not region-scoped), role/region gating on `resolve_calendar_issue`, the column-revoke actually blocking a raw client `UPDATE`, and the double-claim friendly-error path.
-
-### Live-verified against the real service account and real school calendars (not just mocks)
-
-Four real bugs surfaced only by actually running this against Google and the real ~72-school roster, not by code review — all fixed and confirmed working against live data:
-1. **ACL access ≠ calendarList discoverability.** Sharing a calendar with the service account (Apps Script bulk-share) grants real access immediately (`events.list` on a shared calendar worked right away), but `syncAllCalendars`'s discovery (`calendarList.list()`) still reported 0 calendars. Google's calendarList is a separate "subscriptions" resource from ACL grants; a service account has no UI to auto-subscribe the way a human accepting a share does. Fixed with a new `subscribeToCalendar()` method and a one-time (and re-runnable) bootstrap: `scripts/subscribe-calendars.ts <calendar-ids.json>`.
-2. **`subscribeToCalendar` itself then failed with `403 ACCESS_TOKEN_SCOPE_INSUFFICIENT`** — confirmed via the actual Google error body, not guessed. `calendarList.insert` needs write access to the calendarList resource, which the `calendar.readonly` scope doesn't grant. Fixed by adding the narrow `https://www.googleapis.com/auth/calendar.calendarlist` scope (not the broad read-write `calendar` scope, which would over-grant event data writes this sync never needs).
-3. **Stale/orphaned `calendar_sync_issues` rows.** A calendar flagged as an issue in one run that later auto-matched in a subsequent run never had its old issue row resolved, inflating the open-issue count with calendars that were actually already correctly pinned. Fixed: the auto-match branch now resolves any open issue for that `calendar_id`.
-4. **Two calendars sharing a name could silently steal each other's pin** ("South Dade Senior High" and "Dr. William Chapman Elementary" each really do exist as two separate Google Calendars). Fixed with a `pinnedSchoolIds` guard in `classifyDiscoveredCalendar` — a calendar whose best match is a school already claimed by a *different* calendar is now flagged `school_already_linked` instead of overwriting.
-
-See `DECISIONS.md` for full detail on all four. Final verified state after every fix, against the real 72-school roster and real 68 shared calendars: **50/68 auto-matched, 17 genuinely open** (catalogued in `calendar-sync-open-issues.csv`), 1 dismissed (`schedule@ymu.org`, not a school calendar). `50 + 17 + 1 = 68`, no double-counting.
-
-## Verified working (browser, dev server, hosted project)
-
-Seeded a manager + teacher + three events (matched-upcoming, in-shift-now, unmatched) directly into `calendar_events`, then drove the real dev server:
-- **OM view**: region/school filters, the "School matching needs attention" queue with a working school `<select>`, day-grouped cards, the green "Currently in shift" badge on the in-progress event, `N matched teacher · Region` metadata, and the role-accent (orange OM) chrome.
-- **Teacher view**: subtitle "Your upcoming classes", **no** filters/unmatched-queue/manager metadata, only their own events, same in-shift badge — confirming the teacher scoping renders as intended.
-- **Detail view**: school + raw Location + geocoded address, description, organizer, guest with "Accepted" RSVP, "Open in Google Calendar" link.
-- `match_school` exercised live on the hosted DB (an unrelated school scored 0.04 for a Coral Gables query — correctly below threshold → unmatched).
-- All seeded users/events deleted afterward (no `phase3-*` leftovers).
-
-> Note: the login **form** couldn't be driven by the browser-automation harness (the client component's server-action submit didn't fire under automation — a harness quirk, not a product bug; real-user login was verified in Phase 2). Verification used an injected `@supabase/ssr` session cookie generated by that same library, which the app's server client reads normally.
-
-## Still owed before Phase 3 + multi-calendar sync are fully "done"
-
-Done already, confirmed live: service account created, JSON key in `.env.local`, migration `0007` applied to the hosted project, all 68 real school calendars shared **and** subscribed (`scripts/subscribe-calendars.ts`), real ~72-school roster imported into `schools`, real (non-dry-run) sync executed multiple times — **50/68 calendars pinned, 17 genuinely open** in the "Calendars needing attention" queue (2 already resolved manually: Norland Senior High School → Miami Norland Senior HS; `schedule@ymu.org` dismissed). 1746 real events synced so far.
-
-1. **Work through the remaining 17** via `/schedules`'s "Calendars needing attention" queue — see [`calendar-sync-open-issues.csv`](../calendar-sync-open-issues.csv) for the full list with fuzzy-match candidates, split into 3 categories (reasonable-candidate/no-match, ambiguous tie, school-already-linked).
-2. **Keep running `npm run sync:calendar`** (or deploy the cron below) until every pinned school's initial full sync completes — each run has a 4-minute soft budget and only gets through a handful of calendars' full event history per call; check `calendar_sync_state.last_status = 'ok'` per calendar_id to see what's still pending.
-3. **Validate `CALENDAR_MATCH_THRESHOLD`/`AMBIGUITY_MARGIN`** (`supabase/functions/calendar-sync/sync.ts`) against the real auto-match/issue split — still untuned placeholders (0.5/0.08), though the live ~74% (50/68) auto-match rate suggests they're in a reasonable range already.
-4. **Run the end-to-end acceptance test** (the "done when"): edit/move/delete a test event on one school's calendar with a matching Location and a teacher's login email as an attendee, run `npm run sync:calendar` again, and confirm the change is reflected in `/schedules` and a `notification_queue` row was created for the affected teacher. The sync code path is identical to the deployed Edge Function's.
-5. **Onboarding any new school's calendar going forward is two steps**, not one: share it (Apps Script or manually) **and** run `scripts/subscribe-calendars.ts` with its id — see `NEXT_STEPS.md` ("Onboarding a new school's calendar").
-
-## Manual steps still owed (Supabase dashboard) — for the 5-min cron
-
-The sync logic is built as an Edge Function but the pg_cron trigger is **not deployed** (needs the function live + secrets). When ready:
-1. `supabase functions deploy calendar-sync` (the CLI bundles the Deno function; it follows the relative import into `src/lib/google/calendar.ts`).
-2. Set Edge secrets: `supabase secrets set CALENDAR_SYNC_SECRET=… GOOGLE_SERVICE_ACCOUNT_KEY_BASE64=…` (`SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` are auto-injected into Edge Functions; `GOOGLE_CALENDAR_ID` is obsolete, don't set it).
-3. Schedule it (store the secret in Supabase Vault rather than inline in the cron row):
-   ```sql
-   select cron.schedule('calendar-sync-5min', '*/5 * * * *', $$
-     select net.http_post(
-       url := 'https://vgyogyojxlvhiwujidhy.supabase.co/functions/v1/calendar-sync',
-       headers := jsonb_build_object('Content-Type','application/json',
-                                     'x-calendar-sync-secret', (select decrypted_secret from vault.decrypted_secrets where name='calendar_sync_secret')),
-       body := '{}'::jsonb
-     );
-   $$);
-   ```
-
-Plus the three standing items from Phase 1 (CPO seed, Resend SMTP cutover, production Site URL/redirect allowlist) — untouched, still owed.
+Final handoff at the end of **Phase 9 (Zoho reliability, school years, archiving,
+error-handling, performance/PWA polish)** — the last of 10 planned phases (0–9).
+This file replaces the running per-phase log with one summary of the whole build.
+For exhaustive blow-by-blow detail on any phase (exact bugs found, exact
+reasoning behind a schema choice), see `DECISIONS.md` — every non-obvious call
+made across all 9 phases is recorded there, organized by topic, and this file
+doesn't repeat it. `NEXT_STEPS.md` holds the current punch list of manual/live
+steps still owed.
+
+## What YMU-A is
+
+A PWA for Young Musicians Unite to run teacher scheduling, GPS-verified
+clock-in/out, class feedback, and attendance reporting across ~72 schools.
+Roles: teacher, regional manager (RM), operations manager (OM), CPO. Next.js
+16 (Turbopack) + Supabase (Postgres/Auth/RLS/Edge Functions/pg_cron) + Google
+Calendar (source of schedules) + a Zoho-hosted feedback form. No native app —
+installed as a PWA (Serwist service worker).
+
+## Current deployment state
+
+- Live at `https://ymu-a-navy.vercel.app` (Vercel).
+- Hosted Supabase project: `vgyogyojxlvhiwujidhy`.
+- **Migrations `0002`–`0018` are all applied and confirmed on the hosted
+  project** — `0017`/`0018` (this phase) were applied by the user and
+  verified directly against the live database (new columns/RPCs queried
+  successfully; `npm run test:rls` passes 11/11 files, run individually —
+  see "Verification" below).
+- `stuck-session-detect` (the new Edge Function) is written but **not yet
+  deployed or cron-scheduled** — still an owed manual step, see NEXT_STEPS.md.
+- Google Calendar sync, GPS checks, notifications (Web Push + email backup),
+  and reporting are all live and running on `pg_cron` (calendar-sync every 5
+  min, check-closeout/late-detect/notify-dispatch every minute).
+- **Zoho's feedback webhook is still not configured on Zoho's own side** — the
+  single biggest open item. See "What's not done" below.
+
+## Architecture at a glance
+
+- **Auth/roles**: `profiles` table (teacher/regional_manager/operations_manager/cpo),
+  RLS everywhere, a JWT `app_metadata.app_role` claim mirrored by trigger for
+  the proxy's optimistic route gating, authoritative checks in `src/lib/auth/dal.ts`
+  (`requireProfile`/`requireRole`) and in RLS itself. **Gotcha**: setting
+  `profiles.role` directly (bypassing `promote_user()`) does NOT refresh the
+  JWT claim — the caller must sign in again (or you must also call
+  `admin.auth.admin.updateUserById(id, {app_metadata:{app_role:...}})`) or
+  protected routes will bounce them home. Hit this again live while testing
+  Phase 9 (see below) — it's a real, recurring trap for anyone seeding test
+  accounts, not a bug.
+- **Schools/schedules**: `schools` (geocoded, geofenced), `calendar_events`
+  (synced from Google Calendar, teacher_ids array + fuzzy/manual school match).
+  No native "create a class" UI — schedules come exclusively from Google
+  Calendar.
+- **Attendance**: `attendance_sessions` — an *open* session (`clock_out_at
+  is null`) IS the blocking "submit feedback" obligation, not a separate
+  demand table. `clock_in()` re-validates the geofence server-side always.
+  `gps_checks` (5 post-clock-in samples) + `flags` (manager escalations:
+  `gps_out_of_fence`, `late_clock_in`, and now `feedback_stuck`).
+- **Feedback**: lives on **Zoho**, not in the app. A fixed Zoho form URL is
+  embedded via iframe; Zoho's own webhook (`POST /api/zoho-feedback`) is what
+  actually closes a session, via the service-role-only `close_session_from_zoho()`
+  RPC. The app never renders its own feedback form fields.
+- **Notifications**: `notification_queue` (generic type+payload+status),
+  drained by `notify-dispatch` (Web Push primary, Resend email backup, capped
+  retries).
+- **Offline**: Dexie-backed queue for clock-ins/GPS samples only (not
+  feedback — Zoho's webhook is the only thing that can close a session),
+  replayed through `POST /api/sync` using the same RPCs as the online path.
+- **Reports**: one view (`attendance_period_rows`) + one RPC
+  (`report_teacher_roster`), all weekly/monthly/quarterly bucketing done in
+  TypeScript (`src/lib/reports/aggregate.ts`) over raw rows, not in SQL.
+- **Conventions to preserve**: one `lib/<feature>/` directory per feature area;
+  server actions return `{error?, success?}` via `useActionState`, errors
+  rendered as `<p role="alert" className="text-red-600 dark:text-red-400">`;
+  every mutation-bearing RPC is either `security definer` with explicit
+  role/ownership checks or `service_role`-only, never a raw client write path;
+  every migration gets an RLS test in `tests/*-rls.test.ts` run against the
+  **hosted** project (no local Docker stack) via disposable service-role-created
+  users, cleaned up in `afterAll`.
+
+## Phase-by-phase summary
+
+**Phase 1 — Auth & RBAC.** `profiles` + role/region enums, signup trigger,
+JWT `app_metadata.app_role` mirroring, `promote_user()` RPC, archived-account
+login gate (`/auth/signout?error=archived`).
+
+**Phase 2 — Schools, regions, Lists.** `schools` (geocoded via Census→Nominatim
+fallback, region OM/CPO-only and immutable to RMs once set via a protect
+trigger), `school_years` (scaffolded, unused until this phase), `teacher_directory()`
+RPC, the Lists tab (map pins, contact info, region assignment).
+
+**Phase 3 — Google Calendar sync + Schedules.** Dependency-free isomorphic
+Google client (WebCrypto + fetch, service-account JWT auth), `calendar-sync`
+Edge Function + local runner, fuzzy Location→school matching (pg_trgm),
+`calendar_events`/`calendar_sync_state`/`notification_queue`, the Schedules
+tab. Multi-calendar sync extension: discovery/matching for 30–70
+per-school calendars (`calendar_sync_issues` review queue, pin-then-skip,
+a sync lease table). Live-verified against the real service account and
+real ~72-school roster; four real bugs found and fixed (calendarList vs ACL
+discoverability, an insufficient OAuth scope, stale orphaned issue rows,
+duplicate-named calendars stealing each other's pin). Final state: 50/68
+calendars auto-matched, 17 still open in the review queue, 1 dismissed.
+
+**Phase 4 — Clocking + feedback gate.** `attendance_sessions`, `clock_in()`
+(server-side geofence re-check, on_time/late), the Clocking/Feedback tabs.
+**Reworked mid-phase**: the feedback form was originally built in-app with an
+invented schema, then discovered to actually live on Zoho with different real
+fields — rebuilt as an iframe embed + inbound webhook (`close_session_from_zoho()`,
+`/api/zoho-feedback`). This rework is the reason Phase 9's original "push
+feedback to Zoho" brief became obsolete (see Phase 9 below). A real,
+unrelated security bug was found and fixed in this pass too: a column-level
+REVOKE on four calendar-match columns never actually worked (Postgres
+ignores it when the role already holds a table-wide grant) — fixed in
+`0009_calendar_column_revoke_fix.sql`.
+
+**Phase 5 — GPS checks & late escalation.** `gps_checks` (5 samples/clock-in),
+`flags` (manager-only escalations), `check-closeout`/`late-detect` Edge
+Functions on 1-minute crons, the `/flags` two-tap-to-call UI.
+
+**Phase 6 — Offline mode & sync.** Dexie queue for clock-ins + GPS samples
+(deliberately not feedback), `POST /api/sync` replaying through the same
+RPCs as online, exactly-once via `client_key` idempotency, an offline/pending
+badge in the header.
+
+**Phase 7 — Notifications.** Web Push (+ iOS home-screen onboarding),
+`notify-dispatch` Edge Function (push primary, Resend email backup, capped
+retries/day), per-type Settings with a "Responsibility Check" double-confirm
+before disabling anything, dark mode (device-local toggle). A real bug found
+post-launch: `push_subscriptions` was missing an `UPDATE` grant, breaking
+re-subscription — fixed in `0015_push_subscriptions_grant_fix.sql`.
+
+**Phase 8 — Reports, dashboard, exports.** `attendance_period_rows` view +
+`report_teacher_roster()` RPC, weekly/monthly/9-week-quarter bucketing in
+TypeScript, CSV (server) + PDF (client, `@react-pdf/renderer`) export, the
+Manager Dashboard, global search. A real bug found pre-ship: the CSV export
+flattened every section's rows before bucketing, double-counting the master
+report's combined section against its per-teacher sections — fixed by
+bucketing each section independently.
+
+**Phase 9 — Zoho reliability, school years, archiving, polish (this phase).**
+See below.
+
+## Phase 9 in detail
+
+**The original brief was wrong, by design of an earlier pivot — confirmed
+with the user before building anything.** Phase 9 was scoped as "push stored
+feedback answers to Zoho via API, with a retry queue and `zoho_synced_at`
+tracking." Phase 4's rework already made Zoho the *source* of feedback, not
+a destination — there's nothing in the app to push out. `ZOHO_CLIENT_ID`/
+`SECRET`/`REFRESH_TOKEN` (never-used env vars from the original plan) have
+been removed from `.env.example`. What actually got built instead:
+
+1. **Zoho webhook reliability** (the real, still-unsolved problem: a session
+   left open forever if Zoho's webhook never fires):
+   - `detect_stuck_feedback_sessions(p_stuck_after_hours default 6)` — flags
+     any `attendance_sessions` row open past the threshold, service-role
+     only, idempotent per session (partial unique index), modeled on
+     `detect_late_clockins()`.
+   - `admin_close_stuck_session(p_session_id, p_reason)` — OM/CPO-only
+     manual fallback that force-closes a session (leaves every `feedback_*`
+     column null — it's an unblock, not a stand-in for real answers),
+     resolves the associated flag, and stamps `admin_closed_at`/
+     `admin_closed_by`/`admin_closed_reason` (new columns) rather than
+     `zoho_synced_at`.
+   - `zoho_synced_at` **repurposed**: now set only when `close_session_from_zoho()`
+     (the real webhook path) closes a session — a clean audit signal
+     distinguishing "Zoho actually closed this" from "an admin forced it
+     shut," at zero migration cost since the column already existed.
+   - A new `feedback_stuck` flag type surfaces on `/flags` (a
+     `StuckFeedbackCard` + `ForceCloseForm`) and on the Manager Dashboard.
+   - `supabase/functions/stuck-session-detect/` — written, mirrors
+     `late-detect`'s shape exactly. **Not yet deployed or cron-scheduled**
+     (needs Supabase dashboard/CLI access this sandbox doesn't have).
+   - `clock_in()` gained a defense-in-depth check rejecting an archived
+     caller directly (closes a real gap: `/api/sync`'s offline-replay path
+     only checked for a valid session cookie, never `archived_at`).
+   - Migration: `supabase/migrations/0017_archived_defense_and_stuck_sessions.sql`.
+
+2. **School-year lifecycle** — confirmed with the user: **no stored FK, no
+   manual "active year" selection.** A date's school year is derived purely
+   by range lookup against `school_years` (`src/lib/school-years/derive.ts`,
+   `findSchoolYearForDate`/`getActiveSchoolYear`), reusing/generalizing the
+   lookup `src/lib/reports/aggregate.ts` already had for quarterly bucketing.
+   "Active year" = whichever non-archived row's range contains today.
+   New OM/CPO-only admin UI at `/lists/school-years` (create + archive; no
+   new RPC needed — the table's existing RLS already permitted this, just no
+   UI existed). **Hosted `school_years` still has 0 rows** — nobody has
+   created one yet; do this via the new UI once logged in as OM/CPO.
+   Confirmed via tests that archiving a year doesn't affect report bucketing
+   for it (reports already query by date range, not by the `archived` flag).
+
+3. **Teacher archiving** — the actual archive/unarchive *action* didn't exist
+   before this phase (only the read-side: login gate, badge, report
+   exclusion). Added `archiveTeacher`/`unarchiveTeacher` server actions in
+   `src/app/(app)/users/actions.ts` (OM/CPO only, refuses self/CPO targets —
+   mirrors the existing `assignableRoles` gate) + an `ArchiveButton` next to
+   the existing badge on `/users`. No new RPC — `profiles.archived_at` was
+   already writable by OM/CPO directly. Verified: calendar sync's
+   teacher-matching already excluded archived profiles (Phase 3 built that
+   correctly ahead of time); `clock_in()`'s new archived check above closes
+   the one remaining gap (offline-replay bypass).
+
+4. **Two authenticated-visibility gaps closed** (migration
+   `supabase/migrations/0018_calendar_and_notification_visibility.sql`):
+   `calendar_sync_state` and `notification_queue` had real failure state
+   written to them since Phase 3/7 but **zero** authenticated grant, so no
+   manager could ever see a sync failure or a notification that gave up
+   retrying. Added manager-scoped `select` grants + RLS; new Dashboard
+   widgets surface both.
+
+5. **PRD §14 error-handling audit** — read every one of the six required
+   categories against actual code, not assumption:
+
+   | Category | Gap found | Fix |
+   |---|---|---|
+   | Google Calendar sync errors | `calendar_sync_state` written on every failure but had zero authenticated grant — invisible to managers | Migration `0018` grants + RLS; dashboard widget |
+   | Zoho form failures | No detection of a webhook that never arrives, no recourse | Item 1 above |
+   | GPS failures | Already best-in-class (`describeGeoError`) | No change |
+   | DB connection errors | No error boundary anywhere in `(app)` | New `src/app/(app)/error.tsx`/`not-found.tsx` |
+   | Notification failures | `notification_queue` marks rows failed but had zero authenticated grant | Migration `0018` grants + RLS; dashboard widget |
+   | Connectivity issues | Already well-handled | Only the archived-bypass fix above applies |
+
+6. **Performance/PWA polish**:
+   - Found and fixed a real bundle-size issue: `report-view.tsx` statically
+     imported `@react-pdf/renderer` (~1.4MB with its `yoga` layout
+     dependency), shipping it to every `/reports` page load whether or not
+     anyone clicked "Download PDF." Changed to a dynamic `import()` inside
+     the click handler — confirmed via a clean rebuild that the chunk no
+     longer appears in `/reports`' build manifest.
+   - `leaflet`/`react-leaflet` were already dynamically imported (an earlier
+     phase's work) — nothing to fix there.
+   - Dark-mode sweep: audited every page lacking a `dark:` class and every
+     solid saturated color usage app-wide. Conclusion: the app already
+     handles this correctly everywhere via CSS-variable-backed
+     `border-foreground/10`/`opacity-*` utilities (theme-safe by
+     construction) and pairs every literal `text-{color}-600` with a
+     `dark:text-{color}-400` counterpart with no exceptions. Verified live in
+     the browser (see below) in both themes — no genuine bug found. Role
+     colors: none exist; explicitly skipped as non-required polish.
+   - `npm run build` clean; this Next.js version's build output doesn't print
+     a per-route size table (see `AGENTS.md`'s "not the Next.js you know"
+     warning) — bundle size was instead confirmed by inspecting
+     `.next/static/chunks` directly before/after the react-pdf fix.
+   - **Lighthouse itself was not run** — this sandbox has no `npx lighthouse`/
+     Chrome DevTools access beyond the preview browser tooling used for the
+     screenshots below. This is a real "done when" gap — see NEXT_STEPS.md.
+
+### Verification actually performed this phase
+
+- `npm run lint` / `npm run build` / `npm run test` (49 tests across 6 files,
+  all pass) — clean.
+- **Migrations `0017`/`0018` applied to the hosted project** (by the user,
+  via a cached Supabase CLI + the session's Supabase MCP access token — this
+  sandbox has no network access to the npm registry or Supabase's own
+  management API, confirmed via TLS-level diagnostics, so a fresh
+  `npx supabase` install/login could never have worked here; a previously-
+  cached CLI binary from an earlier session made a direct, explicitly
+  user-approved `db push` possible instead of pure dashboard/SQL-editor
+  copy-paste). Confirmed directly: the new columns
+  (`admin_closed_at`/`admin_closed_by`/`admin_closed_reason` on
+  `attendance_sessions`) and RPCs (`detect_stuck_feedback_sessions`,
+  `admin_close_stuck_session`) all exist and work against the live database.
+- `npm run test:rls` — **all 11 files pass, run individually** (a full-batch
+  run still hits Supabase's own auth rate limit when ~9+ files' worth of
+  disposable users sign in back-to-back in one process — a **pre-existing,
+  documented** environment characteristic since Phase 5, unrelated to Phase
+  9). Two real, incidental fixes made while re-verifying against the now-live
+  schema:
+  - A **test-ordering bug in my own new `tests/attendance-rls.test.ts` case**:
+    it assumed `teacherB` had no open session, but an earlier test in the
+    same file had already clocked them in and never closed it out. Fixed by
+    reusing that already-open session instead of clocking in again.
+  - **Two pre-existing, Phase-9-unrelated test issues in
+    `tests/events-rls.test.ts`**, surfaced only because this project's real
+    hosted `calendar_events` table has grown past 1000 rows since that test
+    was written: an unfiltered `select()` + `arrayContaining()` check now
+    flakes because the seeded rows can fall outside PostgREST's default
+    page — fixed by filtering the query to the seeded ids. Its
+    `notification_queue has no authenticated read access` assertion is now
+    **intentionally false** per this phase's `0018` migration — updated to
+    assert the opposite (a teacher can read their own rows), without
+    asserting a specific row count (this hosted project runs live cron jobs
+    that can enqueue a real reminder for the test's seeded event
+    mid-test-run — a genuine live-database race, not a bug).
+  - New files `tests/school-years-aggregate.test.ts`, `tests/flags-rls.test.ts`,
+    `tests/users-archive-rls.test.ts` all pass; `tests/schools-rls.test.ts`'s
+    new school-year-archive case passes.
+- **The real known stuck test session is now flagged**:
+  `detect_stuck_feedback_sessions()` was run for real against the live
+  database and correctly flagged `f8e52696-2000-41dd-972c-808ac51ffae8`
+  (open since 2026-07-20) as `feedback_stuck` — visible now at `/flags` for
+  an OM/CPO to force-close. This is the exact real-world problem this
+  phase's reliability work was built to solve, confirmed working end to end.
+- **Live browser verification** (real hosted DB, a disposable OM account
+  created via the service-role admin API and deleted afterward): logged in,
+  visited `/lists/school-years` (empty state renders correctly, real "72
+  schools" data on `/lists` confirms this is the real hosted project not a
+  mock), `/users` (new Archive/Unarchive buttons render correctly next to
+  real teacher/RM rows, correctly absent for the caller's own row and the
+  CPO row), `/flags` (renders with the updated copy, no crash from the new
+  `feedback_stuck` type/column additions), `/dashboard` (all three new
+  widgets — stuck feedback sessions, calendar sync, 24h notification
+  failures — render correctly with real live counts). Checked both dark and
+  light `preview_resize` color schemes on `/dashboard` and
+  `/lists/school-years` — both clean.
+- **A real, pre-existing (not Phase-9-caused) issue was hit while testing**:
+  submitting any Server Action form (confirmed on both a brand-new Phase 9
+  form and the pre-existing, previously-verified-working "Add school" form)
+  redirected to `/login` with `Invalid Refresh Token: Refresh Token Not
+  Found` in server logs, immediately after a fresh login. Reproduces
+  identically on unmodified code, so it's specific to this session's
+  browser-automation/cookie handling, not an app bug — but flagging it here
+  in case a future session needs to actually exercise a full authenticated
+  form submission live and hits the same wall. GET-based navigation and
+  direct-RPC calls (via the automated RLS tests) both work fine and were
+  used instead to verify the underlying logic end-to-end.
+
+## What's not done (owed, documented, not a code gap)
+
+See `NEXT_STEPS.md` for the full punch list with exact commands. Summary:
+
+1. **Deploy `stuck-session-detect` and cron-schedule it** (every ~15 min,
+   given the multi-hour threshold). Not yet attempted this session beyond
+   the migration push above.
+2. **Configure Zoho's webhook on Zoho's own side** — still nobody has done
+   this (user lacks Zoho account access). Exact steps unchanged from the
+   last several phases' notes, in NEXT_STEPS.md.
+3. **Force-close the known stuck session** (`f8e52696-2000-41dd-972c-808ac51ffae8`,
+   now flagged and ready) via the new `/flags` UI.
+4. **Create the first real `school_years` row** via the new `/lists/school-years`
+   UI — the table has been empty since Phase 2.
+5. **Run a real Lighthouse pass** against mobile viewports for the PWA/perf
+   "done when" criteria.
+6. Everything already flagged as owed by earlier phases and never
+   resolved (Resend domain verification, a live-device push/offline
+   walkthrough, the 17-item multi-calendar review queue) — still owed,
+   unchanged by this phase.
 
 ## How to verify the current state yourself
 
 ```bash
 npm install
-npm run test             # mocked-fetch calendar client + pure classifier tests, no credentials needed
-npm run test:rls         # profiles + schools + events + calendar-sync-issues, against the hosted project
-npm run build            # compiles the Schedules tab + detail route
-# with GOOGLE_SERVICE_ACCOUNT_KEY_BASE64 set in .env.local, and each calendar
-# already shared to the service account AND subscribed once via
-# scripts/subscribe-calendars.ts (see NEXT_STEPS.md "Onboarding a new school's
-# calendar" — sharing alone is not enough, see DECISIONS.md "calendarList vs ACL"):
-CALENDAR_SYNC_DRY_RUN=1 npm run sync:calendar   # discovery/matching only, no writes
-npm run sync:calendar                            # runs the real multi-calendar sync against the hosted DB
+npm run lint             # clean
+npm run build             # clean; compiles all routes including /lists/school-years
+npm run test               # 49 credential-free unit tests, no Supabase needed
+npm run test:rls           # hosted-project RLS suites (needs .env.local's Supabase keys);
+                            # run files individually to avoid the auth rate limit noted above —
+                            # e.g. npx vitest run tests/flags-rls.test.ts
 ```
+
+For a full live walkthrough now that `0017`/`0018` are applied: log in as OM/CPO,
+create a school year at `/lists/school-years`, archive a teacher at `/users`,
+force-close the known stuck session at `/flags`, and check the Manager
+Dashboard's three new widgets reflect real state.

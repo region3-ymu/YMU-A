@@ -2,30 +2,34 @@ import type { Metadata } from "next";
 import { requireRole } from "@/lib/auth/dal";
 import { MANAGER_ROLES } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/server";
+import ForceCloseForm from "./force-close-form";
 import ResolveFlagButton from "./resolve-flag-button";
 
 export const metadata: Metadata = { title: "Flags" };
 
 type FlagRow = {
   id: string;
-  type: "gps_out_of_fence" | "late_clock_in";
+  type: "gps_out_of_fence" | "late_clock_in" | "feedback_stuck";
+  session_id: string | null;
   details: Record<string, unknown>;
   created_at: string;
   resolved_at: string | null;
   teacher: { id: string; full_name: string; phone: string | null } | null;
   school: { id: string; name: string; contact_name: string | null; contact_phone: string | null } | null;
   event: { id: string; summary: string | null; start_at: string | null } | null;
+  session: { id: string; clock_in_at: string } | null;
 };
 
 const FLAG_COLUMNS = `
-  id, type, details, created_at, resolved_at,
+  id, type, session_id, details, created_at, resolved_at,
   teacher:profiles!flags_teacher_id_fkey(id, full_name, phone),
   school:schools(id, name, contact_name, contact_phone),
-  event:calendar_events(id, summary, start_at)
+  event:calendar_events(id, summary, start_at),
+  session:attendance_sessions(id, clock_in_at)
 `;
 
 export default async function FlagsPage() {
-  await requireRole(...MANAGER_ROLES);
+  const caller = await requireRole(...MANAGER_ROLES);
 
   const supabase = await createClient();
   const { data } = await supabase
@@ -34,12 +38,15 @@ export default async function FlagsPage() {
     .is("resolved_at", null)
     .order("created_at", { ascending: false });
   const flags = (data as unknown as FlagRow[]) ?? [];
+  const canForceClose = caller.role === "operations_manager" || caller.role === "cpo";
 
   return (
     <main className="flex flex-1 flex-col p-6">
       <header className="mb-6">
         <h1 className="text-2xl font-bold tracking-tight">Flags</h1>
-        <p className="text-sm opacity-70">GPS and late clock-in escalations needing manager attention.</p>
+        <p className="text-sm opacity-70">
+          GPS, late clock-in, and stuck-feedback escalations needing manager attention.
+        </p>
       </header>
 
       {flags.length === 0 ? (
@@ -50,15 +57,42 @@ export default async function FlagsPage() {
             <li key={flag.id} className="rounded-2xl border border-red-500/40 bg-red-500/5 p-4">
               {flag.type === "late_clock_in" ? (
                 <LateClockInCard flag={flag} />
+              ) : flag.type === "feedback_stuck" ? (
+                <StuckFeedbackCard flag={flag} />
               ) : (
                 <GpsOutOfFenceCard flag={flag} />
               )}
-              <ResolveFlagButton flagId={flag.id} />
+              {flag.type === "feedback_stuck" && flag.session_id ? (
+                canForceClose && <ForceCloseForm sessionId={flag.session_id} />
+              ) : (
+                <ResolveFlagButton flagId={flag.id} />
+              )}
             </li>
           ))}
         </ul>
       )}
     </main>
+  );
+}
+
+function StuckFeedbackCard({ flag }: { flag: FlagRow }) {
+  const clockInAt = flag.session?.clock_in_at;
+
+  return (
+    <div>
+      <p className="font-semibold">Feedback stuck — Zoho webhook never arrived</p>
+      <p className="mt-1 text-sm opacity-80">
+        {flag.teacher?.full_name ?? "A teacher"}
+        {flag.school ? (
+          <>
+            {" "}at <span className="font-medium">{flag.school.name}</span>
+          </>
+        ) : null}{" "}
+        clocked in{clockInAt ? ` at ${new Date(clockInAt).toLocaleString()}` : ""} and the class is
+        still open — Zoho&rsquo;s feedback webhook hasn&rsquo;t closed it out. Confirm with the
+        teacher directly before force-closing.
+      </p>
+    </div>
   );
 }
 

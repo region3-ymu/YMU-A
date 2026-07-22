@@ -13,7 +13,6 @@ import { useMemo, useState } from "react";
 import { bucketReportRows } from "@/lib/reports/aggregate";
 import type { ReportSectionData } from "@/lib/reports/build";
 import type { Granularity, SchoolYear } from "@/lib/reports/types";
-import { downloadReportPdf } from "@/lib/export/pdf";
 
 export default function ReportView({
   title,
@@ -45,6 +44,11 @@ export default function ReportView({
   async function handlePdf() {
     setPdfPending(true);
     try {
+      // @react-pdf/renderer (~1.4MB with its yoga layout dependency) is
+      // loaded on demand here rather than imported at module scope — every
+      // /reports page load was otherwise shipping it whether or not the
+      // teacher ever clicks "Download PDF".
+      const { downloadReportPdf } = await import("@/lib/export/pdf");
       await downloadReportPdf({
         title,
         subtitle: `Generated ${new Date().toLocaleDateString()} · grouped ${granularity}`,

@@ -296,4 +296,105 @@ describe.runIf(configured)("attendance clocking RLS + RPCs", () => {
     });
     expect(reError).toBeNull();
   });
+
+  it("close_session_from_zoho sets zoho_synced_at on the real closing branch (Phase 9)", async () => {
+    const { data: session } = await teacherA.client
+      .from("attendance_sessions")
+      .select("id")
+      .is("clock_out_at", null)
+      .single();
+    const { data: closed, error } = await admin.rpc("close_session_from_zoho", {
+      p_session_id: session!.id,
+      p_engagement: "Very engaged",
+      p_had_issue: "No",
+    });
+    expect(error).toBeNull();
+    expect(closed?.zoho_synced_at).not.toBeNull();
+    expect(closed?.admin_closed_at).toBeNull();
+
+    // Clean up the open session so later tests keep a predictable state.
+    const { error: reError } = await teacherA.client.rpc("clock_in", {
+      p_event_id: futureEventId,
+      p_lat: SCHOOL_LAT,
+      p_lng: SCHOOL_LNG,
+    });
+    expect(reError).toBeNull();
+  });
+
+  it("an archived teacher's own JWT is rejected by clock_in() directly, closing the /api/sync bypass gap (Phase 9)", async () => {
+    // Close the open session first so the archived check is what actually
+    // rejects the call, not the "submit feedback first" guard.
+    const { data: openSession } = await teacherA.client
+      .from("attendance_sessions")
+      .select("id")
+      .is("clock_out_at", null)
+      .single();
+    await admin.rpc("close_session_from_zoho", {
+      p_session_id: openSession!.id,
+      p_engagement: "Very engaged",
+      p_had_issue: "No",
+    });
+
+    await admin.from("profiles").update({ archived_at: new Date().toISOString() }).eq("id", teacherA.id);
+    try {
+      const { error } = await teacherA.client.rpc("clock_in", {
+        p_event_id: futureEventId,
+        p_lat: SCHOOL_LAT,
+        p_lng: SCHOOL_LNG,
+      });
+      expect(error?.message ?? "").toMatch(/archived/i);
+    } finally {
+      await admin.from("profiles").update({ archived_at: null }).eq("id", teacherA.id);
+    }
+  });
+
+  it("admin_close_stuck_session sets admin_closed_* (not zoho_synced_at), and is rejected for RM/teacher callers (Phase 9)", async () => {
+    // teacherB already has an open session from the "records late..." test
+    // earlier in this file (never closed since) — reuse it rather than
+    // clocking in again, which would correctly be rejected by the
+    // one-open-session-per-teacher guard.
+    const { data: session, error: sessionError } = await teacherB.client
+      .from("attendance_sessions")
+      .select("id")
+      .is("clock_out_at", null)
+      .single();
+    expect(sessionError).toBeNull();
+
+    const { error: rmError } = await rmCentral.client.rpc("admin_close_stuck_session", {
+      p_session_id: session!.id,
+      p_reason: "test",
+    });
+    expect(rmError).not.toBeNull();
+
+    const { error: teacherError } = await teacherB.client.rpc("admin_close_stuck_session", {
+      p_session_id: session!.id,
+      p_reason: "test",
+    });
+    expect(teacherError).not.toBeNull();
+
+    const { error: noReasonError } = await om.client.rpc("admin_close_stuck_session", {
+      p_session_id: session!.id,
+      p_reason: "   ",
+    });
+    expect(noReasonError?.message ?? "").toMatch(/reason is required/i);
+
+    const { data: closed, error } = await om.client.rpc("admin_close_stuck_session", {
+      p_session_id: session!.id,
+      p_reason: "Confirmed by phone the class happened.",
+    });
+    expect(error).toBeNull();
+    expect(closed?.clock_out_at).not.toBeNull();
+    expect(closed?.admin_closed_at).not.toBeNull();
+    expect(closed?.admin_closed_by).toBe(om.id);
+    expect(closed?.zoho_synced_at).toBeNull();
+
+    // Idempotent: a second force-close attempt on the same (now-closed)
+    // session is a harmless no-op, same as a retried Zoho webhook.
+    const { data: retried, error: retryError } = await om.client.rpc("admin_close_stuck_session", {
+      p_session_id: session!.id,
+      p_reason: "different reason",
+    });
+    expect(retryError).toBeNull();
+    expect(retried?.admin_closed_reason).toBe("Confirmed by phone the class happened.");
+  });
 });

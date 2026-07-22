@@ -7,6 +7,7 @@ import {
   type Region,
 } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/server";
+import ArchiveButton from "./archive-button";
 import RowForm from "./row-form";
 
 export const metadata: Metadata = { title: "Team" };
@@ -81,12 +82,15 @@ export default async function UsersPage() {
                 </p>
               </div>
               {assignable && (
-                <RowForm
-                  targetId={row.id}
-                  currentRole={row.role as AppRole}
-                  currentRegion={row.region as Region | null}
-                  assignableRoles={assignable}
-                />
+                <div className="flex flex-wrap items-center gap-2">
+                  <RowForm
+                    targetId={row.id}
+                    currentRole={row.role as AppRole}
+                    currentRegion={row.region as Region | null}
+                    assignableRoles={assignable}
+                  />
+                  <ArchiveButton targetId={row.id} archived={row.archived_at != null} />
+                </div>
               )}
             </li>
           );

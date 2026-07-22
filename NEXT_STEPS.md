@@ -1,26 +1,128 @@
 # NEXT_STEPS — YMU-A
 
-Where to pick up. **Phase 8 (Reports, dashboard, exports) is fully built, migration applied, test-verified (9/9 unit + 7/7 RLS), and live-verified in a real browser with seeded data** — see HANDOFF.md for the full description. Attendance reporting (hours/rate/on-time/late/missed), the teacher/RM/OM-CPO report views, CSV/PDF export, the Manager Dashboard, and cross-table search are all working end-to-end. **One real operational gap, not a code gap**: see "🔴 school_years is empty" immediately below — every quarterly report currently falls back to "No school year" because nothing has ever populated that table.
+Where to pick up. **Phase 9 (Zoho reliability, school years, archiving,
+error-handling, performance/PWA polish) is code-complete AND migrations
+`0017`/`0018` are now applied to the hosted project** — see HANDOFF.md for
+the full description. Everything below "Finish Phase 9" is prior-phase
+history, kept for reference; the actionable work right now is the short
+Phase 9 list immediately below.
 
-## 🔴 `school_years` has zero rows on the hosted project — quarterly reports can't group by real quarters yet
+## 🔴 Finish Phase 9 — deploy the new Edge Function, configure Zoho, run Lighthouse
 
-Phase 2 (`0005_schools.sql`) created the `school_years` table (`name`, `start_date`, `end_date`, `archived`) but nothing has ever inserted a row into it — confirmed via `select count(*) from school_years` → `0`. Phase 8's quarterly bucketing (`lib/reports/aggregate.ts`) is built and tested against it (`tests/reports-aggregate.test.ts` covers the anchoring math with synthetic school-year fixtures), but with the real table empty, **every real quarterly report today falls into the "No school year" fallback bucket** instead of showing "Quarter 1"/"Quarter 2"/etc. This isn't a bug — it's the documented, tested fallback behavior for exactly this situation — but it means quarterly reports are not actually useful yet.
+1. ~~Apply migrations `0017` and `0018`~~ — **done.** Applied to the hosted
+   project (`vgyogyojxlvhiwujidhy`) via a cached Supabase CLI + the session's
+   configured access token. Confirmed directly (new columns/RPCs queried
+   successfully) and via `npm run test:rls` (all 11 files pass, run
+   individually to avoid the pre-existing multi-suite auth rate limit).
+   `detect_stuck_feedback_sessions()` was run for real and correctly flagged
+   the known stuck session (see item 3 below).
+2. **Deploy `supabase/functions/stuck-session-detect/`** (mirrors
+   `late-detect`'s shape exactly) and schedule it, e.g. every 15 minutes
+   given the multi-hour threshold — **not yet done**:
+   ```sql
+   select cron.schedule('stuck-session-detect-15min', '*/15 * * * *', $$
+     select net.http_post(
+       url := 'https://vgyogyojxlvhiwujidhy.supabase.co/functions/v1/stuck-session-detect',
+       headers := jsonb_build_object('Content-Type','application/json',
+                                      'x-stuck-session-detect-secret', (select decrypted_secret from vault.decrypted_secrets where name='stuck_session_detect_secret')),
+       body := '{}'::jsonb
+     );
+   $$);
+   ```
+   Set `STUCK_SESSION_DETECT_SECRET` as both an Edge Function secret and a
+   Supabase Vault secret (same pattern as `check-closeout`/`late-detect`).
+3. **Force-close the known stuck test session** at `/flags` —
+   `f8e52696-2000-41dd-972c-808ac51ffae8` (open since 2026-07-20) is **now
+   flagged `feedback_stuck`**, confirmed live. Log in as OM/CPO, go to
+   `/flags`, and force-close it with a reason — this both exercises the new
+   feature for real and clears the leftover data.
+4. **Create the first real `school_years` row** at `/lists/school-years`
+   (new UI, OM/CPO only) — e.g. name `2026-2027`, start `2026-08-10`, end
+   `2027-06-04`. The table has been empty since Phase 2; quarterly reports
+   fall back to "No school year" until this exists. No code change needed
+   once it does.
+5. **Configure Zoho's webhook on Zoho's own side** — still not done, still
+   blocked on Zoho account access. See "Finish the Zoho feedback setup"
+   further below for the exact steps (unchanged since Phase 4/6).
+6. **Run a real Lighthouse pass** (mobile viewport, `/clocking`/`/dashboard`/`/`)
+   for the PWA/performance "done when" — not run in this sandbox (no
+   `npx lighthouse`/DevTools access beyond the preview browser tooling used
+   for screenshots).
+7. A pre-existing, non-Phase-9 environment quirk was hit while verifying:
+   submitting **any** Server Action form in this sandbox's browser-preview
+   tooling (confirmed on both new and untouched pre-existing forms)
+   redirects to `/login` with `Invalid Refresh Token: Refresh Token Not
+   Found`, immediately after a fresh login. Not reproduced as a real-user
+   issue in any prior phase's live verification — flagging it so a future
+   session doesn't mistake it for a Phase 9 regression if it needs to
+   exercise a full authenticated form submission in this same tooling.
+8. This sandbox's network blocks the npm registry and Supabase's own
+   management API at the network/DNS level (confirmed via TLS/DNS
+   diagnostics) — a fresh `npx supabase login`/install can never work here.
+   Migrations only got applied this time because a fully-cached CLI binary
+   happened to be left over from an earlier session, and Claude explicitly
+   asked before using it (auth + schema changes against production). Don't
+   assume this shortcut will be available in a future session — the
+   documented fallback (dashboard SQL editor, or the user's own machine)
+   still applies.
 
-**Fix**: insert at least the current (and ideally next) school year via SQL or a quick admin UI, e.g.:
-```sql
-insert into public.school_years (name, start_date, end_date)
-values ('2026-2027', '2026-08-10', '2027-06-04');
-```
-(`grant select, insert, update on school_years to authenticated` already exists from Phase 2 — OM/CPO can write it once there's a UI; there isn't one yet. A later phase, or a small addition to this one's Reports page, could add a simple "create school year" form for OM/CPO — currently the only way to add one is direct SQL/the Supabase dashboard.) Once a real school year exists spanning today's date, quarterly reports will immediately start grouping into real 63-day quarters with no code change needed.
+## Things Phase 9 leaves that a later maintainer should know
 
-## Finish Phase 8 (mostly polish — nothing code-side is broken)
+- **`zoho_synced_at`'s meaning changed**: it now means "closed by the real
+  Zoho webhook," set only in `close_session_from_zoho()`. A force-closed
+  session (via `admin_close_stuck_session`) sets `admin_closed_at`/
+  `admin_closed_by`/`admin_closed_reason` instead and leaves `zoho_synced_at`
+  null — the two paths are mutually exclusive by construction. Any future
+  reporting that touches "was this session closed normally" should check
+  both columns, not just one.
+- **School-year linkage is pure date-range lookup, no stored FK** —
+  `src/lib/school-years/derive.ts` is the one place "which year does this
+  date fall in" lives; `src/lib/reports/aggregate.ts` already depends on it.
+  Don't add a `school_year_id` column to `calendar_events`/`attendance_sessions`
+  without revisiting this decision with the user first — it was explicit.
+- **`flags.type` is still a free-text column** (not an enum), now with three
+  values (`gps_out_of_fence`, `late_clock_in`, `feedback_stuck`). A future
+  phase adding another escalation type should follow the same pattern:
+  widen the check constraint, add a partial unique index if it needs
+  idempotent detection, add a card renderer on `/flags`.
+- **Migration numbering**: `0018` is latest; next available is `0019`.
+- **RLS tests**: `npm run test:rls` runs **eleven** files as of this phase
+  (added `flags-rls.test.ts`, `users-archive-rls.test.ts`; extended
+  `attendance-rls.test.ts` and `schools-rls.test.ts`). The multi-suite
+  `signInWithPassword` rate-limit caveat (documented since Phase 5) still
+  applies — run a new suite standalone first.
+- **A real RLS-testing lesson learned this phase**: an `UPDATE` blocked by
+  RLS's `USING` clause (row invisible to the caller) does **not** raise an
+  error — it silently matches zero rows and returns success. Only a
+  trigger-based rejection (like `protect_school_region`) or a `WITH CHECK`
+  failure on `INSERT` raises a real Postgres error. Don't write a test
+  asserting `error).not.toBeNull()` for an RLS-blocked `UPDATE` — assert the
+  value is unchanged via a follow-up read instead (see `tests/schools-rls.test.ts`'s
+  school-year archive test and `tests/users-archive-rls.test.ts` for the
+  corrected pattern).
+- **`notification_queue` is no longer fully blocked to authenticated users**
+  (own rows + any manager, per `0018`) — `tests/events-rls.test.ts`'s old
+  "no authenticated read access" assertion from Phase 3 was updated to match.
+  Any future code that assumed this table was service-role-only should be
+  re-checked.
+- **`tests/events-rls.test.ts`'s "operations manager sees every event" test
+  now filters to the seeded ids** rather than fetching the whole table —
+  the real hosted `calendar_events` table has grown past PostgREST's
+  default 1000-row page (1746+ real synced events). Any future RLS test
+  against a table with real, growing production data should filter to its
+  own seeded ids rather than asserting containment within an unfiltered
+  fetch — this will only get worse as the table grows.
 
-1. **Populate `school_years`** (above) — the one thing that actually limits real usefulness right now.
-2. **A CPO/OM UI for creating school years** doesn't exist yet — worth adding if quarterly reporting becomes a regular workflow rather than a one-time SQL insert per year.
-3. **The search feature is intentionally lightweight** (`lib/reports/search.ts`): it does not paginate, does not fuzzy-match, and caps each category at 10–20 results. Fine for the current data volume; revisit if the school/event/session counts grow enough that a plain `ilike` scan becomes slow (an index on `calendar_events.summary`/`location_raw` would be the first lever, then maybe `pg_trgm` similarity like `match_school()` already uses).
-4. **CSV/PDF on an actual phone** — verified via a real dev-server browser session (fetch confirmed correct CSV bytes; the PDF button completed with no console errors), but the "done when" criterion specifically asks for a phone. Nothing in this sandbox can drive a real mobile browser's download UI — worth a quick real-device check before calling this fully done, same caveat every prior phase's live-device walkthrough has had.
+## Previously: Phase 8 (Reports, dashboard, exports) — fully built, migration applied, test-verified, live-verified
 
-## Things Phase 8 leaves that Phase 9 (and later) should know
+Attendance reporting (hours/rate/on-time/late/missed), the teacher/RM/OM-CPO
+report views, CSV/PDF export, the Manager Dashboard, and cross-table search
+were all working end-to-end as of Phase 8. `school_years` having zero rows
+was Phase 8's one flagged operational gap — **Phase 9 built the admin UI to
+fix this** (`/lists/school-years`, see above); the row itself still needs
+creating.
+
+## Things Phase 8 left that later phases should know
 
 - **`attendance_period_rows` (view) and `report_teacher_roster()` (RPC) are the two new SQL objects** (`supabase/migrations/0016_reports.sql`). The view's authorization is hand-written in its `WHERE` clause (mirroring `attendance_sessions_select` exactly) rather than delegated to the underlying tables' RLS — necessary because it unnests `calendar_events.teacher_ids`, an array column RLS can't restrict element-by-element. **Any future view/function that unnests `teacher_ids` needs the same explicit per-row authorization check** — don't assume the underlying table's RLS is sufficient once you've unnested an array.
 - **`report_teacher_roster()` is deliberately not `teacher_directory()`** (Phase 2) — the latter scopes a Regional Manager by `profiles.region`, which is stale/mostly-null since Phase 3 made a teacher's region derive from their scheduled schools instead. If a later phase needs "teachers visible to this manager" again, reuse `report_teacher_roster()`'s region-via-schools approach, not `teacher_directory()`'s.
@@ -113,7 +215,7 @@ The real, fixed form URL (`https://zfrmz.com/MIVJGi5IlokeTf8oTsDR`, the one alre
    - Custom Headers: add `x-zoho-feedback-secret` = the same value you set for `ZOHO_FEEDBACK_WEBHOOK_SECRET`
 3. **Test it for real**: log in as a teacher with an open session, load `/clocking`, confirm the real form renders with School/Date/Program pre-selected (Teacher Name prefill is a best-effort — see caveat below). Fill in the rest and submit, and confirm the page updates to "Feedback received" within a few seconds (it polls every 4s). If it doesn't, check the webhook delivery log in Zoho and compare the actual payload shape against what `src/app/api/zoho-feedback/route.ts` expects — this still hasn't been tested against a real Zoho delivery, only a simulated `curl` one.
 4. **Test the offline path too**: go offline (DevTools → Network → Offline) with an open session, fill and save the local draft form (engagement/issue/notes), go back online, and confirm the real form loads prefilled with those answers too.
-5. Decide whether the old Phase 9 "push feedback to Zoho via API" plan (and the `ZOHO_CLIENT_ID`/`SECRET`/`REFRESH_TOKEN` env vars) is still needed — probably not, now that feedback originates in Zoho instead of being pushed there. See DECISIONS.md.
+5. ~~Decide whether the old "push feedback to Zoho via API" plan is still needed~~ — resolved in Phase 9: confirmed with the user it's not. `ZOHO_CLIENT_ID`/`SECRET`/`REFRESH_TOKEN` removed from `.env.example`. Phase 9 built inbound-webhook *reliability* instead (stuck-session detection + admin force-close) — see HANDOFF.md.
 
 **Caveats to know about, not yet resolved:**
 - **Teacher Name prefill is unreliable by design, not a bug** (user-confirmed): the real dropdown's choices are teacher full names tied to specific emails (e.g. "Jefferson Joseph" ↔ `jeffadamjoseph@gmail.com`), but the calendar event only carries the teacher's Google account email, and our own `profiles.full_name` may not exactly match the dropdown's registered spelling. If it doesn't match exactly, the dropdown just won't show anything pre-selected — the teacher picks their own name manually, which is an acceptable fallback, not a broken feature.

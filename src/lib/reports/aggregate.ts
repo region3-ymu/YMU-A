@@ -12,6 +12,7 @@
 // outside every known school_years range lands in a "No school year"
 // bucket rather than being silently dropped.
 
+import { findSchoolYearForDate } from "../school-years/derive";
 import type { Granularity, PeriodSummary, ReportRow, SchoolYear } from "./types";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -61,7 +62,7 @@ type QuarterBounds = {
 
 function quarterBoundsFor(ms: number, schoolYears: SchoolYear[]): QuarterBounds | null {
   const dateKey = isoDate(ms);
-  const year = schoolYears.find((y) => y.start_date <= dateKey && dateKey <= y.end_date);
+  const year = findSchoolYearForDate(dateKey, schoolYears);
   if (!year) return null;
 
   const startMs = Date.parse(`${year.start_date}T00:00:00Z`);

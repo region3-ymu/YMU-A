@@ -88,6 +88,39 @@ export async function getTodayAttendanceRows(): Promise<TodayAttendanceRow[]> {
   return (data as unknown as TodayAttendanceRow[]) ?? [];
 }
 
+export type CalendarSyncFailure = {
+  calendar_id: string;
+  last_error: string | null;
+  updated_at: string;
+};
+
+// calendar_sync_state (0006/0018) — one row per synced calendar, written by
+// the sync Edge Function on every run, success or failure. Reading only the
+// error rows here (the widget just needs "is sync currently unhealthy").
+export async function getCalendarSyncHealth(): Promise<CalendarSyncFailure[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("calendar_sync_state")
+    .select("calendar_id, last_error, updated_at")
+    .eq("last_status", "error")
+    .order("updated_at", { ascending: false });
+  return (data as unknown as CalendarSyncFailure[]) ?? [];
+}
+
+// notification_queue (0014/0018) — notify-dispatch marks a row failed once
+// it's exhausted its attempts cap. A count over the last 24h is enough for a
+// dashboard widget; per-row detail isn't actionable here the way a flag is.
+export async function getRecentNotificationFailureCount(): Promise<number> {
+  const supabase = await createClient();
+  const sinceIso = new Date(Date.now() - DAY_MS).toISOString();
+  const { count } = await supabase
+    .from("notification_queue")
+    .select("id", { count: "exact", head: true })
+    .gte("created_at", sinceIso)
+    .or("status.eq.failed,email_status.eq.failed");
+  return count ?? 0;
+}
+
 export type UpcomingEventRow = {
   id: string;
   summary: string | null;

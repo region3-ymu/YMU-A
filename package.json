@@ -8,8 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "sync:calendar": "node --env-file=.env.local scripts/sync-calendar.ts",
-    "test": "vitest run tests/google-calendar-client.test.ts tests/calendar-sync-classify.test.ts tests/attendance-status.test.ts tests/notify-dispatch-logic.test.ts tests/reports-aggregate.test.ts",
-    "test:rls": "vitest run tests/rls.test.ts tests/schools-rls.test.ts tests/events-rls.test.ts tests/calendar-sync-rls.test.ts tests/attendance-rls.test.ts tests/gps-checks-rls.test.ts tests/offline-sync-rls.test.ts tests/notifications-rls.test.ts tests/reports-rls.test.ts"
+    "test": "vitest run tests/google-calendar-client.test.ts tests/calendar-sync-classify.test.ts tests/attendance-status.test.ts tests/notify-dispatch-logic.test.ts tests/reports-aggregate.test.ts tests/school-years-aggregate.test.ts",
+    "test:rls": "vitest run tests/rls.test.ts tests/schools-rls.test.ts tests/events-rls.test.ts tests/calendar-sync-rls.test.ts tests/attendance-rls.test.ts tests/gps-checks-rls.test.ts tests/offline-sync-rls.test.ts tests/notifications-rls.test.ts tests/reports-rls.test.ts tests/flags-rls.test.ts tests/users-archive-rls.test.ts"
   },
   "dependencies": {
     "@react-pdf/renderer": "^4.5.1",

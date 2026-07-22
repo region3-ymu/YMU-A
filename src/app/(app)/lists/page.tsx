@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { requireRole } from "@/lib/auth/dal";
 import { MANAGER_ROLES } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/server";
@@ -26,6 +27,11 @@ export default async function ListsPage() {
     <main className="flex flex-1 flex-col gap-2 p-6">
       <h1 className="text-2xl font-bold tracking-tight">Lists</h1>
       <p className="text-sm opacity-70">Schools &amp; teachers by region</p>
+      {(caller.role === "operations_manager" || caller.role === "cpo") && (
+        <Link href="/lists/school-years" className="mt-1 text-sm underline opacity-70">
+          Manage school years →
+        </Link>
+      )}
       {(schoolsError || teachersError) && (
         <p role="alert" className="mt-4 text-sm text-red-600 dark:text-red-400">
           Couldn&rsquo;t load lists: {(schoolsError ?? teachersError)?.message}

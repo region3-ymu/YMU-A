@@ -103,6 +103,9 @@ export function navForRole(role: AppRole): NavItem[] {
 export const ROUTE_ROLES: Record<string, readonly AppRole[]> = {
   "/clocking": ["teacher"],
   "/feedback": ["teacher"],
+  // More specific than "/lists" below — must come first, since
+  // rolesAllowedForPath() returns on the first matching prefix.
+  "/lists/school-years": ["operations_manager", "cpo"],
   "/lists": MANAGER_ROLES,
   "/flags": MANAGER_ROLES,
   "/dashboard": MANAGER_ROLES,

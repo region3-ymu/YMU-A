@@ -319,5 +319,46 @@ describe.runIf(configured)("schools & school_years RLS", () => {
       const { data } = await teacherA.client.from("school_years").select("id");
       expect(data ?? []).toHaveLength(0);
     });
+
+    // Phase 9: archiving is a plain update (no dedicated RPC — the existing
+    // school_years_write policy already covers it). Archiving must only hide
+    // a year from "active" status; getSchoolYears() must keep returning it so
+    // quarterly reports still bucket correctly for that year (no filter on
+    // `archived` there — see src/lib/reports/queries.ts).
+    it("a regional manager cannot archive a school year; an operations manager can, and it remains readable", async () => {
+      const { data: created, error: createError } = await om.client
+        .from("school_years")
+        .insert({ name: "2025-26 Archive Test", start_date: "2025-08-01", end_date: "2026-06-01" })
+        .select("id")
+        .single();
+      expect(createError).toBeNull();
+      const yearId = created!.id;
+      createdSchoolYearIds.push(yearId);
+
+      // RLS's USING clause makes every school_years row invisible to an RM for
+      // an UPDATE, so this matches zero rows rather than raising an error
+      // (unlike the region-immutability trigger above, which fires
+      // regardless of row visibility) — confirm via a follow-up read instead.
+      await rmCentral.client.from("school_years").update({ archived: true }).eq("id", yearId);
+      const { data: stillUnarchived } = await om.client
+        .from("school_years")
+        .select("archived")
+        .eq("id", yearId)
+        .single();
+      expect(stillUnarchived?.archived).toBe(false);
+
+      const { error: omError } = await om.client
+        .from("school_years")
+        .update({ archived: true })
+        .eq("id", yearId);
+      expect(omError).toBeNull();
+
+      const { data: afterArchive } = await rmCentral.client
+        .from("school_years")
+        .select("id, archived")
+        .eq("id", yearId)
+        .single();
+      expect(afterArchive?.archived).toBe(true);
+    });
   });
 });
