@@ -42,6 +42,7 @@ export default async function ClockingPage() {
             className: classTitle(openSession.event?.summary),
             schoolName: openSession.school?.name ?? null,
             teacherName: profile.full_name,
+            teacherId: profile.id,
             clockInAt: openSession.clock_in_at,
             status: openSession.clock_in_status,
           }}

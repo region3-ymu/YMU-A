@@ -22,6 +22,7 @@ import {
   EMAIL_DAILY_CAP,
   utcDateKey,
 } from "./dispatch-logic.ts";
+import { secretsMatch } from "../_shared/secret.ts";
 
 declare const Deno: {
   env: { get(key: string): string | undefined };
@@ -57,13 +58,17 @@ Deno.serve(async (request) => {
     return json({ error: "Notification dispatch is not configured." }, 500);
   }
 
-  if (request.headers.get("x-notify-dispatch-secret") !== secret) {
+  if (!(await secretsMatch(request.headers.get("x-notify-dispatch-secret"), secret))) {
     return json({ error: "Unauthorized." }, 401);
   }
 
   const resendApiKey = Deno.env.get("RESEND_API_KEY");
   const resendFromEmail = Deno.env.get("RESEND_FROM_EMAIL");
   const emailConfigured = Boolean(resendApiKey && resendFromEmail);
+  // Base URL for links in email bodies. Falls back to the current production
+  // deployment so a missing env var degrades to today's behavior rather than a
+  // broken link, but set SITE_URL so the address isn't hardcoded here.
+  const siteUrl = (Deno.env.get("SITE_URL") ?? "https://ymu-a-navy.vercel.app").replace(/\/$/, "");
   if (!emailConfigured) {
     console.warn("RESEND_API_KEY/RESEND_FROM_EMAIL not set — push will still send, email backups will be skipped.");
   }
@@ -80,15 +85,17 @@ Deno.serve(async (request) => {
     return json({ error: enqueueError.message }, 500);
   }
 
-  const { data: rows, error: fetchError } = await supabase
-    .from("notification_queue")
-    .select("id, recipient_id, event_id, type, payload, status, email_status, attempts, created_at")
-    .lte("send_at", new Date().toISOString())
-    .or("status.eq.pending,email_status.eq.pending")
-    .order("created_at", { ascending: true })
-    .limit(BATCH_LIMIT);
+  // Atomically CLAIM a batch instead of a plain select. A run that exceeds the
+  // 1-minute cron cadence would otherwise overlap the next run, both reading
+  // the same still-'pending' rows and sending each push/email twice.
+  // claim_notification_batch stamps claimed_at under FOR UPDATE SKIP LOCKED, so
+  // a concurrent run skips rows this run just claimed; a claim older than the
+  // lease window is reclaimable, so a crashed run's rows are never stranded.
+  const { data: rows, error: fetchError } = await supabase.rpc("claim_notification_batch", {
+    p_limit: BATCH_LIMIT,
+  });
   if (fetchError) {
-    console.error("Fetching pending notification_queue rows failed", fetchError);
+    console.error("Claiming pending notification_queue rows failed", fetchError);
     return json({ error: fetchError.message }, 500);
   }
   const pending = (rows ?? []) as QueueRow[];
@@ -197,7 +204,7 @@ Deno.serve(async (request) => {
             from: resendFromEmail,
             to: email,
             subject: copy.title,
-            text: `${copy.body}\n\nOpen YMU-A: https://ymu-a-navy.vercel.app${copy.url}`,
+            text: `${copy.body}\n\nOpen YMU-A: ${siteUrl}${copy.url}`,
           }),
         });
         if (res.ok) {

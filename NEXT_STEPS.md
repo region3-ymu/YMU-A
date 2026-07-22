@@ -1,11 +1,55 @@
 # NEXT_STEPS — YMU-A
 
-Where to pick up. **Phase 9 (Zoho reliability, school years, archiving,
-error-handling, performance/PWA polish) is code-complete AND migrations
-`0017`/`0018` are now applied to the hosted project** — see HANDOFF.md for
-the full description. Everything below "Finish Phase 9" is prior-phase
-history, kept for reference; the actionable work right now is the short
-Phase 9 list immediately below.
+Where to pick up. **A post-Phase-9 security/reliability hardening pass is
+code-complete (migration `0019`, not yet applied) on top of Phase 9** (Zoho
+reliability, school years, archiving, error-handling, performance/PWA
+polish — code-complete, migrations `0017`/`0018` applied) — see HANDOFF.md
+for the full description of both. Everything below "Finish the hardening
+pass" is prior-phase history, kept for reference; the actionable work right
+now is the two short lists immediately below.
+
+## 🔴 Finish the post-Phase-9 hardening pass — apply `0019`, redeploy 4 functions, wire the Zoho `teacher_id` field
+
+1. **Apply migration `0019`** the same way `0017`/`0018` were applied (cached
+   Supabase CLI + `db push`, or the dashboard SQL editor — see item 8 under
+   "Finish Phase 9" below for why this sandbox can't do it itself). Adds:
+   `claim_notification_batch()` (atomic notification-queue claim),
+   `close_session_from_zoho()`'s new optional teacher-ownership check, and a
+   tightened `notification_queue_select` policy (Regional Managers now
+   region-scoped instead of seeing every region).
+2. **Redeploy all 4 scheduled Edge Functions** (`check-closeout`,
+   `late-detect`, `notify-dispatch`, `stuck-session-detect`) — they now
+   import the new `supabase/functions/_shared/secret.ts` (constant-time
+   secret compare) and `supabase/config.toml` finally has their
+   `verify_jwt = false` blocks (previously only `calendar-sync` had one; a
+   redeploy without this migration's config change would have silently
+   broken all four at the gateway level). `calendar-sync` also changed (same
+   shared helper) — redeploy it too.
+3. **Set `SITE_URL`** as an Edge Function secret for `notify-dispatch` (e.g.
+   `https://ymu-a-navy.vercel.app`, no trailing slash) — it replaces a
+   hardcoded URL in notification email bodies; falls back to that same
+   production URL if left unset, so this is a cleanup, not a blocker.
+4. **Add a hidden `teacher_id` field to the real Zoho "TeacherFeedback" form**
+   (same access-needed situation as the still-missing `session_id` field —
+   see "Finish the Zoho feedback setup" below), Link Name `teacher_id` unless
+   set otherwise via `ZOHO_FEEDBACK_FIELD_TEACHER_ID`. Until this field
+   exists on the real form, the new ownership check in `0019` never
+   triggers (no teacher id ever arrives) — harmless, just not yet enforcing.
+5. **Confirm the hosted Supabase dashboard's own Auth settings** match what
+   `supabase/config.toml` (local dev config only) now asserts: "Confirm
+   email" ON, minimum password length 8. This wasn't and can't be verified
+   from this sandbox.
+6. **Run the 2 new RLS test files** once `0019` is applied (individually, to
+   avoid the documented rate limit): `npx vitest run
+   tests/zoho-ownership-rls.test.ts` and `npx vitest run
+   tests/notify-scope-rls.test.ts`. `npm run test:rls` now runs 13 files
+   total.
+7. **`SEED_ALLOW=1 npm run seed:test`** — new one-command QA bootstrap
+   (`scripts/seed-test-data.ts`): creates `teacher@`/`rm@`/`om@`/
+   `cpo@ymu.test` with the role + JWT claim set together (no re-login trap),
+   a geofenced test school, a school year, and a clock-in-able event. Prints
+   the exact `curl` to simulate the Zoho webhook for the seeded teacher's
+   session. Safe to re-run (idempotent, never deletes anything).
 
 ## 🔴 Finish Phase 9 — deploy the new Edge Function, configure Zoho, run Lighthouse
 
@@ -65,6 +109,29 @@ Phase 9 list immediately below.
    assume this shortcut will be available in a future session — the
    documented fallback (dashboard SQL editor, or the user's own machine)
    still applies.
+
+## Things the post-Phase-9 hardening pass leaves that a later maintainer should know
+
+- **Migration numbering**: `0019` is latest (not yet applied to the hosted
+  project); next available is `0020`.
+- **RLS tests**: `npm run test:rls` runs **thirteen** files as of this pass
+  (added `tests/zoho-ownership-rls.test.ts`, `tests/notify-scope-rls.test.ts`).
+  Same multi-suite `signInWithPassword` rate-limit caveat as always — run a
+  new suite standalone first.
+- **`close_session_from_zoho()`'s signature grew a 6th, optional parameter**
+  (`p_teacher_id uuid default null`) — any future re-definition of this
+  function must keep it (or a deliberate replacement) rather than reverting
+  to the 5-arg `0017` signature, or the ownership check silently disappears.
+- **`notification_queue.claimed_at` is notify-dispatch's own internal lease
+  column** — don't read it as "when this was sent" (that's `sent_at`/
+  `email_sent_at`) or write it from anywhere except `claim_notification_batch()`.
+- **`supabase/functions/_shared/secret.ts` is now the one place every
+  scheduled function's shared-secret check lives** — a future new scheduled
+  function should import it rather than writing its own `!==` comparison.
+- **`scripts/seed-test-data.ts` writes to whatever project `.env.local`
+  points at** — it's gated behind `SEED_ALLOW=1` specifically so it's never
+  run against a project by accident; don't remove that guard as a
+  convenience without replacing it with an equivalent safety check.
 
 ## Things Phase 9 leaves that a later maintainer should know
 

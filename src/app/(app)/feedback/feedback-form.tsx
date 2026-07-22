@@ -19,6 +19,7 @@ export type FeedbackSession = {
   className: string;
   schoolName: string | null;
   teacherName: string | null;
+  teacherId: string;
   clockInAt: string;
   status: AttendanceStatus;
 };
@@ -141,6 +142,7 @@ export default function FeedbackForm({
               {
                 schoolName: session.schoolName,
                 teacherName: session.teacherName,
+                teacherId: session.teacherId,
                 classDate: clockedIn,
                 className: session.className,
               },

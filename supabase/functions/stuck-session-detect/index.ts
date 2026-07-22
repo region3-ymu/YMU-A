@@ -8,6 +8,7 @@
 // the 1-minute crons (e.g. every 15 minutes — the threshold itself is
 // hours-scale, so sub-minute polling buys nothing) via pg_cron.
 import { createClient } from "npm:@supabase/supabase-js@2.110.6";
+import { secretsMatch } from "../_shared/secret.ts";
 
 declare const Deno: {
   env: { get(key: string): string | undefined };
@@ -34,7 +35,7 @@ Deno.serve(async (request) => {
     return json({ error: "Stuck-session detection is not configured." }, 500);
   }
 
-  if (request.headers.get("x-stuck-session-detect-secret") !== secret) {
+  if (!(await secretsMatch(request.headers.get("x-stuck-session-detect-secret"), secret))) {
     return json({ error: "Unauthorized." }, 401);
   }
 

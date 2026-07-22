@@ -58,6 +58,9 @@ export const EMPTY_DRAFT: FeedbackDraft = {
 export type FeedbackPrefill = {
   schoolName: string | null;
   teacherName: string | null;
+  // The teacher's profile id, prefilled into a hidden field so the inbound
+  // webhook can confirm the session being closed actually belongs to them.
+  teacherId: string | null;
   classDate: Date;
   className: string;
 };
@@ -65,6 +68,9 @@ export type FeedbackPrefill = {
 export type ZohoFeedbackConfig = {
   formUrl: string;
   sessionField: string;
+  // Hidden field carrying the teacher's profile id, so the webhook can verify
+  // the submission's session belongs to that teacher (see close_session_from_zoho).
+  teacherIdField: string;
   schoolField: string;
   teacherField: string;
   dateField: string;
@@ -87,6 +93,7 @@ export function getZohoFeedbackConfig(): ZohoFeedbackConfig | null {
   return {
     formUrl,
     sessionField: process.env.ZOHO_FEEDBACK_FIELD_SESSION || "session_id",
+    teacherIdField: process.env.ZOHO_FEEDBACK_FIELD_TEACHER_ID || "teacher_id",
     schoolField: process.env.ZOHO_FEEDBACK_FIELD_SCHOOL || "Dropdown1",
     teacherField: process.env.ZOHO_FEEDBACK_FIELD_TEACHER || "Dropdown",
     dateField: process.env.ZOHO_FEEDBACK_FIELD_DATE || "Date",
@@ -121,6 +128,7 @@ export function buildZohoFeedbackUrl(
 ): string {
   const url = new URL(config.formUrl);
   url.searchParams.set(config.sessionField, sessionId);
+  if (prefill.teacherId) url.searchParams.set(config.teacherIdField, prefill.teacherId);
   if (prefill.schoolName) url.searchParams.set(config.schoolField, prefill.schoolName);
   if (prefill.teacherName) url.searchParams.set(config.teacherField, prefill.teacherName);
   url.searchParams.set(config.dateField, formatDateForZoho(prefill.classDate));

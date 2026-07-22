@@ -7,6 +7,7 @@
 // records. Meant to run on a short interval (e.g. every minute) via
 // pg_cron — see NEXT_STEPS.md, same shape as calendar-sync's cron wiring.
 import { createClient } from "npm:@supabase/supabase-js@2.110.6";
+import { secretsMatch } from "../_shared/secret.ts";
 
 declare const Deno: {
   env: { get(key: string): string | undefined };
@@ -33,7 +34,7 @@ Deno.serve(async (request) => {
     return json({ error: "Late detection is not configured." }, 500);
   }
 
-  if (request.headers.get("x-late-detect-secret") !== secret) {
+  if (!(await secretsMatch(request.headers.get("x-late-detect-secret"), secret))) {
     return json({ error: "Unauthorized." }, 401);
   }
 

@@ -62,6 +62,7 @@ export async function POST(request: Request) {
   }
 
   const sessionField = process.env.ZOHO_FEEDBACK_FIELD_SESSION || "session_id";
+  const teacherIdField = process.env.ZOHO_FEEDBACK_FIELD_TEACHER_ID || "teacher_id";
   const engagementField = process.env.ZOHO_FEEDBACK_FIELD_ENGAGEMENT || "MultipleChoice";
   const hadIssueField = process.env.ZOHO_FEEDBACK_FIELD_HAD_ISSUE || "MultipleChoice1";
   const issueStatusField = process.env.ZOHO_FEEDBACK_FIELD_ISSUE_STATUS || "MultipleChoice2";
@@ -71,6 +72,13 @@ export async function POST(request: Request) {
   if (!isUuid(sessionId)) {
     return Response.json({ error: "Missing or invalid session id." }, { status: 400 });
   }
+
+  // Optional teacher-ownership signal: a hidden teacher_id field on the form.
+  // When present (and a valid UUID) the RPC verifies it owns the session, so a
+  // teacher can't close another teacher's session by editing the prefilled
+  // session_id. Absent/invalid => null => unchanged behavior (see the RPC).
+  const teacherIdRaw = pickField(body, teacherIdField);
+  const teacherId = isUuid(teacherIdRaw) ? teacherIdRaw : null;
 
   const engagement = String(pickField(body, engagementField) ?? "").trim();
   if (!engagement) {
@@ -95,6 +103,7 @@ export async function POST(request: Request) {
     p_had_issue: hadIssue,
     p_issue_status: issueStatus,
     p_notes: notes,
+    p_teacher_id: teacherId,
   });
   if (error) {
     return Response.json({ error: error.message }, { status: 400 });

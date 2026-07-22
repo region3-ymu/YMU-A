@@ -5,6 +5,7 @@
 // via pg_cron — see NEXT_STEPS.md for the manual deploy/schedule steps,
 // same shape as calendar-sync's cron wiring.
 import { createClient } from "npm:@supabase/supabase-js@2.110.6";
+import { secretsMatch } from "../_shared/secret.ts";
 
 declare const Deno: {
   env: { get(key: string): string | undefined };
@@ -34,7 +35,7 @@ Deno.serve(async (request) => {
   // Same rationale as calendar-sync's x-calendar-sync-secret: pg_cron/pg_net
   // calls carry no user JWT, so verify_jwt is disabled and this header is the
   // whole authorization story.
-  if (request.headers.get("x-check-closeout-secret") !== secret) {
+  if (!(await secretsMatch(request.headers.get("x-check-closeout-secret"), secret))) {
     return json({ error: "Unauthorized." }, 401);
   }
 

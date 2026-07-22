@@ -29,6 +29,25 @@ max_rows = 1000
 # JWT.
 verify_jwt = false
 
+# The other four scheduled functions are called the same way calendar-sync is:
+# pg_cron/pg_net POSTs carrying only a dedicated x-*-secret header, never a user
+# JWT. Their index.ts comments already assert verify_jwt is off; these blocks
+# make that true at deploy time instead of relying on the gateway default
+# (verify_jwt = true), which would reject every cron call at the edge. Without
+# these, a redeploy silently breaks late detection, GPS closeout, notification
+# dispatch, and stuck-session detection.
+[functions.check-closeout]
+verify_jwt = false
+
+[functions.late-detect]
+verify_jwt = false
+
+[functions.notify-dispatch]
+verify_jwt = false
+
+[functions.stuck-session-detect]
+verify_jwt = false
+
 [api.tls]
 # Enable HTTPS endpoints locally using a self-signed certificate.
 enabled = false
@@ -185,7 +204,8 @@ enable_anonymous_sign_ins = false
 # Allow/disallow testing manual linking of accounts
 enable_manual_linking = false
 # Passwords shorter than this value will be rejected as weak. Minimum 6, recommended 8 or more.
-minimum_password_length = 6
+# Matches the 8-char minimum the signup server action enforces (src/app/(auth)/actions.ts).
+minimum_password_length = 8
 # Passwords that do not meet the following requirements will be rejected as weak. Supported values
 # are: `letters_digits`, `lower_upper_letters_digits`, `lower_upper_letters_digits_symbols`
 password_requirements = ""
@@ -229,7 +249,12 @@ enable_signup = true
 # addresses. If disabled, only the new email is required to confirm.
 double_confirm_changes = true
 # If enabled, users need to confirm their email address before signing in.
-enable_confirmations = false
+# The app relies on email confirmation: /verify-email, the resend flow, and the
+# login action's email_not_confirmed handling (src/app/(auth)/actions.ts) all
+# assume it's on. NOTE: this file is the LOCAL dev config (site_url is
+# 127.0.0.1). The hosted project's auth settings live in the Supabase dashboard
+# — confirm there that "Confirm email" is ON and the password minimum is 8.
+enable_confirmations = true
 # If enabled, users will need to reauthenticate or have logged in recently to change their password.
 secure_password_change = false
 # Controls the minimum amount of time that must pass before sending another signup confirmation or password reset email.

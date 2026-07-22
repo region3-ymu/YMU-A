@@ -315,20 +315,83 @@ been removed from `.env.example`. What actually got built instead:
   direct-RPC calls (via the automated RLS tests) both work fine and were
   used instead to verify the underlying logic end-to-end.
 
+## Post-Phase-9 hardening pass (security/reliability review, migration `0019`)
+
+A full-app security/code review (not a new feature phase) found no critical
+vulnerabilities — every mutation already ran through a `SECURITY DEFINER` RPC
+or a `service_role`-only path, RLS was on every table, and authz was already
+three-layered (proxy → DAL → RLS). What it found was low-severity/reliability
+work, all fixed in one pass:
+
+1. **`supabase/config.toml`** now has `verify_jwt = false` blocks for all four
+   remaining scheduled functions (`check-closeout`/`late-detect`/
+   `notify-dispatch`/`stuck-session-detect`) — previously only `calendar-sync`
+   had one, so a redeploy of the other four would have silently defaulted them
+   to `verify_jwt = true` and the gateway would reject every cron call before
+   the function's own secret check ever ran. Also tightened
+   `minimum_password_length` (6→8) and `enable_confirmations` (false→true) to
+   match what the app already assumes — **this file is the local dev config**;
+   confirm the hosted dashboard's own auth settings match separately.
+2. **`notify-dispatch` duplicate-send fix**: a new `claim_notification_batch()`
+   RPC (migration `0019`) atomically leases a batch via `FOR UPDATE SKIP
+   LOCKED` with a `claimed_at` reclaim window, replacing the plain `select`
+   that let an overrunning run's next tick re-send the same rows.
+3. **`close_session_from_zoho()` teacher-ownership check** (migration `0019`):
+   takes an optional `p_teacher_id` and rejects a mismatch — closes the gap
+   where a teacher could edit the Zoho form's prefilled `session_id` to target
+   another teacher's open session. Backward-compatible (the check only
+   enforces once the real Zoho form gains a hidden `teacher_id` field — see
+   NEXT_STEPS.md); the app-side plumbing (config, URL builder, both callers,
+   the webhook route) is already in place and ready for it.
+4. **Constant-time secret compares**: `supabase/functions/_shared/secret.ts`
+   centralizes a SHA-256-then-compare helper, used by all five scheduled
+   functions instead of each doing its own `!==` (a gratuitous timing
+   side-channel; the Zoho webhook route already did this correctly).
+5. **`notification_queue_select` now region-scopes Regional Managers**
+   (migration `0019`) — `0018` gave any manager all rows since the table has
+   no `school_id` column to filter on directly; this reads `payload ->>
+   'school_id'` and joins to `schools.region`, matching how `flags`/`gps_checks`
+   already scope RMs.
+6. **`searchAllAction` now calls `requireProfile()`** — it was the one query
+   entry point relying on RLS/proxy alone with no explicit server-side
+   identity check.
+7. **`SITE_URL` env var** replaces a hardcoded production URL in
+   `notify-dispatch`'s email body.
+8. **`scripts/seed-test-data.ts`** (`npm run seed:test`, gated behind
+   `SEED_ALLOW=1`): bootstraps one account per role (writing `profiles.role`
+   **and** the JWT claim together, so the well-known re-login trap never
+   bites), a geofenced test school, the first `school_years` row, and a
+   calendar event the seeded teacher can clock into — the whole manual test
+   setup in one idempotent command.
+
+New RLS tests: `tests/zoho-ownership-rls.test.ts`,
+`tests/notify-scope-rls.test.ts` (both added to `test:rls`, now 13 files).
+`npm run lint`/`build`/`test` all clean. **Migration `0019` and the 4 Edge
+Function redeploys are not yet applied to the hosted project** — this
+sandbox still has no path to do that (see "What's not done" below); the code
+is written and tested, application/deploy is owed.
+
 ## What's not done (owed, documented, not a code gap)
 
 See `NEXT_STEPS.md` for the full punch list with exact commands. Summary:
 
+0. **Apply migration `0019`** and **redeploy the 4 scheduled Edge Functions**
+   (they now import the new `_shared/secret.ts`; `notify-dispatch` also needs
+   `SITE_URL` set as an Edge secret) — the hardening pass above is written and
+   unit/lint/build-clean but not yet live on the hosted project.
 1. **Deploy `stuck-session-detect` and cron-schedule it** (every ~15 min,
    given the multi-hour threshold). Not yet attempted this session beyond
    the migration push above.
 2. **Configure Zoho's webhook on Zoho's own side** — still nobody has done
    this (user lacks Zoho account access). Exact steps unchanged from the
-   last several phases' notes, in NEXT_STEPS.md.
+   last several phases' notes, in NEXT_STEPS.md. Also add a hidden
+   `teacher_id` field to the real form (alongside `session_id`) so the new
+   ownership check in item 3 above actually enforces.
 3. **Force-close the known stuck session** (`f8e52696-2000-41dd-972c-808ac51ffae8`,
    now flagged and ready) via the new `/flags` UI.
 4. **Create the first real `school_years` row** via the new `/lists/school-years`
-   UI — the table has been empty since Phase 2.
+   UI — the table has been empty since Phase 2. `npm run seed:test` also
+   creates one.
 5. **Run a real Lighthouse pass** against mobile viewports for the PWA/perf
    "done when" criteria.
 6. Everything already flagged as owed by earlier phases and never
@@ -346,9 +409,16 @@ npm run test               # 49 credential-free unit tests, no Supabase needed
 npm run test:rls           # hosted-project RLS suites (needs .env.local's Supabase keys);
                             # run files individually to avoid the auth rate limit noted above —
                             # e.g. npx vitest run tests/flags-rls.test.ts
+                            # now 13 files: adds tests/zoho-ownership-rls.test.ts and
+                            # tests/notify-scope-rls.test.ts (the hardening pass above)
+SEED_ALLOW=1 npm run seed:test   # one-command QA bootstrap: one account per role
+                                  # (teacher@/rm@/om@/cpo@ymu.test), a geofenced test
+                                  # school, a school year, a clock-in-able event
 ```
 
 For a full live walkthrough now that `0017`/`0018` are applied: log in as OM/CPO,
 create a school year at `/lists/school-years`, archive a teacher at `/users`,
 force-close the known stuck session at `/flags`, and check the Manager
-Dashboard's three new widgets reflect real state.
+Dashboard's three new widgets reflect real state. Once migration `0019` is
+applied and the 4 functions redeployed, `npm run seed:test` gets you logged-in
+test accounts for every role in one step instead of that manual setup.

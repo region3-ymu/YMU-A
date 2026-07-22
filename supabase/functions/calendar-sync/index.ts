@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { createClient } from "npm:@supabase/supabase-js@2.110.6";
 import { syncAllCalendars } from "./sync.ts";
+import { secretsMatch } from "../_shared/secret.ts";
 
 declare const Deno: {
   env: { get(key: string): string | undefined };
@@ -31,7 +32,7 @@ Deno.serve(async (request) => {
   // disabled in config.toml because scheduled HTTP calls do not carry a user
   // JWT; this dedicated secret avoids depending on which valid service-role
   // key Supabase happens to expose to the Edge Runtime.
-  if (request.headers.get("x-calendar-sync-secret") !== syncSecret) {
+  if (!(await secretsMatch(request.headers.get("x-calendar-sync-secret"), syncSecret))) {
     return json({ error: "Unauthorized." }, 401);
   }
 
