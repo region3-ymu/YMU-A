@@ -138,6 +138,27 @@ describe.runIf(configured)("Notifications (Phase 7)", () => {
         .insert({ user_id: userA.id, endpoint: `https://push.example.com/${randomUUID()}`, p256dh: "x", auth: "y" });
       expect(error).not.toBeNull();
     });
+
+    // Regression: 0014 granted authenticated only select/insert/delete on
+    // this table, missing update — saveSubscription()'s upsert() resolves to
+    // an UPDATE for an already-known endpoint (re-enabling on the same
+    // device/browser), which failed with "permission denied for table
+    // push_subscriptions" until 0015 added the grant.
+    it("re-subscribing on the same endpoint (upsert -> UPDATE path) succeeds", async () => {
+      const endpoint = `https://push.example.com/${randomUUID()}`;
+      const { error: firstError } = await userA.client
+        .from("push_subscriptions")
+        .upsert({ user_id: userA.id, endpoint, p256dh: "key-1", auth: "auth-1" }, { onConflict: "endpoint" });
+      expect(firstError).toBeNull();
+
+      const { error: secondError } = await userA.client
+        .from("push_subscriptions")
+        .upsert({ user_id: userA.id, endpoint, p256dh: "key-2", auth: "auth-2" }, { onConflict: "endpoint" });
+      expect(secondError).toBeNull();
+
+      const { data } = await userA.client.from("push_subscriptions").select("p256dh").eq("endpoint", endpoint).single();
+      expect(data?.p256dh).toBe("key-2");
+    });
   });
 
   describe("notification_preferences RLS", () => {
