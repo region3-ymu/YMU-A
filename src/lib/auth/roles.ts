@@ -66,6 +66,11 @@ export function navForRole(role: AppRole): NavItem[] {
     });
   } else {
     items.push({
+      href: "/dashboard",
+      label: "Dashboard",
+      note: "Today at a glance",
+    });
+    items.push({
       href: "/lists",
       label: "Lists",
       note: "Schools & teachers",
@@ -100,6 +105,7 @@ export const ROUTE_ROLES: Record<string, readonly AppRole[]> = {
   "/feedback": ["teacher"],
   "/lists": MANAGER_ROLES,
   "/flags": MANAGER_ROLES,
+  "/dashboard": MANAGER_ROLES,
   "/users": ["operations_manager", "cpo"],
 };
 
