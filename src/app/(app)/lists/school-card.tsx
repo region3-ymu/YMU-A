@@ -162,9 +162,16 @@ function ContactEditor({ school }: { school: School }) {
 export default function SchoolCard({
   school,
   callerRole,
+  mapCollapsed,
+  onToggleMap,
 }: {
   school: School;
   callerRole: AppRole;
+  // Map visibility is controlled by the parent (ListsExplorer) so a global
+  // "Hide maps" toggle can collapse every card at once, while this callback
+  // still lets one specific card be reopened without affecting the rest.
+  mapCollapsed: boolean;
+  onToggleMap: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const canAssignRegion = callerRole === "operations_manager" || callerRole === "cpo";
@@ -189,7 +196,26 @@ export default function SchoolCard({
       </div>
 
       {school.lat != null && school.lng != null ? (
-        <MapPreview lat={school.lat} lng={school.lng} label={school.name} />
+        mapCollapsed ? (
+          <button
+            type="button"
+            onClick={onToggleMap}
+            className="self-start rounded-xl border border-dashed border-foreground/20 px-4 py-2 text-xs opacity-70 hover:opacity-100"
+          >
+            Show map
+          </button>
+        ) : (
+          <div className="flex flex-col gap-1.5">
+            <MapPreview lat={school.lat} lng={school.lng} label={school.name} />
+            <button
+              type="button"
+              onClick={onToggleMap}
+              className="self-start text-xs underline opacity-70"
+            >
+              Hide map
+            </button>
+          </div>
+        )
       ) : (
         <p className="rounded-xl border border-dashed border-foreground/20 p-4 text-center text-xs opacity-60">
           No coordinates yet — geocoding failed. Add lat/lng below.

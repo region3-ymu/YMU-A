@@ -23,6 +23,11 @@ export default function ListsExplorer({
   const [query, setQuery] = useState("");
   const needle = query.trim().toLowerCase();
 
+  // Per-school map collapse state, lifted here so one "Hide/Show maps" button
+  // can act on every visible card at once, while a single card can still be
+  // reopened afterward without re-expanding the rest (see toggleSchoolMap).
+  const [collapsedMapIds, setCollapsedMapIds] = useState<Set<string>>(() => new Set());
+
   const filteredSchools = useMemo(
     () =>
       needle
@@ -46,6 +51,24 @@ export default function ListsExplorer({
     [teachers, needle],
   );
 
+  const allMapsCollapsed =
+    filteredSchools.length > 0 && filteredSchools.every((school) => collapsedMapIds.has(school.id));
+
+  function toggleAllMaps() {
+    setCollapsedMapIds(
+      allMapsCollapsed ? new Set() : new Set(filteredSchools.map((school) => school.id)),
+    );
+  }
+
+  function toggleSchoolMap(schoolId: string) {
+    setCollapsedMapIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(schoolId)) next.delete(schoolId);
+      else next.add(schoolId);
+      return next;
+    });
+  }
+
   return (
     <div className="flex flex-col gap-8">
       <AddSchoolForm />
@@ -64,15 +87,32 @@ export default function ListsExplorer({
       </div>
 
       <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-semibold">
-          Schools <span className="text-sm font-normal opacity-60">({filteredSchools.length})</span>
-        </h2>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-lg font-semibold">
+            Schools <span className="text-sm font-normal opacity-60">({filteredSchools.length})</span>
+          </h2>
+          {filteredSchools.length > 0 && (
+            <button
+              type="button"
+              onClick={toggleAllMaps}
+              className="rounded-lg border border-foreground/20 px-2.5 py-1 text-xs font-medium opacity-80 hover:opacity-100"
+            >
+              {allMapsCollapsed ? "Show maps" : "Hide maps"}
+            </button>
+          )}
+        </div>
         {filteredSchools.length === 0 ? (
           <p className="text-sm opacity-60">No schools match.</p>
         ) : (
           <ul className="flex flex-col gap-3">
             {filteredSchools.map((school) => (
-              <SchoolCard key={school.id} school={school} callerRole={callerRole} />
+              <SchoolCard
+                key={school.id}
+                school={school}
+                callerRole={callerRole}
+                mapCollapsed={collapsedMapIds.has(school.id)}
+                onToggleMap={() => toggleSchoolMap(school.id)}
+              />
             ))}
           </ul>
         )}
