@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireProfile } from "@/lib/auth/dal";
 import { navForRole } from "@/lib/auth/roles";
 import { getOpenSession } from "@/lib/attendance/queries";
+import PushOnboardingPrompt from "@/components/push-onboarding-prompt";
 
 export default async function Home() {
   const profile = await requireProfile();
@@ -41,6 +42,7 @@ export default async function Home() {
           </p>
         </Link>
       )}
+      <PushOnboardingPrompt />
       <ul className="grid grid-cols-2 gap-3">
         {nav.map((item) => (
           <li key={item.href}>

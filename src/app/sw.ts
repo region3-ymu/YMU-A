@@ -46,3 +46,47 @@ self.addEventListener("sync", (event) => {
     })(),
   );
 });
+
+// Phase 7: Web Push. notify-dispatch sends a JSON payload
+// ({title, body, url} — see supabase/functions/notify-dispatch/dispatch-logic.ts's
+// notificationCopy()); this just has to show it, since encryption/delivery is
+// already handled by the browser before this handler ever runs.
+self.addEventListener("push", (event) => {
+  let payload: { title?: string; body?: string; url?: string } = {};
+  try {
+    payload = event.data?.json() ?? {};
+  } catch {
+    payload = { title: "YMU-A", body: event.data?.text() ?? "" };
+  }
+  const { title = "YMU-A", body = "", url = "/" } = payload;
+
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body,
+      icon: "/icons/icon-192.png",
+      badge: "/icons/icon-192.png",
+      data: { url },
+    }),
+  );
+});
+
+// Focuses an already-open app tab rather than always opening a new one — a
+// teacher tapping a "clock out" reminder wants their existing session, not a
+// fresh tab on top of it.
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const targetUrl = (event.notification.data as { url?: string } | undefined)?.url ?? "/";
+
+  event.waitUntil(
+    (async () => {
+      const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      const existing = clients.find((client) => new URL(client.url).origin === self.location.origin);
+      if (existing) {
+        await existing.focus();
+        if ("navigate" in existing) await (existing as WindowClient).navigate(targetUrl);
+        return;
+      }
+      await self.clients.openWindow(targetUrl);
+    })(),
+  );
+});
