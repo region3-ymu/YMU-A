@@ -18,5 +18,8 @@ export type Teacher = {
   full_name: string;
   email: string | null;
   phone: string | null;
-  region: Region | null;
+  // Region(s) derived from the schools this teacher is scheduled at (a teacher
+  // can span several) — see teacher_directory() in migration 0021. NOT
+  // profiles.region, which is null-by-design for teachers.
+  regions: Region[];
 };

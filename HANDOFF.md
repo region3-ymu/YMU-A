@@ -315,6 +315,33 @@ been removed from `.env.example`. What actually got built instead:
   direct-RPC calls (via the automated RLS tests) both work fine and were
   used instead to verify the underlying logic end-to-end.
 
+## Migration `0021` — live-testing report/flag/directory fixes (not yet applied)
+
+Three more issues surfaced while the user exercised the deployed app:
+1. **Report "hours worked" was `clock_out - clock_in`**, so a late clock-out
+   inflated the number (5h shown for a 1h class). `attendance_period_rows`
+   now credits the **scheduled class duration** (`end_at - start_at`) once the
+   teacher clocked in — the fixed class block, per the user's rule. Fixes both
+   the Reports UI and the CSV export (shared view/aggregate).
+2. **A `feedback_stuck` flag lingered on `/flags` after Zoho legitimately
+   closed the session** — `close_session_from_zoho()` closed the session but
+   never resolved the escalation (only `admin_close_stuck_session` did both).
+   It now resolves the open flag too (system auto-resolution, `resolved_by`
+   null + a note).
+3. **`/lists` always showed teachers as "No region"** — `teacher_directory()`
+   returned `profiles.region`, null-by-design for teachers. It now returns
+   `regions text[]` derived from the schools they're scheduled at (a teacher
+   can be in several), same basis as the RM-visibility scoping.
+   `lists/types.ts` + `teacher-popover.tsx` updated.
+
+Still-open (likely stale-cache, not code): `/lists` phone blank + Reports
+individual-teacher picker empty for an RM. `teacher_directory` already returns
+phone and `report_teacher_roster` scopes RMs by schools.region since `0020`
+(and the RM now sees teachers in `/lists`, proving `0020` is live) — so these
+point at the same stale service-worker bundle the "Actualizar" prompt now
+handles, or teachers with no phone on file. SQL to confirm is in NEXT_STEPS.
+`npm run lint`/`build`/`test` clean; `0021` is written, not yet applied.
+
 ## Live production testing pass (migration `0020` + config gaps found)
 
 The user tested the deployed app end-to-end (`https://ymu-a-navy.vercel.app`)

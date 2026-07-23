@@ -18,7 +18,9 @@ export default function TeacherPopover({ teacher }: { teacher: Teacher }) {
         <span>
           <span className="font-medium">{teacher.full_name}</span>
           <span className="ml-2 text-xs opacity-60">
-            {teacher.region ? REGION_LABELS[teacher.region] : "No region"}
+            {teacher.regions.length > 0
+              ? teacher.regions.map((r) => REGION_LABELS[r]).join(", ")
+              : "No region"}
           </span>
         </span>
         <span className="text-xs opacity-50">{open ? "▲" : "▼"}</span>

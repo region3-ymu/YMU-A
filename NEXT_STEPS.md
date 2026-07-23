@@ -25,6 +25,94 @@ that same live-testing pass:
 See HANDOFF.md for the full description of all of this. Everything below
 "Finish the hardening pass" is prior-phase history, kept for reference.
 
+## 🔴 Apply migration `0021` (three live-testing fixes) + schedule the calendar-sync cron
+
+**Migration `0021` (not yet applied):**
+1. **Report hours = scheduled class duration.** `attendance_period_rows.hours_worked`
+   was `clock_out_at - clock_in_at` (so a teacher who clocked out hours late
+   showed e.g. 5h for a 1h class). Now it's `calendar_events.end_at - start_at`
+   credited once the teacher clocked in — the fixed class block, per the user's
+   rule ("1:15–2:15 → 1h even if they clock out at 4pm"). Fixes reports + CSV
+   export (both go through the same view/aggregate).
+2. **`close_session_from_zoho()` now resolves any open `feedback_stuck` flag**
+   for the session. Before, a session flagged stuck and then legitimately
+   closed by Zoho left the flag lingering on `/flags` forever (session-close
+   and flag-resolve are separate writes; only `admin_close_stuck_session` did
+   both). This is why the tester still saw a stuck-feedback flag after closing.
+3. **`teacher_directory()` (backs `/lists`) now shows region(s) DERIVED from
+   the schools a teacher is scheduled at** (returns `regions text[]`, a teacher
+   can be in several) instead of `profiles.region` (null-by-design for
+   teachers → always showed "No region"). TS updated (`lists/types.ts`,
+   `teacher-popover.tsx`). `npm run lint`/`build`/`test` clean.
+
+To clear the CURRENT lingering `feedback_stuck` flag (old `f8e52696` test
+session): once `0021` is applied, either close that session via the webhook
+curl again (now also resolves its flag) or force-close it on `/flags` as
+OM/CPO (`admin_close_stuck_session` already resolved the flag).
+
+**Still to verify (likely stale service-worker cache, not code):** the tester
+reported `/lists` teacher phones blank and the Reports individual-teacher
+picker empty for an RM. `teacher_directory()` already returns `phone`, and
+`report_teacher_roster()` scopes an RM by schools.region since `0020` — and
+the RM DOES now see teachers in `/lists`, which proves `0020` is live. So
+these are most likely the same stale-bundle cache that hid the VAPID key (the
+"Actualizar" update prompt fixes that once deployed), or the specific teachers
+simply have no phone in their profile / the phone is behind the click-to-expand
+popover. Confirm with:
+```sql
+-- Does report_teacher_roster return teachers for a given RM's region?
+--   (run as service role; swap the region)
+select p.id, p.full_name, p.phone
+from public.profiles p
+where p.role = 'teacher' and p.archived_at is null
+  and exists (select 1 from public.calendar_events ce join public.schools s on s.id=ce.school_id
+              where p.id = any(ce.teacher_ids) and s.region = 'central');
+```
+If that returns rows but the app doesn't, it's cache → hard-refresh / "Actualizar".
+
+## 🟢 Schedule the calendar-sync cron (every 5 min — free, recommended)
+
+Cost check (so you can stop wondering): the cron is Supabase pg_cron → the
+`calendar-sync` Edge Function → Google Calendar API. **Vercel is not involved
+at all.** pg_cron is free. Google Calendar API's free quota is ~1,000,000
+calls/day; incremental sync (syncToken) means most runs process 0 events, so
+68 calendars × 288 runs/day ≈ 20k calls/day — a rounding error against the
+quota. **Every 5 minutes is free and gives near-real-time schedule updates**
+(a new class or a schedule change shows up within ~5 min, which matters since
+teachers clock in against these events). No reason to throttle to 8h/daily.
+
+Run in the Supabase SQL editor (one block at a time):
+```sql
+-- (a) Does the Vault secret exist already?
+select name from vault.decrypted_secrets where name = 'calendar_sync_secret';
+```
+If it returns no row, create it with the SAME value as the calendar-sync Edge
+Function's CALENDAR_SYNC_SECRET:
+```sql
+select vault.create_secret('<CALENDAR_SYNC_SECRET value>', 'calendar_sync_secret');
+```
+Then schedule it:
+```sql
+select cron.schedule('calendar-sync-5min', '*/5 * * * *', $$
+  select net.http_post(
+    url := 'https://vgyogyojxlvhiwujidhy.supabase.co/functions/v1/calendar-sync',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'x-calendar-sync-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'calendar_sync_secret')
+    ),
+    body := '{}'::jsonb
+  );
+$$);
+```
+Verify: `select jobid, jobname, schedule, active from cron.job order by jobid;`
+(should now list `calendar-sync-5min`). Within ~5 min,
+`calendar_sync_state.last_synced_at` should start advancing on its own.
+
+**New calendars (Pedro's) are a separate one-time step** — the cron only syncs
+calendars already in the service account's calendarList. See "Onboarding a new
+school's calendar" below: run `scripts/subscribe-calendars.ts` with the new
+calendar IDs once, then the cron keeps them synced automatically.
+
 ## ✅ RM teacher visibility — fixed, migration `0020` applied
 
 **Root cause (confirmed by reading the code, not guessed):** `profiles.region`
