@@ -348,7 +348,20 @@ offered this before; Android only showed the browser's own easy-to-miss
 native prompt, and iOS Safari never fires one at all.
 
 `npm run lint`/`build`/`test`/`tsc --noEmit` all clean. **Migration `0020`
-is not yet applied.**
+is applied** (user confirmed against the hosted project).
+
+**One more finding from this same live-testing pass, unrelated to `0020`:**
+querying `cron.job` on the hosted project showed only
+`check-closeout-1min`/`late-detect-1min`/`notify-dispatch-1min` — **no
+`calendar-sync` job has ever been scheduled**, despite this file's own
+Phase 3 notes claiming it was live. `calendar_sync_state.last_synced_at`
+had been stuck for 3 days as a direct result — this is the actual reason a
+Regional Manager saw an empty `/schedules` for a real school with real past
+classes: nothing had synced in days, so no upcoming events existed to show.
+Not a code bug; the fix is scheduling the missing `cron.job` entry (same
+`net.http_post` + Vault-secret pattern as the other three), given directly
+to the user. **Confirm it's scheduled and firing before assuming this is
+resolved** — see NEXT_STEPS.md for the exact SQL.
 
 ## Post-Phase-9 hardening pass (security/reliability review, migration `0019`)
 
@@ -401,10 +414,11 @@ work, all fixed in one pass:
 
 New RLS tests: `tests/zoho-ownership-rls.test.ts`,
 `tests/notify-scope-rls.test.ts` (both added to `test:rls`, now 13 files).
-`npm run lint`/`build`/`test` all clean. **Migration `0019` and the 4 Edge
-Function redeploys are not yet applied to the hosted project** — this
-sandbox still has no path to do that (see "What's not done" below); the code
-is written and tested, application/deploy is owed.
+`npm run lint`/`build`/`test` all clean. **Migration `0019` is applied**
+(user confirmed). **The 4 Edge Function redeploys are not confirmed done**
+— this sandbox has no path to do that itself (see "What's not done"
+below); the code is written and tested, the actual `supabase functions
+deploy` for each is on the user.
 
 ## What's not done (owed, documented, not a code gap)
 

@@ -1,17 +1,31 @@
 # NEXT_STEPS — YMU-A
 
-Where to pick up. **Migration `0019` (post-Phase-9 hardening) is applied.**
-A second round, **migration `0020`, fixes a real bug found during live
-production testing: a Regional Manager saw "Unknown teacher" on the
-dashboard for a correctly-assigned, real teacher** — see "Fix RM teacher
-visibility" below; **`0020` is not yet applied.** Also found during that same
-testing pass: several **production environment variables were never set on
-Vercel/Supabase** (VAPID keys, `ZOHO_FEEDBACK_FORM_URL`, the Auth URL
-Configuration) — see "Finish production configuration" below. See
-HANDOFF.md for the full description of all of this. Everything below
+Where to pick up. **Migrations `0019` and `0020` are both applied** (the
+user confirmed both directly against the hosted project). `0020` fixed a
+real bug found during live production testing: a Regional Manager saw
+"Unknown teacher" on the dashboard for a correctly-assigned, real teacher —
+see "Fix RM teacher visibility" below for the root cause. Also found during
+that same live-testing pass:
+- Several **production environment variables were never set on
+  Vercel/Supabase** (VAPID keys, `ZOHO_FEEDBACK_FORM_URL`, the Auth URL
+  Configuration) — user has since set the VAPID keys and
+  `ZOHO_FEEDBACK_FORM_URL` and fixed the Auth URL config; see "Finish
+  production configuration" below for anything still outstanding.
+- **`calendar-sync`'s pg_cron job had never actually been scheduled on the
+  hosted project** — confirmed via `select * from cron.job` returning only
+  `check-closeout-1min`/`late-detect-1min`/`notify-dispatch-1min`, no
+  `calendar-sync` job at all, and `calendar_sync_state.last_synced_at`
+  stuck 3 days stale as a result. This is why `/schedules` looked broken
+  for a Regional Manager — not a bug, just a cron that silently never
+  existed despite HANDOFF.md's Phase 3 notes claiming it was live. Fix
+  given directly to the user (schedule `calendar-sync-5min`, same pattern
+  as the other three jobs) — confirm it's scheduled and firing before
+  assuming this is resolved.
+
+See HANDOFF.md for the full description of all of this. Everything below
 "Finish the hardening pass" is prior-phase history, kept for reference.
 
-## 🔴 Fix RM teacher visibility — apply migration `0020`
+## ✅ RM teacher visibility — fixed, migration `0020` applied
 
 **Root cause (confirmed by reading the code, not guessed):** `profiles.region`
 is null-by-design for every teacher (Phase 3 derives a teacher's region from
@@ -42,29 +56,32 @@ Fixed in **migration `0020`** + code changes across 5 files:
   Updated the fixture to seed a school + `calendar_events` row per region
   instead, matching reality.
 
-**Apply `0020`** the same way `0017`/`0018`/`0019` were applied
-(`npx supabase db push`), then run `npx vitest run tests/schools-rls.test.ts`
-and `npx vitest run tests/reports-rls.test.ts` to confirm.
+`0020` is applied and confirmed against the hosted project. **Still owed:**
+run `npx vitest run tests/schools-rls.test.ts` and
+`npx vitest run tests/reports-rls.test.ts` to confirm the RLS suite agrees
+(not yet run against the live schema as of this writing).
 
-## 🔴 Finish production configuration — several env vars were never set on Vercel
+## 🟡 Finish production configuration — most of this is done, a couple items remain
 
-Found during live testing on `https://ymu-a-navy.vercel.app`: these all work
-locally (`.env.local` has them) but were never copied to Vercel's/Supabase's
-production settings:
+Found during live testing on `https://ymu-a-navy.vercel.app` (all of these
+work locally via `.env.local` but were never copied to Vercel's/Supabase's
+production settings):
 
-1. **Push notifications** ("Push isn't configured yet: Missing VAPID public
-   key") — set `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`,
-   `VAPID_SUBJECT` on Vercel (redeploy required — `NEXT_PUBLIC_*` vars are
-   baked in at build time) and `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`/
-   `VAPID_SUBJECT` as Edge Function secrets for `notify-dispatch`.
-2. **Zoho feedback form** ("The feedback form isn't configured yet") — set
-   `ZOHO_FEEDBACK_FORM_URL` on Vercel at minimum; the `ZOHO_FEEDBACK_FIELD_*`
-   vars only need setting if the real form's Link Names differ from the
-   defaults in `.env.example`.
-3. **Email confirmation links point at localhost** — Supabase dashboard →
-   Authentication → URL Configuration: set **Site URL** to
-   `https://ymu-a-navy.vercel.app` and add
-   `https://ymu-a-navy.vercel.app/**` to **Redirect URLs**. Not a code
+1. ~~**Push notifications** ("Push isn't configured yet: Missing VAPID public
+   key")~~ — **done.** User set `NEXT_PUBLIC_VAPID_PUBLIC_KEY`,
+   `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` on Vercel. **Still owed:** confirm a
+   Vercel redeploy actually happened after setting them (`NEXT_PUBLIC_*`
+   vars are baked in at build time, so saving them alone isn't enough), and
+   set `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`/`VAPID_SUBJECT` as **Edge
+   Function secrets** too (separate store from Vercel — needed by
+   `notify-dispatch`).
+2. ~~**Zoho feedback form** ("The feedback form isn't configured yet")~~ —
+   **done**, user set `ZOHO_FEEDBACK_FORM_URL` on Vercel. The
+   `ZOHO_FEEDBACK_FIELD_*` vars only need setting if the real form's Link
+   Names differ from the defaults in `.env.example` (see the Zoho setup
+   section below for the `teacher_id` field specifically).
+3. ~~**Email confirmation links point at localhost**~~ — **done**, user set
+   Site URL + Redirect URLs in the Supabase dashboard. Was not a code
    issue — `emailRedirectTo` is already built dynamically from the request's
    real origin (`src/app/(auth)/actions.ts`); Supabase just ignores it when
    the URL isn't in that allow-list and falls back to Site URL instead.
@@ -78,7 +95,8 @@ never fires that event at all, so nothing appeared there. Added
 (shows signed in or out): captures `beforeinstallprompt` on Android/Chrome/
 Edge for a real "Install" button, and shows manual "Share → Add to Home
 Screen" instructions on iOS (which has no programmatic install trigger at
-all). Dismissible, persisted in `localStorage`.
+all). Dismissible, persisted in `localStorage`. **Owed:** user still needs
+to test it live on both Android and iOS once this is pushed and deployed.
 
 ## 🔴 Finish the post-Phase-9 hardening pass — apply `0019`, redeploy 4 functions, wire the Zoho `teacher_id` field
 
@@ -184,8 +202,8 @@ all). Dismissible, persisted in `localStorage`.
 
 ## Things the post-Phase-9 hardening pass leaves that a later maintainer should know
 
-- **Migration numbering**: `0019` is latest (not yet applied to the hosted
-  project); next available is `0020`.
+- **Migration numbering**: `0020` is latest, both `0019` and `0020` are
+  applied to the hosted project; next available is `0021`.
 - **RLS tests**: `npm run test:rls` runs **thirteen** files as of this pass
   (added `tests/zoho-ownership-rls.test.ts`, `tests/notify-scope-rls.test.ts`).
   Same multi-suite `signInWithPassword` rate-limit caveat as always — run a
@@ -374,6 +392,21 @@ Then flip the HANDOFF "pending" note to verified.
 Discovered live: sharing a calendar with the service account (Apps Script bulk-share) grants it real access immediately, but does **not** make it discoverable — Google's calendarList (what `syncAllCalendars` uses to find calendars) is separate from ACL access, and a service account has no UI to "subscribe" itself the way a human does when accepting a share. So onboarding any new school's calendar is two steps, not one:
 1. Share the calendar with `ymu-calendar-sync@cosmic-antenna-502619-u6.iam.gserviceaccount.com` (Apps Script bulk-share script, or manually via Calendar's sharing UI for a single new school).
 2. Run `node --env-file=.env.local scripts/subscribe-calendars.ts <calendar-ids.json>` with the new calendar id(s) — this is what actually makes it discoverable. Safe to re-run with the full list any time (idempotent). See `DECISIONS.md` ("`calendarList` vs ACL") for why this exists.
+
+**🟡 Owed right now (not urgent — do whenever ready, not blocking anything else):**
+Pedro added new school calendars to the shared Google Calendar setup (new
+schools, not new events on already-connected calendars — the schools
+themselves are already in `/lists`). To bring them in:
+1. Confirm each new calendar is actually shared with the service account
+   email above (Pedro's step).
+2. Collect the new calendar IDs (Google Calendar → per-calendar Settings →
+   "Integrate calendar" → Calendar ID) into a JSON file, e.g.
+   `[{"id": "xxxxx@group.calendar.google.com", "name": "School Name"}, ...]`.
+3. `node --env-file=.env.local scripts/subscribe-calendars.ts <that file>`.
+4. `npm run sync:calendar` (or just wait for the now-scheduled 5-min cron —
+   see the cron-gap item below).
+5. Check `/schedules` → "Calendars needing attention" for anything that
+   didn't auto-match, and assign it to the right school manually.
 
 ## Things Phase 5 leaves that Phase 6 (and later) should know
 
