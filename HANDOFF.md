@@ -347,6 +347,24 @@ Also added: a universal "Install app" prompt
 offered this before; Android only showed the browser's own easy-to-miss
 native prompt, and iOS Safari never fires one at all.
 
+**Follow-up round (stale-cache + iOS push + update prompt):** live testing
+showed "missing VAPID key" persisting even after the env var was set and
+deployed. Root-caused conclusively — fetched the live production JS chunks
+directly and the VAPID key IS inlined there (Vercel is correct); the failures
+were **stale Serwist service-worker precache** on devices that had loaded the
+app before the var existed (the tester's cached Chrome failed, a fresh Firefox
+worked). Shipped `src/components/sw-update-prompt.tsx` (mounted inside
+`SerwistProvider`): forces `serwist.update()` on mount/interval/focus and
+shows a "new version — Actualizar" banner that reloads into fresh assets, so
+users self-update instead of manually clearing cache. Also fixed a real iOS
+bug in `getPushSupportState()` (`src/lib/push.ts`): it checked for
+`PushManager` before the iOS-installed check, so iPhone Safari users got a
+dead-end "not supported" instead of the "add to Home Screen first" onboarding
+(iOS only exposes push to an installed PWA). The Zoho "not configured" report
+is the same stale-cache story plus a reminder that `ZOHO_FEEDBACK_FORM_URL` is
+a server-side (non-`NEXT_PUBLIC_`) Vercel var needing Production scope + a
+redeploy — it does not belong in Supabase. `lint`/`build` clean.
+
 `npm run lint`/`build`/`test`/`tsc --noEmit` all clean. **Migration `0020`
 is applied** (user confirmed against the hosted project).
 

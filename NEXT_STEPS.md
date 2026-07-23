@@ -68,25 +68,58 @@ work locally via `.env.local` but were never copied to Vercel's/Supabase's
 production settings):
 
 1. ~~**Push notifications** ("Push isn't configured yet: Missing VAPID public
-   key")~~ — **done.** User set `NEXT_PUBLIC_VAPID_PUBLIC_KEY`,
-   `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` on Vercel. **Still owed:** confirm a
-   Vercel redeploy actually happened after setting them (`NEXT_PUBLIC_*`
-   vars are baked in at build time, so saving them alone isn't enough), and
-   set `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`/`VAPID_SUBJECT` as **Edge
-   Function secrets** too (separate store from Vercel — needed by
-   `notify-dispatch`).
-2. ~~**Zoho feedback form** ("The feedback form isn't configured yet")~~ —
-   **done**, user set `ZOHO_FEEDBACK_FORM_URL` on Vercel. The
-   `ZOHO_FEEDBACK_FIELD_*` vars only need setting if the real form's Link
-   Names differ from the defaults in `.env.example` (see the Zoho setup
-   section below for the `teacher_id` field specifically).
+   key")~~ — **env config done + verified**: the production bundle at
+   `ymu-a-navy.vercel.app` was fetched directly and DOES contain the inlined
+   `NEXT_PUBLIC_VAPID_PUBLIC_KEY` (Vercel built it in correctly). Every
+   remaining "missing VAPID key" report was **a stale service-worker cache
+   on the device** serving a bundle built before the var existed — confirmed
+   by the tester's own result (failed on their cached Chrome, worked on a
+   fresh Firefox). See the "stale-SW / update prompt" section below for the
+   permanent fix. **Still owed:** set `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`/
+   `VAPID_SUBJECT` as **Edge Function secrets** for `notify-dispatch` (a
+   separate store from Vercel — needed for pushes to actually SEND, distinct
+   from the browser being able to subscribe).
+2. **Zoho feedback form** ("The feedback form isn't configured yet") — user
+   set `ZOHO_FEEDBACK_FORM_URL`, but it still showed unconfigured in the app.
+   Note this is a **server-side** var (not `NEXT_PUBLIC_`), read at request
+   time by `getZohoFeedbackConfig()` — so it does NOT belong in Supabase (that
+   store is irrelevant to it; only Vercel matters) and it needs (a) to be set
+   for the **Production** environment specifically, (b) a redeploy AFTER
+   adding it, and (c) a non-stale render — the same service-worker cache that
+   hid the VAPID key also caches the feedback/clocking page HTML, so a stuck
+   device shows the old "not configured" state. The update prompt below fixes
+   (c). Also note the form only renders when the teacher has an OPEN session
+   (clocked in) and is online.
 3. ~~**Email confirmation links point at localhost**~~ — **done**, user set
    Site URL + Redirect URLs in the Supabase dashboard. Was not a code
    issue — `emailRedirectTo` is already built dynamically from the request's
    real origin (`src/app/(auth)/actions.ts`); Supabase just ignores it when
    the URL isn't in that allow-list and falls back to Site URL instead.
 
-## 🟡 Universal "Install app" prompt — built, not previously requested
+## 🟢 Stale service-worker cache — root cause of "missing VAPID key" / "Zoho not configured", now fixed in-app
+
+The single recurring gremlin behind "I set the env var but the app still says
+it's missing": this is a **PWA with a Serwist service worker that precaches
+the JS bundle**. A device that loaded the app before an env var was set keeps
+running the old cached bundle indefinitely — browsers may not re-check the SW
+script for ~24h, so even a correct new Vercel deploy doesn't reach it. Proven
+conclusively: fetching the live production chunks showed the VAPID key present
+(Vercel is correct), yet a tester's cached Chrome still failed while a fresh
+Firefox worked.
+
+Two fixes shipped for this:
+- **`src/components/sw-update-prompt.tsx`** (mounted inside `SerwistProvider`
+  in the root layout): forces `serwist.update()` on mount, every 60s, and on
+  tab focus (defeating the ~24h SW-script cache), and when a new worker takes
+  control it shows a **"Hay una versión nueva de la app — Actualizar"** banner
+  whose button reloads into the fresh assets. This is the permanent
+  self-service fix so end users never have to clear cache or reinstall.
+- The immediate unblock for an already-stuck device is still: clear site data
+  / unregister the SW (desktop DevTools → Application → Clear site data), or
+  uninstall + reinstall the PWA (mobile). Firefox worked for the tester
+  precisely because it had no cached SW.
+
+## 🟡 Universal "Install app" prompt + iOS push-support fix
 
 No component offered installing the PWA before — Android showed only the
 browser's own native `beforeinstallprompt` UI (easy to miss), and iOS Safari
@@ -95,8 +128,16 @@ never fires that event at all, so nothing appeared there. Added
 (shows signed in or out): captures `beforeinstallprompt` on Android/Chrome/
 Edge for a real "Install" button, and shows manual "Share → Add to Home
 Screen" instructions on iOS (which has no programmatic install trigger at
-all). Dismissible, persisted in `localStorage`. **Owed:** user still needs
-to test it live on both Android and iOS once this is pushed and deployed.
+all). Dismissible, persisted in `localStorage`.
+
+**Also fixed a real iOS bug in `getPushSupportState()` (`src/lib/push.ts`):**
+iOS only exposes `PushManager` to an installed home-screen PWA, never to a
+Safari tab — but the old code checked for `PushManager` BEFORE the iOS
+install check, so an iPhone user in Safari was told "push not supported in
+this browser" (a dead end) instead of "add to Home Screen first". Reordered
+so iOS-not-standalone returns `ios-needs-install` (the onboarding path) first.
+On iOS, push then works once the app is opened from the Home Screen icon on
+iOS 16.4+. **Owed:** test live on Android + iOS after deploy.
 
 ## 🔴 Finish the post-Phase-9 hardening pass — apply `0019`, redeploy 4 functions, wire the Zoho `teacher_id` field
 

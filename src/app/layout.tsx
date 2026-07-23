@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Script from "next/script";
 import InstallPrompt from "@/components/install-prompt";
+import SwUpdatePrompt from "@/components/sw-update-prompt";
 import "./globals.css";
 
 // Sets data-theme on <html> before hydration, straight from localStorage —
@@ -70,7 +71,10 @@ export default function RootLayout({
         <Script id="theme-init" strategy="beforeInteractive">
           {THEME_INIT_SCRIPT}
         </Script>
-        <SerwistProvider swUrl="/serwist/sw.js">{children}</SerwistProvider>
+        <SerwistProvider swUrl="/serwist/sw.js">
+          {children}
+          <SwUpdatePrompt />
+        </SerwistProvider>
         <InstallPrompt />
       </body>
     </html>

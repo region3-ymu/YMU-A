@@ -27,8 +27,19 @@ function isStandalone(): boolean {
 
 export function getPushSupportState(): PushSupportState {
   if (typeof window === "undefined") return "unsupported";
+  // iOS only exposes the Push API (PushManager) to an installed home-screen
+  // PWA — never to a normal Safari tab. So the "is it installed?" check MUST
+  // come before the PushManager check on iOS: otherwise an iOS Safari user
+  // (who *could* enable push simply by adding the app to their Home Screen)
+  // is wrongly told "not supported in this browser" and given no way forward,
+  // instead of the "add to Home Screen first" onboarding. This ordering bug
+  // is why iPhone testers saw "unsupported" rather than the install prompt.
+  if (isIOS()) {
+    if (!isStandalone()) return "ios-needs-install";
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return "unsupported";
+    return "ready";
+  }
   if (!("serviceWorker" in navigator) || !("PushManager" in window)) return "unsupported";
-  if (isIOS() && !isStandalone()) return "ios-needs-install";
   return "ready";
 }
 
