@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { requireRole } from "@/lib/auth/dal";
 import { MANAGER_ROLES } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/server";
+import { getReportRoster } from "@/lib/reports/queries";
+import type { RosterTeacher } from "@/lib/reports/types";
 import ForceCloseForm from "./force-close-form";
 import ResolveFlagButton from "./resolve-flag-button";
 
@@ -11,18 +13,24 @@ type FlagRow = {
   id: string;
   type: "gps_out_of_fence" | "late_clock_in" | "feedback_stuck";
   session_id: string | null;
+  teacher_id: string;
   details: Record<string, unknown>;
   created_at: string;
   resolved_at: string | null;
-  teacher: { id: string; full_name: string; phone: string | null } | null;
   school: { id: string; name: string; contact_name: string | null; contact_phone: string | null } | null;
   event: { id: string; summary: string | null; start_at: string | null } | null;
   session: { id: string; clock_in_at: string } | null;
 };
 
+// No profiles(full_name/phone) embed for the teacher — a Regional Manager's
+// profiles_select RLS gates on profiles.region, which is null-by-design for
+// teachers (Phase 3 derives a teacher's region from their scheduled schools
+// instead), so that embed silently came back null for every teacher here —
+// breaking the "call the teacher" escalation this whole page exists for.
+// getReportRoster() below resolves name/phone correctly (region-scoped via
+// calendar_events -> schools.region, same fix as the dashboard).
 const FLAG_COLUMNS = `
-  id, type, session_id, details, created_at, resolved_at,
-  teacher:profiles!flags_teacher_id_fkey(id, full_name, phone),
+  id, type, session_id, teacher_id, details, created_at, resolved_at,
   school:schools(id, name, contact_name, contact_phone),
   event:calendar_events(id, summary, start_at),
   session:attendance_sessions(id, clock_in_at)
@@ -32,12 +40,16 @@ export default async function FlagsPage() {
   const caller = await requireRole(...MANAGER_ROLES);
 
   const supabase = await createClient();
-  const { data } = await supabase
-    .from("flags")
-    .select(FLAG_COLUMNS)
-    .is("resolved_at", null)
-    .order("created_at", { ascending: false });
+  const [{ data }, roster] = await Promise.all([
+    supabase
+      .from("flags")
+      .select(FLAG_COLUMNS)
+      .is("resolved_at", null)
+      .order("created_at", { ascending: false }),
+    getReportRoster(true),
+  ]);
   const flags = (data as unknown as FlagRow[]) ?? [];
+  const teacherById = new Map(roster.map((t) => [t.id, t]));
   const canForceClose = caller.role === "operations_manager" || caller.role === "cpo";
 
   return (
@@ -56,11 +68,11 @@ export default async function FlagsPage() {
           {flags.map((flag) => (
             <li key={flag.id} className="rounded-2xl border border-red-500/40 bg-red-500/5 p-4">
               {flag.type === "late_clock_in" ? (
-                <LateClockInCard flag={flag} />
+                <LateClockInCard flag={flag} teacher={teacherById.get(flag.teacher_id)} />
               ) : flag.type === "feedback_stuck" ? (
-                <StuckFeedbackCard flag={flag} />
+                <StuckFeedbackCard flag={flag} teacher={teacherById.get(flag.teacher_id)} />
               ) : (
-                <GpsOutOfFenceCard flag={flag} />
+                <GpsOutOfFenceCard flag={flag} teacher={teacherById.get(flag.teacher_id)} />
               )}
               {flag.type === "feedback_stuck" && flag.session_id ? (
                 canForceClose && <ForceCloseForm sessionId={flag.session_id} />
@@ -75,14 +87,14 @@ export default async function FlagsPage() {
   );
 }
 
-function StuckFeedbackCard({ flag }: { flag: FlagRow }) {
+function StuckFeedbackCard({ flag, teacher }: { flag: FlagRow; teacher: RosterTeacher | undefined }) {
   const clockInAt = flag.session?.clock_in_at;
 
   return (
     <div>
       <p className="font-semibold">Feedback stuck — Zoho webhook never arrived</p>
       <p className="mt-1 text-sm opacity-80">
-        {flag.teacher?.full_name ?? "A teacher"}
+        {teacher?.full_name ?? "A teacher"}
         {flag.school ? (
           <>
             {" "}at <span className="font-medium">{flag.school.name}</span>
@@ -100,7 +112,7 @@ function telHref(phone: string) {
   return `tel:${phone.replace(/[^\d+]/g, "")}`;
 }
 
-function LateClockInCard({ flag }: { flag: FlagRow }) {
+function LateClockInCard({ flag, teacher }: { flag: FlagRow; teacher: RosterTeacher | undefined }) {
   const startAt = flag.details.scheduled_start_at as string | undefined;
   const summary = (flag.details.summary as string | undefined) ?? flag.event?.summary ?? "a class";
 
@@ -108,7 +120,7 @@ function LateClockInCard({ flag }: { flag: FlagRow }) {
     <div>
       <p className="font-semibold">Missed clock-in</p>
       <p className="mt-1 text-sm opacity-80">
-        {flag.teacher?.full_name ?? "A teacher"} hasn&apos;t clocked in to <span className="font-medium">{summary}</span>
+        {teacher?.full_name ?? "A teacher"} hasn&apos;t clocked in to <span className="font-medium">{summary}</span>
         {flag.school ? (
           <>
             {" "}at <span className="font-medium">{flag.school.name}</span>
@@ -126,11 +138,11 @@ function LateClockInCard({ flag }: { flag: FlagRow }) {
         <li className="flex items-center justify-between rounded-lg border border-foreground/10 bg-background p-3">
           <span>
             <span className="font-semibold">1. Call the teacher</span>
-            {flag.teacher?.full_name ? <span className="opacity-70"> — {flag.teacher.full_name}</span> : null}
+            {teacher?.full_name ? <span className="opacity-70"> — {teacher.full_name}</span> : null}
           </span>
-          {flag.teacher?.phone ? (
-            <a href={telHref(flag.teacher.phone)} className="rounded-lg bg-accent px-3 py-1.5 font-semibold text-accent-foreground">
-              Call {flag.teacher.phone}
+          {teacher?.phone ? (
+            <a href={telHref(teacher.phone)} className="rounded-lg bg-accent px-3 py-1.5 font-semibold text-accent-foreground">
+              Call {teacher.phone}
             </a>
           ) : (
             <span className="opacity-50">No phone on file</span>
@@ -154,7 +166,7 @@ function LateClockInCard({ flag }: { flag: FlagRow }) {
   );
 }
 
-function GpsOutOfFenceCard({ flag }: { flag: FlagRow }) {
+function GpsOutOfFenceCard({ flag, teacher }: { flag: FlagRow; teacher: RosterTeacher | undefined }) {
   const distanceM = flag.details.distance_m as number | undefined;
   const radiusM = flag.details.geofence_radius_m as number | undefined;
 
@@ -162,7 +174,7 @@ function GpsOutOfFenceCard({ flag }: { flag: FlagRow }) {
     <div>
       <p className="font-semibold">Out-of-fence GPS check</p>
       <p className="mt-1 text-sm opacity-80">
-        {flag.teacher?.full_name ?? "A teacher"} clocked in
+        {teacher?.full_name ?? "A teacher"} clocked in
         {flag.school ? (
           <>
             {" "}to <span className="font-medium">{flag.school.name}</span>

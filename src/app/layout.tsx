@@ -2,6 +2,7 @@ import { SerwistProvider } from "@serwist/turbopack/react";
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Script from "next/script";
+import InstallPrompt from "@/components/install-prompt";
 import "./globals.css";
 
 // Sets data-theme on <html> before hydration, straight from localStorage —
@@ -70,6 +71,7 @@ export default function RootLayout({
           {THEME_INIT_SCRIPT}
         </Script>
         <SerwistProvider swUrl="/serwist/sw.js">{children}</SerwistProvider>
+        <InstallPrompt />
       </body>
     </html>
   );

@@ -52,5 +52,6 @@ export type RosterTeacher = {
   id: string;
   full_name: string;
   email: string | null;
+  phone: string | null;
   archived_at: string | null;
 };

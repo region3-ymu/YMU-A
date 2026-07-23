@@ -53,6 +53,7 @@ describe.runIf(configured)("schools & school_years RLS", () => {
   const createdUserIds: string[] = [];
   const createdSchoolIds: string[] = [];
   const createdSchoolYearIds: string[] = [];
+  const createdEventIds: string[] = [];
 
   async function createUser(fullName: string): Promise<TestUser> {
     const email = `schools-rls-${randomUUID()}@example.com`;
@@ -111,6 +112,9 @@ describe.runIf(configured)("schools & school_years RLS", () => {
   }, 60_000);
 
   afterAll(async () => {
+    if (createdEventIds.length) {
+      await admin.from("calendar_events").delete().in("id", createdEventIds);
+    }
     if (createdSchoolIds.length) {
       await admin.from("schools").delete().in("id", createdSchoolIds);
     }
@@ -264,13 +268,76 @@ describe.runIf(configured)("schools & school_years RLS", () => {
   });
 
   describe("teacher_directory()", () => {
+    // A teacher's region is derived from the schools their events are at,
+    // not from profiles.region (Phase 3 decision — see DECISIONS.md;
+    // profiles.region is left null for every real teacher). teacher_directory()
+    // must therefore scope a Regional Manager via calendar_events ->
+    // schools.region, same as report_teacher_roster() — so this fixture seeds
+    // a school + a calendar_events row per region rather than relying on
+    // teacherCentral/teacherEast's (unrealistic) profiles.region set in the
+    // outer beforeAll above.
+    let directoryCentralSchoolId: string;
+    let directoryEastSchoolId: string;
+
+    beforeAll(async () => {
+      const [central, east] = await Promise.all([
+        admin
+          .from("schools")
+          .insert({ name: "Directory Central", address: "8 Test Ave", region: "central" })
+          .select("id")
+          .single(),
+        admin
+          .from("schools")
+          .insert({ name: "Directory East", address: "9 Test Ave", region: "east" })
+          .select("id")
+          .single(),
+      ]);
+      if (central.error || east.error) throw new Error("teacher_directory fixture setup failed");
+      directoryCentralSchoolId = central.data!.id;
+      directoryEastSchoolId = east.data!.id;
+      createdSchoolIds.push(directoryCentralSchoolId, directoryEastSchoolId);
+
+      const nowIso = new Date().toISOString();
+      const laterIso = new Date(Date.now() + 3_600_000).toISOString();
+      const [centralEvent, eastEvent] = await Promise.all([
+        admin
+          .from("calendar_events")
+          .insert({
+            calendar_id: "teacher-directory-test-calendar",
+            google_event_id: `directory-central-${randomUUID()}`,
+            summary: "Directory Central Class",
+            start_at: nowIso,
+            end_at: laterIso,
+            teacher_ids: [teacherCentral.id],
+            school_id: directoryCentralSchoolId,
+          })
+          .select("id")
+          .single(),
+        admin
+          .from("calendar_events")
+          .insert({
+            calendar_id: "teacher-directory-test-calendar",
+            google_event_id: `directory-east-${randomUUID()}`,
+            summary: "Directory East Class",
+            start_at: nowIso,
+            end_at: laterIso,
+            teacher_ids: [teacherEast.id],
+            school_id: directoryEastSchoolId,
+          })
+          .select("id")
+          .single(),
+      ]);
+      if (centralEvent.error || eastEvent.error) throw new Error("teacher_directory event fixture failed");
+      createdEventIds.push(centralEvent.data!.id, eastEvent.data!.id);
+    });
+
     it("a teacher gets nothing back", async () => {
       const { data, error } = await teacherA.client.rpc("teacher_directory");
       expect(error).toBeNull();
       expect(data ?? []).toHaveLength(0);
     });
 
-    it("a regional manager gets only teachers in their own region, with email", async () => {
+    it("a regional manager gets only teachers scheduled at a school in their own region, with email", async () => {
       const { data, error } = await rmCentral.client.rpc("teacher_directory");
       expect(error).toBeNull();
       const ids = (data ?? []).map((row: { id: string }) => row.id);

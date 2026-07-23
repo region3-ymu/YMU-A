@@ -315,6 +315,41 @@ been removed from `.env.example`. What actually got built instead:
   direct-RPC calls (via the automated RLS tests) both work fine and were
   used instead to verify the underlying logic end-to-end.
 
+## Live production testing pass (migration `0020` + config gaps found)
+
+The user tested the deployed app end-to-end (`https://ymu-a-navy.vercel.app`)
+and found: (1) several env vars were never copied from `.env.local` to
+production (VAPID keys, `ZOHO_FEEDBACK_FORM_URL`) — pure configuration, see
+NEXT_STEPS.md; (2) the Supabase Auth "Site URL" is still `localhost` —
+config-only, `emailRedirectTo` is already built correctly from the request
+origin in code; (3) **a real bug**: Regional Managers saw "Unknown teacher"
+on the dashboard for a correctly-assigned teacher.
+
+Root cause: `profiles.region` is null-by-design for teachers (Phase 3
+derives a teacher's region from their scheduled schools instead), but
+`profiles_select` RLS still gates a Regional Manager's visibility of any
+`profiles` row on `region = current_app_region()`. Every read resolving a
+teacher's name/phone for an RM via a plain `profiles` select/embed — the
+dashboard (2 widgets), `/flags` (breaking the "call the teacher" button —
+the most consequential instance), `reports/search.ts`, and `/lists`'
+`teacher_directory()` (silently empty for every RM, never reported since an
+empty list looks like "no teachers yet") — silently got nothing back.
+`report_teacher_roster()` (Phase 8) already had this right, scoping via
+`calendar_events -> schools.region` instead. Migration `0020` extends it
+with `phone` and fixes `teacher_directory()`'s scoping the same way; the 4
+TS call sites now resolve names/phones through it instead of the broken
+embeds. `tests/schools-rls.test.ts`'s fixture (which set `profiles.region`
+directly — unrealistic vs. production) was updated to seed a school +
+calendar event per region instead, matching reality.
+
+Also added: a universal "Install app" prompt
+(`src/components/install-prompt.tsx`, mounted in the root layout) — nothing
+offered this before; Android only showed the browser's own easy-to-miss
+native prompt, and iOS Safari never fires one at all.
+
+`npm run lint`/`build`/`test`/`tsc --noEmit` all clean. **Migration `0020`
+is not yet applied.**
+
 ## Post-Phase-9 hardening pass (security/reliability review, migration `0019`)
 
 A full-app security/code review (not a new feature phase) found no critical

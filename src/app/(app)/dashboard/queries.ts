@@ -22,7 +22,6 @@ export type OpenSessionRow = {
   teacher_id: string;
   clock_in_at: string;
   clock_in_status: "on_time" | "late";
-  teacher: { full_name: string } | null;
   school: { name: string } | null;
   event: { summary: string | null } | null;
 };
@@ -30,13 +29,20 @@ export type OpenSessionRow = {
 // Every currently-open session IS a teacher clocked in right now AND owing
 // feedback (Phase 4's "open session is the Demand") — one query serves both
 // the "clocked in now" and "pending feedback" widgets.
+//
+// Deliberately does NOT embed profiles(full_name) for the teacher: a
+// Regional Manager's profiles_select RLS gates on profiles.region, which is
+// null-by-design for teachers (Phase 3 derives a teacher's region from their
+// scheduled schools instead) — that embed would silently come back null for
+// every teacher, rendering as "Unknown teacher" even for a correctly
+// assigned one. The caller resolves the name via getReportRoster(), which
+// scopes Regional Managers correctly (calendar_events -> schools.region).
 export async function getOpenSessions(): Promise<OpenSessionRow[]> {
   const supabase = await createClient();
   const { data } = await supabase
     .from("attendance_sessions")
     .select(
       "id, teacher_id, clock_in_at, clock_in_status, " +
-        "teacher:profiles!attendance_sessions_teacher_id_fkey(full_name), " +
         "school:schools(name), event:calendar_events(summary)",
     )
     .is("clock_out_at", null)
@@ -46,18 +52,20 @@ export async function getOpenSessions(): Promise<OpenSessionRow[]> {
 
 export type LateFlagRow = {
   id: string;
+  teacher_id: string;
   created_at: string;
-  teacher: { full_name: string } | null;
   school: { name: string } | null;
   event: { summary: string | null; start_at: string | null } | null;
 };
 
+// Same reasoning as getOpenSessions() above: no profiles embed, teacher_id
+// only — resolve the name via getReportRoster() at render time.
 export async function getOpenLateFlags(): Promise<LateFlagRow[]> {
   const supabase = await createClient();
   const { data } = await supabase
     .from("flags")
     .select(
-      "id, created_at, teacher:profiles!flags_teacher_id_fkey(full_name), " +
+      "id, teacher_id, created_at, " +
         "school:schools(name), event:calendar_events(summary, start_at)",
     )
     .eq("type", "late_clock_in")

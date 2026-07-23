@@ -1,12 +1,84 @@
 # NEXT_STEPS — YMU-A
 
-Where to pick up. **A post-Phase-9 security/reliability hardening pass is
-code-complete (migration `0019`, not yet applied) on top of Phase 9** (Zoho
-reliability, school years, archiving, error-handling, performance/PWA
-polish — code-complete, migrations `0017`/`0018` applied) — see HANDOFF.md
-for the full description of both. Everything below "Finish the hardening
-pass" is prior-phase history, kept for reference; the actionable work right
-now is the two short lists immediately below.
+Where to pick up. **Migration `0019` (post-Phase-9 hardening) is applied.**
+A second round, **migration `0020`, fixes a real bug found during live
+production testing: a Regional Manager saw "Unknown teacher" on the
+dashboard for a correctly-assigned, real teacher** — see "Fix RM teacher
+visibility" below; **`0020` is not yet applied.** Also found during that same
+testing pass: several **production environment variables were never set on
+Vercel/Supabase** (VAPID keys, `ZOHO_FEEDBACK_FORM_URL`, the Auth URL
+Configuration) — see "Finish production configuration" below. See
+HANDOFF.md for the full description of all of this. Everything below
+"Finish the hardening pass" is prior-phase history, kept for reference.
+
+## 🔴 Fix RM teacher visibility — apply migration `0020`
+
+**Root cause (confirmed by reading the code, not guessed):** `profiles.region`
+is null-by-design for every teacher (Phase 3 derives a teacher's region from
+the schools their events are at, not from their own profile). But
+`profiles_select` RLS (Phase 1) still gates a Regional Manager's visibility of
+ANY `profiles` row by `region = current_app_region()`, which a teacher's row
+(region always null) can never satisfy. Every read that resolved a teacher's
+name/phone for a Regional Manager via a plain `profiles` select or a
+PostgREST embed therefore silently got nothing back — rendering as "Unknown
+teacher", or in `/lists`' teacher directory's case, an empty list entirely
+(never reported because an empty list just reads as "no teachers yet").
+
+Fixed in **migration `0020`** + code changes across 5 files:
+- `report_teacher_roster()` (the one RPC that already got this right, via
+  `calendar_events -> schools.region`) extended with a `phone` column.
+- `teacher_directory()` (`/lists`) fixed to use the same region-via-schedule
+  join instead of `profiles.region` — was silently empty for every RM.
+- `dashboard/queries.ts`, `flags/page.tsx`, `stuck-sessions.ts`,
+  `reports/search.ts` — all dropped their broken `profiles` embeds/selects
+  and now resolve teacher name/phone via `getReportRoster()`. **`/flags`'s
+  fix is the most consequential one**: the "call the teacher" button in the
+  late-clock-in escalation card had `teacher?.phone` silently `undefined` for
+  every Regional Manager, i.e. the phone-call escalation this page exists for
+  never actually worked for an RM.
+- `tests/schools-rls.test.ts`'s `teacher_directory()` suite was passing
+  before this fix only because its fixture set `profiles.region` directly on
+  a test teacher — unrealistic vs. production, where that's always null.
+  Updated the fixture to seed a school + `calendar_events` row per region
+  instead, matching reality.
+
+**Apply `0020`** the same way `0017`/`0018`/`0019` were applied
+(`npx supabase db push`), then run `npx vitest run tests/schools-rls.test.ts`
+and `npx vitest run tests/reports-rls.test.ts` to confirm.
+
+## 🔴 Finish production configuration — several env vars were never set on Vercel
+
+Found during live testing on `https://ymu-a-navy.vercel.app`: these all work
+locally (`.env.local` has them) but were never copied to Vercel's/Supabase's
+production settings:
+
+1. **Push notifications** ("Push isn't configured yet: Missing VAPID public
+   key") — set `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`,
+   `VAPID_SUBJECT` on Vercel (redeploy required — `NEXT_PUBLIC_*` vars are
+   baked in at build time) and `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`/
+   `VAPID_SUBJECT` as Edge Function secrets for `notify-dispatch`.
+2. **Zoho feedback form** ("The feedback form isn't configured yet") — set
+   `ZOHO_FEEDBACK_FORM_URL` on Vercel at minimum; the `ZOHO_FEEDBACK_FIELD_*`
+   vars only need setting if the real form's Link Names differ from the
+   defaults in `.env.example`.
+3. **Email confirmation links point at localhost** — Supabase dashboard →
+   Authentication → URL Configuration: set **Site URL** to
+   `https://ymu-a-navy.vercel.app` and add
+   `https://ymu-a-navy.vercel.app/**` to **Redirect URLs**. Not a code
+   issue — `emailRedirectTo` is already built dynamically from the request's
+   real origin (`src/app/(auth)/actions.ts`); Supabase just ignores it when
+   the URL isn't in that allow-list and falls back to Site URL instead.
+
+## 🟡 Universal "Install app" prompt — built, not previously requested
+
+No component offered installing the PWA before — Android showed only the
+browser's own native `beforeinstallprompt` UI (easy to miss), and iOS Safari
+never fires that event at all, so nothing appeared there. Added
+`src/components/install-prompt.tsx`, mounted app-wide in the root layout
+(shows signed in or out): captures `beforeinstallprompt` on Android/Chrome/
+Edge for a real "Install" button, and shows manual "Share → Add to Home
+Screen" instructions on iOS (which has no programmatic install trigger at
+all). Dismissible, persisted in `localStorage`.
 
 ## 🔴 Finish the post-Phase-9 hardening pass — apply `0019`, redeploy 4 functions, wire the Zoho `teacher_id` field
 

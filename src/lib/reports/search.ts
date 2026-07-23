@@ -2,10 +2,17 @@
 // every query below runs through the caller's own RLS-scoped server client,
 // so a teacher's search only ever surfaces their own rows and a Regional
 // Manager's only surfaces their region's, exactly like every other read in
-// this app. No new grants, no SECURITY DEFINER — this is a convenience
-// layer over data the caller could already read one table at a time.
+// this app. No new grants — the one exception is teacher name resolution,
+// which goes through getReportRoster() (SECURITY DEFINER) rather than a
+// plain `profiles` select/embed: a Regional Manager's profiles_select RLS
+// gates on profiles.region, which is null-by-design for teachers (Phase 3
+// derives a teacher's region from their scheduled schools instead), so a
+// direct profiles read here would silently return zero teacher matches for
+// every Regional Manager. getReportRoster() scopes correctly instead
+// (calendar_events -> schools.region), same fix as the dashboard and /flags.
 
 import { createClient } from "@/lib/supabase/server";
+import { getReportRoster } from "./queries";
 
 export type EventResult = {
   id: string;
@@ -39,7 +46,7 @@ export async function searchAll(rawQuery: string): Promise<SearchResults> {
   const pattern = `%${term}%`;
   const supabase = await createClient();
 
-  const [eventsRes, schoolsRes, teachersRes] = await Promise.all([
+  const [eventsRes, schoolsRes, roster] = await Promise.all([
     supabase
       .from("calendar_events")
       .select("id, summary, start_at, school:schools(name)")
@@ -48,8 +55,12 @@ export async function searchAll(rawQuery: string): Promise<SearchResults> {
       .order("start_at", { ascending: false })
       .limit(20),
     supabase.from("schools").select("id, name").ilike("name", pattern).limit(10),
-    supabase.from("profiles").select("id, full_name").eq("role", "teacher").ilike("full_name", pattern).limit(10),
+    // includeArchived: true — search should still find an archived teacher's
+    // historical sessions, matching this function's pre-fix behavior (the
+    // old direct profiles select had no archived filter at all).
+    getReportRoster(true),
   ]);
+  const nameById = new Map(roster.map((t) => [t.id, t.full_name]));
 
   const events: EventResult[] = ((eventsRes.data as unknown as Array<{
     id: string;
@@ -64,12 +75,12 @@ export async function searchAll(rawQuery: string): Promise<SearchResults> {
   }));
 
   const schools: SchoolResult[] = (schoolsRes.data as SchoolResult[]) ?? [];
-  const matchedTeacherIds = ((teachersRes.data as Array<{ id: string; full_name: string }>) ?? []).map(
-    (t) => t.id,
-  );
+  const lowerTerm = term.toLowerCase();
+  const matchedTeacherIds = roster
+    .filter((t) => t.full_name.toLowerCase().includes(lowerTerm))
+    .map((t) => t.id);
 
-  const sessionSelect =
-    "id, clock_in_at, clock_out_at, clock_in_status, teacher:profiles!attendance_sessions_teacher_id_fkey(full_name), school:schools(name)";
+  const sessionSelect = "id, teacher_id, clock_in_at, clock_out_at, clock_in_status, school:schools(name)";
 
   const [sessionsByTeacherRes, sessionsByNotesRes] = await Promise.all([
     matchedTeacherIds.length > 0
@@ -90,10 +101,10 @@ export async function searchAll(rawQuery: string): Promise<SearchResults> {
 
   type RawSession = {
     id: string;
+    teacher_id: string;
     clock_in_at: string;
     clock_out_at: string | null;
     clock_in_status: "on_time" | "late";
-    teacher: { full_name: string } | null;
     school: { name: string } | null;
   };
 
@@ -104,7 +115,7 @@ export async function searchAll(rawQuery: string): Promise<SearchResults> {
   ]) {
     byId.set(raw.id, {
       id: raw.id,
-      teacher_name: raw.teacher?.full_name ?? "Unknown teacher",
+      teacher_name: nameById.get(raw.teacher_id) ?? "Unknown teacher",
       school_name: raw.school?.name ?? null,
       clock_in_at: raw.clock_in_at,
       clock_out_at: raw.clock_out_at,

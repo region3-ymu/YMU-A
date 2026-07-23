@@ -77,7 +77,7 @@ export default async function DashboardPage() {
           <ul className="grid gap-2">
             {openSessions.map((s) => (
               <li key={s.id} className="rounded-xl border border-foreground/10 p-3 text-sm">
-                <span className="font-medium">{s.teacher?.full_name ?? "Unknown teacher"}</span>
+                <span className="font-medium">{nameById.get(s.teacher_id) ?? "Unknown teacher"}</span>
                 {" · "}
                 {s.school?.name ?? "—"}
                 {" · "}
@@ -106,7 +106,7 @@ export default async function DashboardPage() {
                 key={f.id}
                 className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 text-sm"
               >
-                {f.teacher?.full_name ?? "Unknown teacher"} · {f.school?.name ?? "—"} ·{" "}
+                {nameById.get(f.teacher_id) ?? "Unknown teacher"} · {f.school?.name ?? "—"} ·{" "}
                 {f.event?.summary ?? "Class"}
               </li>
             ))}
@@ -128,7 +128,7 @@ export default async function DashboardPage() {
                 key={f.id}
                 className="rounded-xl border border-red-500/30 bg-red-500/5 p-3 text-sm"
               >
-                {f.teacher?.full_name ?? "Unknown teacher"} · {f.school?.name ?? "—"} ·{" "}
+                {nameById.get(f.teacher_id) ?? "Unknown teacher"} · {f.school?.name ?? "—"} ·{" "}
                 {f.event?.summary ?? "Class"}
                 {f.session?.clock_in_at
                   ? ` · open since ${new Date(f.session.clock_in_at).toLocaleString()}`

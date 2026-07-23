@@ -8,17 +8,19 @@ import { createClient } from "@/lib/supabase/server";
 export type StuckSessionFlag = {
   id: string;
   session_id: string;
+  teacher_id: string;
   created_at: string;
   details: Record<string, unknown>;
-  teacher: { id: string; full_name: string; phone: string | null } | null;
   school: { id: string; name: string } | null;
   event: { id: string; summary: string | null } | null;
   session: { id: string; clock_in_at: string } | null;
 };
 
+// No profiles(full_name/phone) embed — see the comment in
+// dashboard/queries.ts's getOpenSessions() for why that silently breaks for
+// Regional Managers. Callers resolve teacher name/phone via getReportRoster().
 const STUCK_SESSION_FLAG_COLUMNS = `
-  id, session_id, created_at, details,
-  teacher:profiles!flags_teacher_id_fkey(id, full_name, phone),
+  id, session_id, teacher_id, created_at, details,
   school:schools(id, name),
   event:calendar_events(id, summary),
   session:attendance_sessions(id, clock_in_at)
