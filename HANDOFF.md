@@ -340,7 +340,10 @@ phone and `report_teacher_roster` scopes RMs by schools.region since `0020`
 (and the RM now sees teachers in `/lists`, proving `0020` is live) — so these
 point at the same stale service-worker bundle the "Actualizar" prompt now
 handles, or teachers with no phone on file. SQL to confirm is in NEXT_STEPS.
-`npm run lint`/`build`/`test` clean; `0021` is written, not yet applied.
+`npm run lint`/`build`/`test` clean. **`0021` was applied by the user** (along
+with scheduling the calendar-sync cron and wiring the Zoho form + Apps Script
+relay) — end-to-end confirmation of each is the current owed work; see
+NEXT_STEPS.md's "Verification checklist" at the top.
 
 ## Live production testing pass (migration `0020` + config gaps found)
 

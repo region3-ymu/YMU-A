@@ -25,9 +25,54 @@ that same live-testing pass:
 See HANDOFF.md for the full description of all of this. Everything below
 "Finish the hardening pass" is prior-phase history, kept for reference.
 
-## 🔴 Apply migration `0021` (three live-testing fixes) + schedule the calendar-sync cron
+## ✅ Verification checklist (everything is applied/deployed per the user — this is what's left to CONFIRM works)
 
-**Migration `0021` (not yet applied):**
+Nothing below is a code task; it's confirming the deployed system behaves. Do
+each on a device that has loaded the LATEST build (tap "Actualizar" if the
+update banner shows, or hard-refresh / reinstall the PWA — stale
+service-worker cache is the #1 false alarm).
+
+1. **Zoho clock-out flow (the big one).** Log in as a teacher with an OPEN
+   session → `/feedback` → submit the embedded form. Within ~4s the app should
+   flip to "Feedback received" and the session closes. If not, open the Apps
+   Script **Executions** and read the `YMU-A relay -> status/body` line and
+   `session_id enviado:` — that pinpoints it (empty session_id = Zoho prefill;
+   `{"ok":true}` but app unchanged = stale cache).
+2. **Push notifications.** Android/desktop: `/settings` → Enable notifications
+   → should prompt for permission (not "missing VAPID key"). iOS: must be
+   installed to Home Screen first (the prompt now guides this). Then confirm a
+   real push arrives (needs the VAPID keys ALSO set as Edge Function secrets
+   for notify-dispatch, not just Vercel).
+3. **Install prompt.** Fresh visit on Android Chrome → "Install" button; on
+   iPhone Safari → "Share → Add to Home Screen" instructions.
+4. **Reports hours (0021).** A teacher who clocked out late should show the
+   scheduled class hours (e.g. 1h for a 1:15–2:15 class), not the clock span.
+5. **`/flags` stuck-feedback (0021).** Close a previously-stuck session via
+   the webhook (or force-close as OM/CPO) → the flag should disappear from
+   `/flags`, not linger.
+6. **`/lists` regions (0021).** Teachers should show their region(s) derived
+   from their schools (e.g. "Central"), not "No region". Phones show in the
+   click-to-expand popover (if the teacher has one on file).
+7. **Reports individual picker (RM).** The teacher dropdown should list
+   individual teachers (not just "All teachers in my region"). If empty, run
+   the SQL in the section below to tell data-vs-cache apart.
+8. **Calendar sync cron.** `select jobid, jobname, schedule, active from cron.job;`
+   should list `calendar-sync-5min`; `calendar_sync_state.last_synced_at`
+   should be advancing (within the last few minutes). Add a future event to a
+   synced calendar with a teacher's login email as attendee → it appears in
+   `/schedules` within ~5 min.
+9. **New calendars (Pedro's).** Only after `scripts/subscribe-calendars.ts`
+   has been run for them (one-time) will the cron pick them up.
+
+## ✅ Migration `0021` + calendar-sync cron — applied by the user (VERIFY, see checklist at top)
+
+The user applied `0021`, scheduled the calendar-sync cron, wired the Zoho
+form + Apps Script relay, and pushed/deployed the code — but hasn't confirmed
+each actually works end to end yet. The **"Verification checklist"** at the
+very top of this file is the owed work now. Details of what `0021` changed
+are kept below for reference.
+
+**Migration `0021` (applied by the user; verify the three effects):**
 1. **Report hours = scheduled class duration.** `attendance_period_rows.hours_worked`
    was `clock_out_at - clock_in_at` (so a teacher who clocked out hours late
    showed e.g. 5h for a 1h class). Now it's `calendar_events.end_at - start_at`
