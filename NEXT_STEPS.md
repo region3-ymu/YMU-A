@@ -25,6 +25,65 @@ that same live-testing pass:
 See HANDOFF.md for the full description of all of this. Everything below
 "Finish the hardening pass" is prior-phase history, kept for reference.
 
+## 🔴 Newest round: update-prompt reload race (fixed, needs push), CALENDAR_SYNC_SECRET (never existed, now generated), stale flag cleanup
+
+1. **`sw-update-prompt.tsx` reload race — fixed, not yet pushed.** Tapping
+   "Actualizar" could leave a real device on a dead page because the reload
+   fired before the new service worker actually took control. Now waits for
+   the real `controlling` event (4s safety-net timeout as a fallback). Needs
+   a `git push` to reach production — until then, a device stuck after
+   tapping the button just needs to fully close and reopen the app (the new
+   worker from the earlier attempt is likely already active), or
+   DevTools → Application → Clear site data as a last resort.
+2. **`CALENDAR_SYNC_SECRET` had never been generated anywhere** — confirmed
+   absent from `.env.local` and from the Supabase Edge Function secrets list.
+   This is the real reason the 5-min cron's calls were 401ing (found by
+   spotting a lone 401 in `net._http_response` at the same 5-minute-mark
+   timestamps `calendar-sync` should fire at, alongside the three 1-minute
+   jobs' successful calls). A new value was generated
+   (`3e2b2eb171e18d9edeb7235f3fc8a5dad5789ef2f63ac989`) — **set this exact
+   value in all three places, they must match**:
+   - Supabase → Edge Functions → Secrets → `CALENDAR_SYNC_SECRET`
+   - Supabase → SQL Editor: `select vault.update_secret((select id from vault.secrets where name = 'calendar_sync_secret'), '3e2b2eb171e18d9edeb7235f3fc8a5dad5789ef2f63ac989');` (or `vault.create_secret(...)` if that row doesn't exist yet)
+   - Vercel → Environment Variables → `CALENDAR_SYNC_SECRET` (needed by the manual "Sync calendars" button)
+   
+   Also worth checking while there: search the same Supabase secrets list for
+   `GOOGLE_SERVICE_ACCOUNT_KEY_BASE64` — if that's ALSO missing, the deployed
+   Edge Function has never had what it needs to actually call Google's API
+   (the manual `npm run sync:calendar` has only ever worked because it reads
+   that value from `.env.local` directly, bypassing the Edge Function
+   entirely). Copy it from `.env.local` into the Edge Function secrets if absent.
+
+   Verify after setting: `select id, status_code, created from net._http_response order by created desc limit 15;` should show no more 401s at the 5-minute marks.
+3. **The old `feedback_stuck` flag for session `f8e52696` is a stale
+   leftover, not a new bug** — that session actually closed via Zoho on
+   2026-07-23, but *before* migration `0021`'s auto-resolve fix existed, so
+   the flag was never cleared. One-time cleanup (safe — only touches flags
+   whose session is already closed):
+   ```sql
+   update flags f
+   set resolved_at = now(),
+       details = f.details || jsonb_build_object('resolution_notes', 'Auto-resuelto retroactivamente: la sesión ya estaba cerrada')
+   from attendance_sessions a
+   where f.type = 'feedback_stuck'
+     and f.resolved_at is null
+     and f.session_id = a.id
+     and a.clock_out_at is not null;
+   ```
+   Going forward `0021` handles this automatically for any new session.
+4. **Confirmed live**: posting directly to the Apps Script `.../exec` URL
+   (bypassing Zoho, with `session_id`/`teacher_id` in the body) closed a real
+   session end-to-end — proves the Apps Script relay + `/api/zoho-feedback`
+   are both correct. The user found and fixed the one remaining real gap:
+   Zoho's own Payload Parameters never included `session_id`/`teacher_id`
+   (the fields existed on the form, but a field existing doesn't mean Zoho
+   includes it in the webhook body — only Payload Parameters control that).
+   Re-test the full flow to confirm.
+5. **To test the Zoho flow without being near a school**: the seed script's
+   test school has a 100km geofence specifically for this.
+   `SEED_ALLOW=1 npm run seed:test` → log in as `teacher@ymu.test` → `/clocking`
+   → clock in (works from anywhere) → `/feedback` → submit the real Zoho form.
+
 ## ✅ Verification checklist (everything is applied/deployed per the user — this is what's left to CONFIRM works)
 
 Nothing below is a code task; it's confirming the deployed system behaves. Do

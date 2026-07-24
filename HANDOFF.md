@@ -315,6 +315,46 @@ been removed from `.env.example`. What actually got built instead:
   direct-RPC calls (via the automated RLS tests) both work fine and were
   used instead to verify the underlying logic end-to-end.
 
+## Update-prompt reload race fixed + calendar-sync secret was never generated + stale flag cleanup
+
+Three more live-testing rounds:
+
+1. **`sw-update-prompt.tsx` had a real race**: `applyUpdate()` called
+   `serwist.messageSkipWaiting()` and `window.location.reload()` back to back,
+   without waiting for the new worker to actually take control. A real device
+   got stuck on a dead/blank page after tapping "Actualizar" — confirmed the
+   server itself was fully healthy (Vercel/serwist/manifest all `200`) before
+   concluding this was a client-side race, not an outage. Fixed: the reload
+   now happens inside the `controlling` event handler (which fires once the
+   new worker genuinely has control), with a 4s safety-net timeout in case
+   the event never fires. Button also shows "Actualizando…" and disables
+   itself during the transition.
+2. **`CALENDAR_SYNC_SECRET` had never actually been generated anywhere** —
+   not in `.env.local`, and the user confirmed it wasn't visible in the
+   Supabase Edge Function secrets list either. This is the real reason the
+   5-min cron's calls were 401ing the whole time (spotted by correlating a
+   lone 401 in `net._http_response` against the exact 5-minute-mark
+   timestamps where `calendar-sync` should fire alongside the three 1-minute
+   jobs). A new secret was generated and the user is setting it consistently
+   in the three places it must match: the Edge Function secret, the
+   Supabase Vault secret (`calendar_sync_secret`, read by the cron's
+   `net.http_post` call), and Vercel (needed by the manual sync button).
+3. **The known old stuck-feedback flag (`f8e52696`) was confirmed to be a
+   stale leftover, not a new bug**: its session actually closed via Zoho on
+   2026-07-23, but *before* migration `0021`'s auto-resolve fix existed, so
+   the flag was never cleared. A one-time cleanup query (resolve any
+   `feedback_stuck` flag whose session is already closed) is in
+   NEXT_STEPS.md — going forward, `0021` handles this automatically for any
+   new session.
+
+Also confirmed live: the direct-to-Apps-Script test (bypassing Zoho entirely,
+posting straight to the `.../exec` URL with `session_id`/`teacher_id` in the
+body) successfully closed a real session end-to-end — proving the Apps
+Script relay code and `/api/zoho-feedback` are both correct. The only real
+gap was Zoho's own Payload Parameters never including `session_id`/
+`teacher_id` (found and fixed by the user) — once that's confirmed working
+live, the whole Zoho chain is done.
+
 ## Manual "Sync calendars" button + two more live-testing findings
 
 User-requested: a way to trigger Google Calendar sync from the app (RM/OM/CPO,

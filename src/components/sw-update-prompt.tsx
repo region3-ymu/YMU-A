@@ -19,6 +19,7 @@ import { useSerwist } from "@serwist/turbopack/react";
 export default function SwUpdatePrompt() {
   const { serwist } = useSerwist();
   const [updateReady, setUpdateReady] = useState(false);
+  const [reloading, setReloading] = useState(false);
   const reloadingRef = useRef(false);
   const hadControllerRef = useRef(false);
 
@@ -33,9 +34,19 @@ export default function SwUpdatePrompt() {
     // A waiting worker is unambiguously a pending update.
     const onWaiting = () => setUpdateReady(true);
     // controlling fires on first install too (no prior controller) — only
-    // treat it as an update when the page was already controlled.
+    // treat it as an update when the page was already controlled. If we're
+    // the ones who triggered this (reloadingRef, set by applyUpdate()), the
+    // new worker has now ACTUALLY taken over — only now is it safe to
+    // reload. Reloading immediately after messageSkipWaiting() (without
+    // waiting for this event) races the activation and can land the page in
+    // a broken intermediate state — confirmed live (a real device got stuck
+    // on a blank/dead page after tapping "Actualizar").
     const onControlling = () => {
-      if (hadControllerRef.current && !reloadingRef.current) setUpdateReady(true);
+      if (reloadingRef.current) {
+        window.location.reload();
+        return;
+      }
+      if (hadControllerRef.current) setUpdateReady(true);
     };
     serwist.addEventListener("waiting", onWaiting);
     serwist.addEventListener("controlling", onControlling);
@@ -62,9 +73,14 @@ export default function SwUpdatePrompt() {
 
   function applyUpdate() {
     reloadingRef.current = true;
-    // Tell any waiting worker to take over, then reload into the new assets.
+    setReloading(true);
+    // Tell the waiting worker to take over. The actual reload happens in
+    // onControlling() above, once it genuinely has — NOT immediately here.
     serwist?.messageSkipWaiting();
-    window.location.reload();
+    // Safety net: if 'controlling' never fires for some reason (e.g. the
+    // browser already handled it, or a rare platform quirk), don't leave the
+    // user stuck looking at an unresponsive "Actualizando…" button forever.
+    setTimeout(() => window.location.reload(), 4000);
   }
 
   if (!updateReady) return null;
@@ -75,9 +91,10 @@ export default function SwUpdatePrompt() {
       <button
         type="button"
         onClick={applyUpdate}
-        className="shrink-0 rounded-lg bg-background px-3 py-1.5 text-sm font-semibold text-foreground"
+        disabled={reloading}
+        className="shrink-0 rounded-lg bg-background px-3 py-1.5 text-sm font-semibold text-foreground disabled:opacity-60"
       >
-        Actualizar
+        {reloading ? "Actualizando…" : "Actualizar"}
       </button>
     </div>
   );
