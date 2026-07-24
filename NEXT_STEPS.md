@@ -60,9 +60,62 @@ service-worker cache is the #1 false alarm).
    should list `calendar-sync-5min`; `calendar_sync_state.last_synced_at`
    should be advancing (within the last few minutes). Add a future event to a
    synced calendar with a teacher's login email as attendee → it appears in
-   `/schedules` within ~5 min.
+   `/schedules` within ~5 min. **Gotcha confirmed live:** `cron.job_run_details`
+   reporting `succeeded` only means the `net.http_post` SQL call queued
+   successfully — `net.http_post` is async, so it does NOT prove the Edge
+   Function itself returned 200. If `calendar_sync_state.last_synced_at`
+   isn't advancing despite `succeeded` runs, check the actual HTTP result:
+   ```sql
+   select id, status_code, created, content::text
+   from net._http_response order by created desc limit 10;
+   ```
+   A non-200 here (401 = Vault secret mismatch; 500 = the function is
+   erroring — check its logs in the Supabase dashboard) is the real signal.
+8b. **Meeting invites that were never accepted still match.**
+   `matchedTeacherIds()` in `sync.ts` matches by attendee email only — it does
+   not check `responseStatus`, so a teacher who never accepted (or declined)
+   a calendar invite still gets matched, sees the class in `/schedules`, and
+   can clock in. Confirmed by reading the code, not assumed. If this should
+   instead require `responseStatus === "accepted"`, it's a small change to
+   that one function — ask before changing, since it removes a currently-
+   working (if permissive) path.
 9. **New calendars (Pedro's).** Only after `scripts/subscribe-calendars.ts`
    has been run for them (one-time) will the cron pick them up.
+10. **Manual "Sync calendars" button (new — see below).** Set
+    `CALENDAR_SYNC_SECRET` on Vercel (same value as the Edge Function secret),
+    then `/lists/calendar-sync` should sync all/selected schools on click.
+
+## 🟢 New: manual "Sync calendars" button (`/lists/calendar-sync`)
+
+Requested directly by the user: a way to trigger a sync from the app instead
+of the terminal (`npm run sync:calendar`) or waiting for the 5-min cron —
+useful right after adding an event, or to retry one school after fixing its
+calendar sharing. Visible to all managers (RM/OM/CPO) via a "Sync calendars →"
+link on `/lists`.
+
+- `supabase/functions/calendar-sync/sync.ts`'s `syncAllCalendars()` gained an
+  optional `schoolIds` filter (discovery/auto-matching still always runs
+  against everything — cheap and independent of which schools' events get
+  pulled; only the per-school event-sync loop is filtered).
+- `supabase/functions/calendar-sync/index.ts` reads an optional
+  `{ schoolIds: string[] }` JSON body and passes it through. pg_cron's body
+  (`'{}'`) is unaffected — no `schoolIds` means sync everything, unchanged.
+- New page `src/app/(app)/lists/calendar-sync/` — a checkbox list of every
+  school with a linked calendar; leave all unchecked to sync everything, or
+  check specific ones. The server action calls the deployed Edge Function
+  over HTTP with `x-calendar-sync-secret`, the exact same way pg_cron does.
+
+**Owed: set `CALENDAR_SYNC_SECRET` on Vercel** (server-only env var, same
+value as the Supabase Edge Function secret) — the button's server action
+runs on Vercel, not in Supabase, so it needs its own copy of this secret to
+authenticate the call. Until it's set, the button shows a clear
+"not configured" error instead of failing silently.
+
+`npm run lint`/`build`/`test` clean; visually verified logged in as
+`rm@ymu.test` against the real hosted project (real school list rendered,
+checkbox selection + button label updated correctly) — the actual sync
+submit was deliberately not triggered during verification to avoid an
+unplanned real Google Calendar API run.
 
 ## ✅ Migration `0021` + calendar-sync cron — applied by the user (VERIFY, see checklist at top)
 
@@ -532,19 +585,26 @@ The app is live at **`https://ymu-a-navy.vercel.app`**. `ZOHO_FEEDBACK_FORM_URL`
 
 Still-open pre-Phase-4 work also remains: Phase 3's multi-calendar sync review queue and the initial event-sync catch-up (below). **Multi-calendar sync is live-verified**: **50/68 calendars pinned**, **17 genuinely open** ([`calendar-sync-open-issues.csv`](calendar-sync-open-issues.csv), local artifact), 1 dismissed. Event-sync is still catching up (only ~9/50 pinned calendars had finished their initial full sync at last run) — keep running `npm run sync:calendar` or deploy the cron.
 
-## Finish the Zoho feedback setup (two things left)
+## Finish the Zoho feedback setup — CURRENT architecture (supersedes the old version of this section below)
 
-The app's schema/webhook/prefill were rebuilt to match the REAL "TeacherFeedback" form (read directly out of its live HTML, not guessed — see DECISIONS.md for the full comparison against an earlier, wrong, invented schema). The real form asks: Teacher Name (dropdown), Date, School (dropdown), Choose program (dropdown), student engagement (5-choice scale), whether there was an issue (Yes/No), issue status (conditional), and optional notes.
+**The real form is "YMU Teacher Feedback"** (NOT `zfrmz.com/MIVJGi5IlokeTf8oTsDR`/"TeacherFeedback" — that was a wrong guess from an earlier phase, before anyone had actually looked). Its real questions/Link Names, confirmed against real submitted data (a downloaded CSV export), are: `Teacher Name`, `Date`, `School`, `Choose program`, 5 separate per-program "objective" questions, `How would you rate student engagement during today's class objective?` (engagement), `Did you encounter any issues during today's class?` (Yes/No), `If you answered 'YES', please choose one of the options below.` (multi-select issue TYPE — **not currently captured by the app's schema at all**, still lives only in the spreadsheet mirror below), `What is the current status of this issue?` (issue status — matches `ISSUE_STATUS_OPTIONS` in `zoho-feedback.ts` exactly), `Notes or Comments / Instrument Needs or Repairs?`.
 
-The real, fixed form URL (`https://zfrmz.com/MIVJGi5IlokeTf8oTsDR`, the one already embedded in every calendar event's description) is set in `ZOHO_FEEDBACK_FORM_URL`, with the real field Link Names as defaults in `zoho-feedback.ts` (`Dropdown`/`Date`/`Dropdown1`/`Dropdown2`/`MultipleChoice`/`MultipleChoice1`/`MultipleChoice2`/`MultiLine`).
+**The architecture is NOT "Zoho webhook → our app" directly.** A pre-existing Google Apps Script webhook (deployed as a Web App, URL ending `.../exec`) already receives every submission and mirrors it into a Google Sheet ("Teacher Feedback 2025-26") + one filter-tab per teacher — likely feeding Looker Studio or manual review. Zoho Forms' webhook integration only supports **one** target URL per form, so rather than replace that (and lose the spreadsheet mirror), the Apps Script itself was extended to **relay** each submission to `POST /api/zoho-feedback` after doing its own row-append. Two new hidden fields (`session_id`, `teacher_id`) were added to the real form for this.
 
-1. **Add a hidden `session_id` field to the real form** (doesn't exist yet) — in Zoho Forms' editor, drag a **Hidden Field** (not a hidden text field — Zoho has a dedicated component for this) onto the "TeacherFeedback" form, set its Link Name to exactly `session_id`, save. Without this, the webhook has no reliable way to know which attendance session a submission belongs to.
-2. **Configure the webhook**: Zoho Forms → Integrations → Webhooks → Configure Webhook.
-   - Webhook URL: `https://<your-deployed-domain>/api/zoho-feedback`
-   - Content Type: **application/json**
-   - Payload Parameters: select `session_id` (the new hidden field), `MultipleChoice` (engagement), `MultipleChoice1` (had issue), `MultipleChoice2` (issue status), `MultiLine` (notes) — School/Teacher/Date/Program don't need to round-trip back, the app already knows them.
-   - Custom Headers: add `x-zoho-feedback-secret` = the same value you set for `ZOHO_FEEDBACK_WEBHOOK_SECRET`
-3. **Test it for real**: log in as a teacher with an open session, load `/clocking`, confirm the real form renders with School/Date/Program pre-selected (Teacher Name prefill is a best-effort — see caveat below). Fill in the rest and submit, and confirm the page updates to "Feedback received" within a few seconds (it polls every 4s). If it doesn't, check the webhook delivery log in Zoho and compare the actual payload shape against what `src/app/api/zoho-feedback/route.ts` expects — this still hasn't been tested against a real Zoho delivery, only a simulated `curl` one.
+**Status: wired up, end-to-end success NOT yet confirmed.** A real teacher test left the attendance session open (`clock_out_at` still null) — the close-the-loop path hasn't been proven live yet. Checklist to finish confirming:
+1. **Zoho form**: `session_id` + `teacher_id` hidden fields exist with those exact Field Link Names (Single Line + "Hide Field" in Properties, not a dedicated "Hidden Field" component — Zoho's current editor doesn't have one).
+2. **Zoho webhook** (Integrations → Webhooks, on the "YMU Teacher Feedback" form, NOT the unrelated "Teaching Artist Interview Evaluation" form): Webhooks Status ON; Payload Parameters include `session_id`/`teacher_id` (Parameter Name typed exactly that, mapped to the two hidden fields) alongside the pre-existing ones; Webhook URL is still the Apps Script `.../exec` (unchanged).
+3. **Apps Script `doPost`**: relays `session_id`/`teacher_id`/engagement/had_issue/issue_status/notes to `https://ymu-a-navy.vercel.app/api/zoho-feedback` with header `x-zoho-feedback-secret`.
+4. **⚠️ Real gotcha hit live**: editing the Apps Script code and clicking "Deploy" is NOT enough — if a **New deployment** was created instead of editing the existing one (Deploy → Manage deployments → pencil icon → Version: "New version" → Deploy), a DIFFERENT `.../exec` URL is generated, and Zoho's webhook (still pointing at the old URL) keeps running the old code forever. **Compare the URL in Manage Deployments against the URL in Zoho's webhook config, character for character.**
+5. **Verify via Apps Script Executions** (clock icon in the editor): filter for `doPost` specifically — `doGet` executions have zero logging by design (a plain health check) and are a red herring if you click on one expecting to see the relay log. A real submission's `doPost` execution should show the `YMU-A relay -> status: ... body: ...` line.
+6. Confirm end-to-end: teacher submits the real form → within ~4s the app shows "Feedback received" and `attendance_sessions.clock_out_at`/`zoho_synced_at` are set.
+
+**Known gap, not urgent**: the "issue type" multi-select question isn't stored in `attendance_sessions` at all (no column for it) — it's not lost (still in the Google Sheet), just not in our own DB. Extending the schema to capture it is a separate, small future task if wanted.
+
+---
+
+### (Older version of this section, superseded above — kept only for the still-relevant offline-path test)
+
 4. **Test the offline path too**: go offline (DevTools → Network → Offline) with an open session, fill and save the local draft form (engagement/issue/notes), go back online, and confirm the real form loads prefilled with those answers too.
 5. ~~Decide whether the old "push feedback to Zoho via API" plan is still needed~~ — resolved in Phase 9: confirmed with the user it's not. `ZOHO_CLIENT_ID`/`SECRET`/`REFRESH_TOKEN` removed from `.env.example`. Phase 9 built inbound-webhook *reliability* instead (stuck-session detection + admin force-close) — see HANDOFF.md.
 

@@ -40,10 +40,25 @@ Deno.serve(async (request) => {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
+  // Optional { schoolIds: string[] } body — the manual "Sync calendars"
+  // button in the app sends this to sync only selected schools; pg_cron's
+  // body is always '{}' (sync everything). Malformed/missing body = sync all.
+  let schoolIds: string[] | undefined;
   try {
-    const result = await syncAllCalendars(supabase, {
-      GOOGLE_SERVICE_ACCOUNT_KEY_BASE64: Deno.env.get("GOOGLE_SERVICE_ACCOUNT_KEY_BASE64"),
-    });
+    const body = await request.json();
+    if (Array.isArray(body?.schoolIds)) {
+      schoolIds = body.schoolIds.filter((id: unknown) => typeof id === "string");
+    }
+  } catch {
+    // no body, or not JSON — fall through to a full sync.
+  }
+
+  try {
+    const result = await syncAllCalendars(
+      supabase,
+      { GOOGLE_SERVICE_ACCOUNT_KEY_BASE64: Deno.env.get("GOOGLE_SERVICE_ACCOUNT_KEY_BASE64") },
+      { schoolIds },
+    );
     return json(result);
   } catch (error) {
     console.error("Calendar sync failed", error);

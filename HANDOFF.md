@@ -315,7 +315,40 @@ been removed from `.env.example`. What actually got built instead:
   direct-RPC calls (via the automated RLS tests) both work fine and were
   used instead to verify the underlying logic end-to-end.
 
-## Migration `0021` — live-testing report/flag/directory fixes (not yet applied)
+## Manual "Sync calendars" button + two more live-testing findings
+
+User-requested: a way to trigger Google Calendar sync from the app (RM/OM/CPO,
+via `/lists/calendar-sync`, linked from `/lists`) instead of the terminal or
+waiting for the 5-min cron — select specific schools or leave all unchecked
+to sync everything. `syncAllCalendars()` gained an optional `schoolIds`
+filter; the Edge Function reads it from an optional request body; pg_cron's
+empty body is unaffected. **Owed: set `CALENDAR_SYNC_SECRET` on Vercel**
+(server-only) — the button's server action calls the Edge Function the same
+way pg_cron does and needs its own copy of that secret.
+
+Two more findings while investigating why a manually-added calendar event
+wasn't showing up: (1) `matchedTeacherIds()` matches by attendee email only,
+never checking `responseStatus` — an unaccepted/declined invite still gets a
+teacher matched and able to clock in (confirmed by reading the code). (2) The
+cron **was** firing every 5 minutes and `succeeded` per `cron.job_run_details`
+— but that only proves the async `net.http_post` call was queued, not that
+the Edge Function returned 200. `net._http_response` is the real signal; see
+NEXT_STEPS.md.
+
+Also: the Zoho setup section of NEXT_STEPS.md was fully rewritten — the real
+form is "YMU Teacher Feedback" (not the old guessed `zfrmz.com` URL), and the
+real architecture relays through a pre-existing Google Apps Script (which
+mirrors submissions to a spreadsheet) rather than pointing Zoho directly at
+our webhook, since Zoho Forms only supports one webhook target per form. A
+real Apps Script deployment-versioning gotcha was hit live: editing the code
+and clicking "Deploy" can silently create a **new** deployment URL rather
+than updating the existing one, leaving Zoho still calling old code
+indefinitely — see NEXT_STEPS.md for the exact check.
+
+`npm run lint`/`build`/`test` clean; the new page was visually verified
+logged in as `rm@ymu.test` against the real hosted project.
+
+## Migration `0021` — live-testing report/flag/directory fixes (applied)
 
 Three more issues surfaced while the user exercised the deployed app:
 1. **Report "hours worked" was `clock_out - clock_in`**, so a late clock-out

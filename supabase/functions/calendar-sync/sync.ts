@@ -556,9 +556,14 @@ export type CalendarSyncSummary =
 export async function syncAllCalendars(
   supabase: any,
   env: Record<string, string | undefined>,
-  options: { dryRun?: boolean } = {},
+  // schoolIds: when set, only these schools' calendars are synced (the
+  // manual "Sync calendars" button's per-school selection) — discovery and
+  // auto-matching of newly-shared calendars still runs against everything,
+  // since that's cheap and independent of which schools' events get pulled.
+  options: { dryRun?: boolean; schoolIds?: string[] } = {},
 ): Promise<CalendarSyncSummary> {
   const dryRun = Boolean(options.dryRun);
+  const schoolIdFilter = options.schoolIds ? new Set(options.schoolIds) : null;
   if (!dryRun && !(await acquireSyncLock(supabase))) return { skipped: true };
 
   try {
@@ -663,6 +668,7 @@ export async function syncAllCalendars(
 
     for (const school of (syncableSchools as SchoolRow[]) ?? []) {
       if (!school.google_calendar_id) continue;
+      if (schoolIdFilter && !schoolIdFilter.has(school.id)) continue;
       if (Date.now() - runStartedAt > SYNC_TIME_BUDGET_MS) {
         partial = true;
         break;
