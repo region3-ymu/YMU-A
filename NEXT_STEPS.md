@@ -1,5 +1,43 @@
 # NEXT_STEPS — YMU-A
 
+## ✅ RESOLVED: calendar-sync cron was 401ing because the DEPLOYED Edge Function was stale (not a secret mismatch)
+
+**Root cause (found via the Supabase MCP, 2026-07-27):** the `calendar-sync`
+cron had been returning `401 {"error":"Unauthorized."}` every 5 min for days,
+and `calendar_sync_state.last_synced_at` was stuck since 2026-07-23. This was
+NOT a secret-value mismatch (much time was lost chasing that). The **deployed**
+`calendar-sync` Edge Function was an OLD version (v17) that:
+1. Authenticated via `Authorization: Bearer <SERVICE_ROLE_KEY>` — but the cron
+   sends `x-calendar-sync-secret`, never an `authorization` header, so the
+   check failed 100% of the time regardless of any secret value.
+2. Was the pre-multi-calendar single-`GOOGLE_CALENDAR_ID` version, not the
+   `syncAllCalendars` code that's been in the repo for many phases.
+
+In other words, the repo code and the deployed function had drifted completely
+apart — the repo's `supabase/functions/calendar-sync/index.ts` (checks
+`x-calendar-sync-secret` via `_shared/secret.ts`, uses `syncAllCalendars`) had
+**never actually been deployed**.
+
+**Fix:** redeployed the current repo code as version 18 via the Supabase MCP
+`deploy_edge_function` (verify_jwt=false, custom secret auth). Verified live:
+one invocation synced 37/40 calendars in seconds with **0 errors**; Little
+River K-8 synced 578 active events; `last_synced_at` now advancing. The cron
+uses the identical `net.http_post` call, so it now succeeds on its own every
+5 minutes. The Vault secret `calendar_sync_secret` and the Edge Function
+secret `CALENDAR_SYNC_SECRET` DO match (both `9035fe…9a9b`) — that part was
+fine; the broken piece was purely the stale deploy.
+
+**Follow-up worth checking (not urgent — they currently return 200):** the
+other three scheduled functions (`check-closeout`, `late-detect`,
+`notify-dispatch`) may also be running older deployed versions than the repo
+(the post-Phase-9 hardening pass's `_shared/secret.ts` redeploys were never
+confirmed). They work today, but if you touch their code, redeploy via the
+same MCP tool so deployed ≠ repo drift doesn't bite again. **Lesson: this repo
+has no CI/CD auto-deploy for Edge Functions — a code change in
+`supabase/functions/**` does nothing until someone explicitly deploys it.**
+
+
+
 ## 🔴 NEWEST: PD-week native "relay" feedback form (branch `pd-week-google-form-feedback`) — code done, migration owed
 
 The Zoho feedback investigation is paused, not resolved (see `BUGS.md`).
