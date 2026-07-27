@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { requireRole } from "@/lib/auth/dal";
 import { getOpenSession } from "@/lib/attendance/queries";
-import { getZohoFeedbackConfig } from "@/lib/attendance/zoho-feedback";
+import { getFeedbackConfig } from "@/lib/attendance/google-feedback";
 import FeedbackForm from "./feedback-form";
 
 export const metadata: Metadata = { title: "Feedback" };
@@ -14,7 +14,7 @@ function classTitle(summary: string | null | undefined) {
 export default async function FeedbackPage() {
   const profile = await requireRole("teacher");
   const openSession = await getOpenSession();
-  const zohoConfig = getZohoFeedbackConfig();
+  const feedbackConfig = getFeedbackConfig();
 
   return (
     <main className="mx-auto flex w-full max-w-xl flex-1 flex-col gap-4 p-6">
@@ -34,7 +34,7 @@ export default async function FeedbackPage() {
             clockInAt: openSession.clock_in_at,
             status: openSession.clock_in_status,
           }}
-          zohoConfig={zohoConfig}
+          feedbackConfig={feedbackConfig}
         />
       ) : (
         <div className="rounded-2xl border border-foreground/10 p-5">

@@ -10,8 +10,8 @@ import {
   ENGAGEMENT_OPTIONS,
   ISSUE_STATUS_OPTIONS,
   type FeedbackDraft,
-  type ZohoFeedbackConfig,
 } from "@/lib/attendance/zoho-feedback";
+import { buildGoogleFeedbackUrl, type FeedbackFormConfig } from "@/lib/attendance/google-feedback";
 import { clearFeedbackDraft, getFeedbackDraft, saveFeedbackDraft } from "@/lib/attendance/offline-feedback-db";
 
 export type FeedbackSession = {
@@ -34,10 +34,10 @@ const POLL_INTERVAL_MS = 4000;
 // cross-origin "submitted" signal from inside the Zoho iframe).
 export default function FeedbackForm({
   session,
-  zohoConfig,
+  feedbackConfig,
 }: {
   session: FeedbackSession;
-  zohoConfig: ZohoFeedbackConfig | null;
+  feedbackConfig: FeedbackFormConfig;
 }) {
   const router = useRouter();
   const clockedIn = new Date(session.clockInAt);
@@ -122,12 +122,32 @@ export default function FeedbackForm({
       </p>
 
       {!online ? (
-        draftLoaded && <OfflineDraftForm sessionId={session.id} initialDraft={draft} onSaved={setDraft} />
-      ) : !zohoConfig ? (
+        feedbackConfig?.provider === "zoho" ? (
+          draftLoaded && <OfflineDraftForm sessionId={session.id} initialDraft={draft} onSaved={setDraft} />
+        ) : (
+          <p className="mt-4 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-sm">
+            This form needs an internet connection to submit. It&apos;ll be available as soon as you&apos;re back
+            online.
+          </p>
+        )
+      ) : !feedbackConfig ? (
         <p className="mt-4 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-sm">
-          The feedback form isn&apos;t configured yet (missing <code>ZOHO_FEEDBACK_FORM_URL</code>). Ask a manager
-          to finish setting it up.
+          The feedback form isn&apos;t configured yet. Ask a manager to finish setting it up.
         </p>
+      ) : feedbackConfig.provider === "google" ? (
+        <div className="mt-4">
+          <a
+            href={buildGoogleFeedbackUrl(feedbackConfig.config, session.id, session.teacherId)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-block rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-accent-foreground"
+          >
+            Open feedback form
+          </a>
+          <p className="mt-2 text-xs opacity-60">
+            Opens in a new tab. This page updates automatically once your submission is received.
+          </p>
+        </div>
       ) : draftLoaded ? (
         <div className="mt-4">
           {draft && (
@@ -137,7 +157,7 @@ export default function FeedbackForm({
           )}
           <iframe
             src={buildZohoFeedbackUrl(
-              zohoConfig,
+              feedbackConfig.config,
               session.id,
               {
                 schoolName: session.schoolName,

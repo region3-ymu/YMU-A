@@ -1,10 +1,12 @@
 # BUGS — Zoho feedback → clock-out investigation (paused)
 
-**Status as of writing:** the app is being paused and a new branch will be
-created to ship a Google Form–based version for this week instead of the
-Zoho form, while this Zoho-specific issue is set aside for a future session.
-This doc exists so that future session has full context without re-deriving
-everything from scratch.
+**Status as of writing:** paused while a Google Form–based version ships for
+this week's PD sessions instead (branch `pd-week-google-form-feedback`,
+fully documented in `NEXT_STEPS.md`'s top section — code done, manual Google
+Form + Apps Script setup owed). This doesn't touch or resolve anything
+below; it's a parallel, switchable path (`FEEDBACK_FORM_PROVIDER` env var).
+This doc exists so a future session picking the Zoho thread back up has full
+context without re-deriving everything from scratch.
 
 ## The bug
 

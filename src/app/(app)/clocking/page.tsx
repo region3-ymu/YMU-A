@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { requireRole } from "@/lib/auth/dal";
 import { getNextClass, getOpenSession } from "@/lib/attendance/queries";
-import { getZohoFeedbackConfig } from "@/lib/attendance/zoho-feedback";
+import { getFeedbackConfig } from "@/lib/attendance/google-feedback";
 import FeedbackForm from "../feedback/feedback-form";
 import ClockingClient from "./clocking-client";
 
@@ -23,7 +23,7 @@ function formatWhen(startAt: string | null, endAt: string | null) {
 export default async function ClockingPage() {
   const profile = await requireRole("teacher");
   const [openSession, nextClass] = await Promise.all([getOpenSession(), getNextClass()]);
-  const zohoConfig = getZohoFeedbackConfig();
+  const feedbackConfig = getFeedbackConfig();
 
   return (
     <main className="mx-auto flex w-full max-w-xl flex-1 flex-col gap-4 p-6">
@@ -46,7 +46,7 @@ export default async function ClockingPage() {
             clockInAt: openSession.clock_in_at,
             status: openSession.clock_in_status,
           }}
-          zohoConfig={zohoConfig}
+          feedbackConfig={feedbackConfig}
         />
       ) : nextClass ? (
         <section className="grid gap-4">
