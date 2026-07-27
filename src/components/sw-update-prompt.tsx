@@ -6,50 +6,60 @@ import { useSerwist } from "@serwist/turbopack/react";
 // Solves the "I deployed a new version but users are stuck on the old one"
 // problem — the exact thing that made a stale bundle (built before an env var
 // was set) keep throwing "missing VAPID key" on some devices even after the
-// fix shipped. Two halves:
+// fix shipped. Now built on the canonical "waiting worker" flow (the SW sets
+// skipWaiting:false, see src/app/sw.ts), which is deterministic:
+//
 //   1. FORCE update checks. Browsers otherwise may not re-check the service
 //      worker script for up to ~24h, so a device can run yesterday's bundle
 //      indefinitely. We call serwist.update() on mount, on an interval, and
 //      whenever the tab regains focus.
-//   2. When a NEW service worker takes control (our SW uses skipWaiting +
-//      clientsClaim, so it activates immediately), show a small "new version"
-//      banner with a button that reloads into the fresh assets. We only show
-//      it when a controller already existed at mount — the very first
-//      install shouldn't read as "an update is available".
+//   2. A new worker installs and, because skipWaiting is off, sits in the
+//      "waiting" state instead of taking over silently. That waiting worker
+//      IS the pending update — show the banner.
+//   3. On click, tell the waiting worker to skipWaiting. It activates,
+//      clientsClaim makes it take control, "controlling" fires, and only THEN
+//      do we reload — once — into the fresh assets. No 4s-timeout guesswork.
 export default function SwUpdatePrompt() {
   const { serwist } = useSerwist();
   const [updateReady, setUpdateReady] = useState(false);
   const [reloading, setReloading] = useState(false);
   const reloadingRef = useRef(false);
-  const hadControllerRef = useRef(false);
-
-  useEffect(() => {
-    hadControllerRef.current =
-      typeof navigator !== "undefined" && !!navigator.serviceWorker?.controller;
-  }, []);
 
   useEffect(() => {
     if (!serwist) return;
+    if (typeof navigator === "undefined" || !navigator.serviceWorker) return;
 
-    // A waiting worker is unambiguously a pending update.
-    const onWaiting = () => setUpdateReady(true);
-    // controlling fires on first install too (no prior controller) — only
-    // treat it as an update when the page was already controlled. If we're
-    // the ones who triggered this (reloadingRef, set by applyUpdate()), the
-    // new worker has now ACTUALLY taken over — only now is it safe to
-    // reload. Reloading immediately after messageSkipWaiting() (without
-    // waiting for this event) races the activation and can land the page in
-    // a broken intermediate state — confirmed live (a real device got stuck
-    // on a blank/dead page after tapping "Actualizar").
+    let cancelled = false;
+
+    // A worker in "waiting" is unambiguously an installed-but-not-yet-applied
+    // update (a first-ever install goes installing -> activating, never
+    // "waiting", so this can't misfire on the initial visit).
+    const onWaiting = () => {
+      if (!cancelled) setUpdateReady(true);
+    };
+    // The freshly-activated worker has taken control. If we asked for it (the
+    // user clicked Actualizar), the new assets are now live — reload into
+    // them. Guarded by reloadingRef so a background update in ANOTHER tab
+    // can't yank a reload out from under this one; this tab just keeps showing
+    // its banner until the user acts.
     const onControlling = () => {
-      if (reloadingRef.current) {
-        window.location.reload();
-        return;
-      }
-      if (hadControllerRef.current) setUpdateReady(true);
+      if (reloadingRef.current) window.location.reload();
     };
     serwist.addEventListener("waiting", onWaiting);
     serwist.addEventListener("controlling", onControlling);
+
+    // The "waiting" event only fires for updates that install while THIS page
+    // is open with the listener attached. If a worker finished installing
+    // earlier (e.g. during a previous visit) it's already sitting in waiting
+    // and no event will replay — so check the registration directly on mount.
+    navigator.serviceWorker
+      .getRegistration()
+      .then((reg) => {
+        if (!cancelled && reg?.waiting) setUpdateReady(true);
+      })
+      .catch(() => {
+        /* no registration yet — the update() checks below will catch it */
+      });
 
     const check = () => {
       // serwist.update() can throw SYNCHRONOUSLY ("Cannot update a Serwist
@@ -74,6 +84,7 @@ export default function SwUpdatePrompt() {
     document.addEventListener("visibilitychange", onVisible);
 
     return () => {
+      cancelled = true;
       serwist.removeEventListener("waiting", onWaiting);
       serwist.removeEventListener("controlling", onControlling);
       clearInterval(interval);
@@ -84,13 +95,12 @@ export default function SwUpdatePrompt() {
   function applyUpdate() {
     reloadingRef.current = true;
     setReloading(true);
-    // Tell the waiting worker to take over. The actual reload happens in
-    // onControlling() above, once it genuinely has — NOT immediately here.
+    // Ask the waiting worker to take over. It activates, claims this page, and
+    // fires "controlling" (handled above) which does the single reload. The
+    // timeout is only a safety net for the rare case controlling never
+    // arrives — not the primary path, unlike the old skipWaiting:true design.
     serwist?.messageSkipWaiting();
-    // Safety net: if 'controlling' never fires for some reason (e.g. the
-    // browser already handled it, or a rare platform quirk), don't leave the
-    // user stuck looking at an unresponsive "Actualizando…" button forever.
-    setTimeout(() => window.location.reload(), 4000);
+    setTimeout(() => window.location.reload(), 3000);
   }
 
   if (!updateReady) return null;

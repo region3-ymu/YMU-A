@@ -12,7 +12,17 @@ declare const self: ServiceWorkerGlobalScope;
 
 const serwist = new Serwist({
   precacheEntries: self.__SW_MANIFEST,
-  skipWaiting: true,
+  // skipWaiting is DELIBERATELY false. With skipWaiting:true a new worker
+  // activates and claims control the instant it installs, so it never enters
+  // the "waiting" state — which made the "Actualizar" banner rely on a racy
+  // controllerchange + 4s-timeout reload that could leave the button stuck.
+  // Waiting instead makes the update land deterministically, so the banner
+  // (src/components/sw-update-prompt.tsx) can offer it and the click reliably
+  // activates it -> controllerchange -> single reload. clientsClaim stays true
+  // so a first-time visitor is controlled within their first visit (offline
+  // works immediately) and so the click-activated worker claims the page,
+  // guaranteeing the controllerchange the reload waits on.
+  skipWaiting: false,
   clientsClaim: true,
   navigationPreload: true,
   runtimeCaching: defaultCache,
