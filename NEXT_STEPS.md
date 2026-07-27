@@ -1,5 +1,53 @@
 # NEXT_STEPS — YMU-A
 
+## ✅ Relay feedback form confirmed live in production (2026-07-27)
+
+Live-verified end to end against `https://ymu-a-navy.vercel.app` (commit
+`8a6f649`): logged in as a real teacher, `/feedback` rendered the native
+relay form (not Zoho), submitted it, session closed correctly. Logged in as
+OM, the Dashboard's "PD relay feedback" CSV export returned the correct row.
+`FEEDBACK_FORM_PROVIDER=relay` is live and working on Vercel.
+
+**Two real gotchas hit while verifying, for future reference:**
+1. **Vercel env var changes need a redeploy.** Setting `FEEDBACK_FORM_PROVIDER`
+   in the dashboard does nothing to an already-built deployment — Vercel
+   bakes server-only env vars into the function bundle at build time. A
+   fresh deploy (new commit, or a manual redeploy of the same commit) is
+   required after any env var change, every time.
+2. **A stale service-worker on one device can look like the deploy failed.**
+   The `sw-update-prompt.tsx` fix (below) makes this self-resolving going
+   forward, but on an already-stuck device the fix is still: tap
+   "Actualizar" if the banner shows, or fully close and reopen the app.
+
+## ✅ Fixed: the "Actualizar" (update) banner could get stuck forever
+
+**Root cause:** the service worker used `skipWaiting: true` +
+`clientsClaim: true` — a new worker took control the instant it installed,
+so it never entered the "waiting" state. The banner's only path to reload
+was a racy `controllerchange` event + a 4s timeout fallback, which is
+exactly the failure mode a teacher hit.
+
+**Fix (`src/app/sw.ts` + `src/components/sw-update-prompt.tsx`):**
+`skipWaiting` is now `false` (kept `clientsClaim: true`). Updates land
+deterministically in the "waiting" state; the banner detects it (via the
+`waiting` event AND an on-mount registration check, so an update that
+finished installing before the listener attached is still caught); clicking
+"Actualizar" sends `skipWaiting`, waits for the real `controllerchange`,
+then reloads once. Verified locally with an actual two-version build/serve
+cycle (not simulated): new worker waited correctly, banner showed, click
+transitioned v1→v2, banner cleared, and a follow-up check on the now-stable
+version produced no phantom banner (confirmed no loop). Safe rollout: a
+device currently running the old `skipWaiting:true` code installs this
+fix's build as a **waiting** worker and its own (old) banner code already
+knows how to apply a waiting worker, so the very next update after this
+ships is the last "trust me" update — every one after is the new reliable
+flow.
+
+**This matters a lot for the eventual return to Zoho**: whenever the app
+next needs pushing to teachers' already-installed devices, this is the
+mechanism that gets it there reliably instead of teachers being stuck on a
+stale bundle indefinitely.
+
 ## ✅ RESOLVED: calendar-sync cron was 401ing because the DEPLOYED Edge Function was stale (not a secret mismatch)
 
 **Root cause (found via the Supabase MCP, 2026-07-27):** the `calendar-sync`
@@ -27,14 +75,102 @@ uses the identical `net.http_post` call, so it now succeeds on its own every
 secret `CALENDAR_SYNC_SECRET` DO match (both `9035fe…9a9b`) — that part was
 fine; the broken piece was purely the stale deploy.
 
-**Follow-up worth checking (not urgent — they currently return 200):** the
-other three scheduled functions (`check-closeout`, `late-detect`,
-`notify-dispatch`) may also be running older deployed versions than the repo
-(the post-Phase-9 hardening pass's `_shared/secret.ts` redeploys were never
-confirmed). They work today, but if you touch their code, redeploy via the
-same MCP tool so deployed ≠ repo drift doesn't bite again. **Lesson: this repo
-has no CI/CD auto-deploy for Edge Functions — a code change in
-`supabase/functions/**` does nothing until someone explicitly deploys it.**
+**Update — confirmed and fixed (same session):** the other three scheduled
+functions (`check-closeout` v17→18, `late-detect` v17→18, `notify-dispatch`
+v15→16) were indeed all running pre-hardening-pass code — plain `!==` secret
+comparisons instead of `_shared/secret.ts`'s timing-safe `secretsMatch()`,
+and `notify-dispatch` was using a plain `select` instead of the atomic
+`claim_notification_batch()` RPC (migration `0019`'s fix for double-sends on
+overlapping runs). None of this was causing outright failures today (push
+notifications were successfully reaching real devices — verified live, see
+below), but it was a real latent risk. All three redeployed via the Supabase
+MCP and verified with a direct invocation each (200, correct response shape).
+**Lesson: this repo has no CI/CD auto-deploy for Edge Functions — a code
+change in `supabase/functions/**` does nothing until someone explicitly
+deploys it.** Check deployed-vs-repo whenever something in this family
+misbehaves; don't assume a deploy happened just because the code was
+committed.
+
+## ✅ Verified live: late-teacher push notifications to a Regional Manager actually work
+
+Investigated a report of "I never saw a notification as RM about a late
+teacher." Found via direct DB queries (not guessed): 11 historical
+`late_clock_in` push attempts to a real RM (`region3@ymu.org` / Emilio
+Medrano) between 2026-07-21 and 2026-07-23 show `status: failed` after 5
+attempts each — but a fresh one created 2026-07-27 shows `status: sent`,
+confirmed delivered. The pipeline (`detect_late_clockins()` →
+`notification_queue` → `notify-dispatch` → Web Push) works today; the old
+failures predate this session's fixes (VAPID key wiring, the Edge Function
+redeploys above) and aren't reproducing now. If a real RM still doesn't
+*see* a push, the likely causes are device-side (notification permission
+revoked, Do Not Disturb, or push subscribed from a different
+browser/session than the one currently open) rather than a code bug —
+nothing in the dispatch logic silently drops a `late_clock_in` notification
+for a subscribed recipient.
+
+## 🟡 Reports "wrong hours" report — logic verified correct against real data, need the specific example to go further
+
+`attendance_period_rows.hours_worked` (migration `0021`'s fix: credits the
+*scheduled* class duration, `end_at - start_at`, once clocked in — not
+`clock_out - clock_in`) was checked directly against real production rows:
+a 5-minute test class correctly shows `0.083h`, normal 1-hour classes
+correctly show `1.0h`. The view and the TypeScript bucketing
+(`src/lib/reports/aggregate.ts`) both look correct and match real data in
+every case checked. **If a report is showing 7 hours for what should be a
+much shorter class, the most likely explanation is that the real Google
+Calendar event for that class has the wrong start/end time span** (a
+data-entry issue in Google Calendar itself, 7 hours apart), not a code bug
+— since the view faithfully reports whatever the calendar event says.
+**Next step**: get the specific teacher/class/date that showed 7 hours and
+check that exact `calendar_events` row's `start_at`/`end_at` directly.
+
+## 🔴 Auth: signup confirmation emails, confirmation codes, and password reset are unreliable — known root cause, not yet fixed
+
+Real teachers are hitting this now. Root cause was actually already flagged
+back in Phase 1 (see DECISIONS.md) and never resolved: **Supabase's default
+built-in email sender is used for ALL auth emails** (signup confirmation,
+password reset) — it is explicitly not meant for production use, is
+rate-limited to a small number of sends per hour project-wide, and is
+commonly filtered as spam by real inboxes. `RESEND_API_KEY`/
+`RESEND_FROM_EMAIL` already exist and are already used for a *different*
+purpose (notify-dispatch's reminder emails) — Supabase Auth's own emails are
+a **separate system** that needs its own SMTP configuration and currently
+has none.
+
+**The fix is a dashboard-only configuration change, not a code change** (no
+tool available here can set it — Auth SMTP settings aren't exposed via the
+Supabase MCP's `execute_sql`/`deploy_edge_function`, they're a project-level
+Auth setting):
+1. Supabase Dashboard → **Authentication → Emails → SMTP Settings** → enable
+   custom SMTP.
+2. Host: `smtp.resend.com`, Port: `465` (or `587`), Username: `resend`,
+   Password: the existing `RESEND_API_KEY` value.
+3. Sender email: the existing `RESEND_FROM_EMAIL` (must already be a
+   verified domain in the Resend dashboard — it already is, since
+   notify-dispatch uses it successfully today).
+4. Save, then test: sign up a fresh test account and confirm the
+   confirmation email arrives quickly and isn't in spam; test "Forgot
+   password" the same way.
+
+**Immediate unblock for this week, independent of the above fix**: bulk-
+create accounts for the real teachers directly via the admin API (same
+technique `scripts/seed-test-data.ts` already uses — `auth.admin.createUser`
+with `email_confirm: true` set directly, bypassing the confirmation email
+entirely, plus writing `profiles.role` **and** the JWT `app_metadata.app_role`
+claim together so there's no stale-JWT relogin trap). Give each teacher a
+temporary password that works starting today; once the SMTP fix above is
+live, "Forgot password" will work for real self-service resets going
+forward. Needs a name+email list from the user to execute.
+
+## 🟢 All 3 remaining scheduled Edge Functions redeployed (2026-07-27)
+
+`check-closeout` (v17→18), `late-detect` (v17→18), `notify-dispatch`
+(v15→16) all redeployed with current repo code via the Supabase MCP, closing
+the drift gap found while investigating the notification issue above. All
+three verified with a direct authenticated invocation post-deploy (200,
+correct response shape: `{"closed":1}`, `{"flagged":0}`,
+`{"enqueued":0,"processed":0,...}`). No functional regressions — these were
+already working, just running stale/less-hardened code.
 
 
 
