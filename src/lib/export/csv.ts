@@ -5,7 +5,7 @@
 
 import type { PeriodSummary } from "@/lib/reports/types";
 
-function csvField(value: string | number): string {
+export function csvField(value: string | number): string {
   const str = String(value);
   if (/[",\n]/.test(str)) {
     return `"${str.replace(/"/g, '""')}"`;
@@ -48,5 +48,66 @@ export function periodSummariesToCsv(
     );
   }
   // CRLF per RFC 4180; also what every spreadsheet app expects.
+  return lines.join("\r\n") + "\r\n";
+}
+
+export type RelayFeedbackRow = {
+  teacherName: string;
+  schoolName: string;
+  className: string;
+  clockInAt: string;
+  relayBlock: string | null;
+  programArea: string | null;
+  objective: string | null;
+  achievedObjective: string | null;
+  objectiveReflection: string | null;
+  engagementScale: number | null;
+  challenges: string[] | null;
+  pivots: string | null;
+  submittedAt: string | null;
+};
+
+// "Save it in a spreadsheet" for this week's native PD relay feedback
+// (migration 0022) — a plain CSV export opens directly in Sheets/Excel, no
+// live Google Sheets sync needed for a one-week form.
+export function relayFeedbackRowsToCsv(rows: RelayFeedbackRow[]): string {
+  const header = [
+    "Teacher",
+    "School",
+    "Class",
+    "Clocked in at",
+    "Relay Block",
+    "Program Area",
+    "Objective",
+    "Achieved Objective",
+    "Objective Reflection",
+    "Engagement (1-5)",
+    "Challenges",
+    "Reflection & Pivots",
+    "Submitted at",
+  ];
+
+  const lines = [header.map(csvField).join(",")];
+  for (const row of rows) {
+    lines.push(
+      [
+        row.teacherName,
+        row.schoolName,
+        row.className,
+        row.clockInAt,
+        row.relayBlock ?? "",
+        row.programArea ?? "",
+        row.objective ?? "",
+        row.achievedObjective ?? "",
+        row.objectiveReflection ?? "",
+        row.engagementScale ?? "",
+        (row.challenges ?? []).join("; "),
+        row.pivots ?? "",
+        row.submittedAt ?? "",
+      ]
+        .map(csvField)
+        .join(","),
+    );
+  }
   return lines.join("\r\n") + "\r\n";
 }

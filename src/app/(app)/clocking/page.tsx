@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { requireRole } from "@/lib/auth/dal";
 import { getNextClass, getOpenSession } from "@/lib/attendance/queries";
-import { getFeedbackConfig } from "@/lib/attendance/google-feedback";
+import { getFeedbackConfig } from "@/lib/attendance/relay-feedback";
 import FeedbackForm from "../feedback/feedback-form";
 import ClockingClient from "./clocking-client";
 

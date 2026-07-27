@@ -17,7 +17,7 @@ import {
 export const metadata: Metadata = { title: "Dashboard" };
 
 export default async function DashboardPage() {
-  await requireRole(...MANAGER_ROLES);
+  const profile = await requireRole(...MANAGER_ROLES);
 
   const [openSessions, lateFlags, stuckFeedback, syncFailures, notificationFailures, todayRows, upcoming, roster] =
     await Promise.all([
@@ -204,6 +204,18 @@ export default async function DashboardPage() {
           </ul>
         )}
       </section>
+
+      {(profile.role === "operations_manager" || profile.role === "cpo") && (
+        <section>
+          <h2 className="mb-2 text-lg font-semibold">PD relay feedback (this week)</h2>
+          <p className="text-sm opacity-70">
+            Responses to the native in-app relay self-reflection form (temporary — see NEXT_STEPS.md).
+          </p>
+          <a href="/api/relay-feedback/export" className="mt-2 inline-block text-sm font-semibold text-accent underline">
+            Download CSV →
+          </a>
+        </section>
+      )}
     </main>
   );
 }

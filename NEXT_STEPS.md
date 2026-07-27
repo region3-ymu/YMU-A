@@ -1,151 +1,74 @@
 # NEXT_STEPS — YMU-A
 
-## 🔴 NEWEST: PD-week Google Form feedback (branch `pd-week-google-form-feedback`) — code done, manual setup owed
+## 🔴 NEWEST: PD-week native "relay" feedback form (branch `pd-week-google-form-feedback`) — code done, migration owed
 
 The Zoho feedback investigation is paused, not resolved (see `BUGS.md`).
 Meanwhile YMU is running a professional-development week for teachers and
 wants the app's clocking flow, but with a **different feedback form for this
-week only**: a plain Google Form ("YMU Teacher Relays – Teacher
-Self-Reflection Form", `https://forms.gle/pbPnA2URdq33rdiV9`) instead of the
-Zoho one. That form is a self-report (teacher picks their own name/day/relay
-block/program from dropdowns) with no field tying a submission back to a
-specific `attendance_sessions` row — unlike Zoho, nothing in it could close a
-session automatically out of the box.
+week only**. First attempt was pointing the app at a real external Google
+Form ("YMU Teacher Relays – Teacher Self-Reflection Form",
+`https://forms.gle/pbPnA2URdq33rdiV9`) with an Apps Script relay — **that was
+scrapped** (user-directed pivot) in favor of something simpler: a **native
+in-app copy of that same form**, filled out directly by the teacher, no
+external form/relay/webhook at all. The question set was copied faithfully
+by reading the real form's `FB_PUBLIC_LOAD_DATA_` payload directly (not
+guessed) — see `supabase/migrations/0022_relay_feedback_close.sql`'s header
+comment for the full provenance.
 
-**What was built** (this branch, does not touch any Zoho code — both paths
-coexist behind an env var):
-- `src/lib/attendance/google-feedback.ts` — config + Google Forms
-  `entry.<id>` prefill URL builder, and `getFeedbackConfig()` which picks
-  Zoho vs Google based on `FEEDBACK_FORM_PROVIDER`.
-- `src/app/api/google-form-feedback/route.ts` — webhook target for an Apps
-  Script relay (shared-secret header, same pattern as `/api/zoho-feedback`).
-  Stores the *entire* raw submission (no fixed schema assumed) rather than
-  mapping specific fields, since this form's questions aren't Zoho's
-  engagement/had-issue/notes shape.
-- `supabase/migrations/0022_google_form_feedback_close.sql` —
-  `close_session_from_google_form()` RPC (service_role only, idempotent,
-  same optional teacher-ownership check as `close_session_from_zoho`, same
-  `feedback_stuck` flag auto-resolve as `0021`); new columns `feedback_raw
-  jsonb` and `google_form_synced_at`.
-- `src/app/(app)/feedback/feedback-form.tsx` — when the provider is
-  `google`, shows an "Open feedback form" button (opens the prefilled
-  Google Form in a new tab — not embedded via iframe, to sidestep any
-  cross-origin/framing surprises) instead of the Zoho iframe; polling for
-  `clock_out_at` (already built) is unchanged and works identically for
-  either provider.
+**What was built** (this branch, does not touch any Zoho code or column —
+both paths coexist behind an env var):
+- `supabase/migrations/0022_relay_feedback_close.sql` — new typed columns on
+  `attendance_sessions` (`relay_block`, `relay_program_area`,
+  `relay_objective`, `relay_achieved_objective`, `relay_objective_reflection`,
+  `relay_engagement_scale`, `relay_challenges text[]`, `relay_pivots`,
+  `relay_feedback_submitted_at`) and `close_session_with_relay_feedback()` —
+  an **authenticated** RPC (not service-role/webhook-only) that checks
+  `auth.uid()` owns the session and closes it in one call, same shape as this
+  app's very first, pre-Zoho-rework `clock_out_with_feedback` (0008).
+- `src/lib/attendance/relay-feedback.ts` — the exact choice text for every
+  dropdown/radio/checkbox question, plus `getFeedbackConfig()` which picks
+  Zoho vs the native "relay" form based on `FEEDBACK_FORM_PROVIDER`.
+- `src/app/(app)/feedback/relay-feedback-form.tsx` + `actions.ts` — the
+  native form (a plain `useActionState` form, no polling needed — the RPC
+  closes the session synchronously, then the server action redirects home,
+  same as `clockIn()`). Deliberately does **not** ask "Teacher Name" or "Day
+  of Session" (the reference form's first two questions) — the app already
+  knows both from the authenticated caller and the session's clock-in time,
+  matching how the Zoho path already auto-fills school/teacher/date rather
+  than re-asking known data.
+- `src/app/(app)/feedback/feedback-form.tsx` — when the provider is `relay`,
+  renders `RelayFeedbackForm` instead of the Zoho iframe; the Zoho path
+  (iframe + offline draft + polling) is completely untouched.
+- **"Save it in a spreadsheet" ask**: `/api/relay-feedback/export`
+  (OM/CPO-only) + a "PD relay feedback" section on the Manager Dashboard with
+  a **Download CSV** link — plain CSV rather than a live Google Sheets sync,
+  since this is a one-week form and a CSV opens directly in
+  Sheets/Excel/Numbers. If a *live*, always-up-to-date spreadsheet turns out
+  to matter, that's a follow-up (would need a Sheets-API-scoped service
+  account), not something built here.
 - `npm run lint` / `build` / `tsc --noEmit` / `npm run test` all clean.
-  **Not yet done**: pushing migration `0022` to the hosted project (same
-  "no Supabase CLI/dashboard access from this sandbox" limitation as every
-  prior migration — see item 8 further down this file) and the manual Google
-  Form + Apps Script setup below, which only the account that owns the form
-  can do.
 
-### Manual setup owed (do this before switching `FEEDBACK_FORM_PROVIDER=google` on)
+### Owed before switching `FEEDBACK_FORM_PROVIDER=relay` on
 
-1. **Add two new short-answer questions to the real Google Form** (open it
-   signed in as its owner, click Edit): title them exactly `session_id` and
-   `teacher_id`, mark them **not required** (so a manual/offline fill-out
-   without the app still works), and put them in Section 1 with a
-   description like "Auto-filled by the app — please don't edit." Order
-   doesn't matter.
-2. **Get their `entry.<id>` field names**: with the two questions saved,
-   click the ⋮ menu → **Get pre-filled link**, type any dummy value into
-   *just* those two fields, click **Get Link**, then **Copy Link**. Paste it
-   somewhere and read off the two `entry.NNNNNNNN=...` params — those are
-   `GOOGLE_FEEDBACK_FIELD_SESSION` and `GOOGLE_FEEDBACK_FIELD_TEACHER_ID`
-   (match them up by which dummy value you typed where).
-3. **Get the form's real viewform URL** (not the `forms.gle` short link):
-   with the form open in Preview mode, copy the address bar URL — it looks
-   like `https://docs.google.com/forms/d/e/<id>/viewform`. That's
-   `GOOGLE_FEEDBACK_FORM_URL`.
-4. **Generate a shared secret** (e.g. `openssl rand -hex 24`) for
-   `GOOGLE_FEEDBACK_WEBHOOK_SECRET`.
-5. **Set up the Apps Script relay** — standalone project (not bound to the
-   form, to avoid the exact "two different script projects" confusion the
-   Zoho investigation hit, see `BUGS.md`):
-   - Go to [script.google.com](https://script.google.com) → **New project**.
-   - Paste this code, replacing the two constants at the top:
-     ```javascript
-     const ENDPOINT_URL = "https://ymu-a-navy.vercel.app/api/google-form-feedback";
-     const SHARED_SECRET = "PASTE_GOOGLE_FEEDBACK_WEBHOOK_SECRET_HERE";
-
-     function onFormSubmit(e) {
-       const answers = {};
-       e.response.getItemResponses().forEach((item) => {
-         answers[item.getItem().getTitle()] = item.getResponse();
-       });
-
-       const res = UrlFetchApp.fetch(ENDPOINT_URL, {
-         method: "post",
-         contentType: "application/json",
-         headers: { "x-google-feedback-secret": SHARED_SECRET },
-         payload: JSON.stringify(answers),
-         muteHttpExceptions: true,
-       });
-
-       Logger.log("YMU-A relay -> status: " + res.getResponseCode() + " body: " + res.getContentText());
-       Logger.log("session_id sent: " + answers["session_id"]);
-     }
-
-     // Run this once manually from the editor (Run button, pick
-     // testRelayManually) to confirm the relay + endpoint work BEFORE
-     // testing through a real form submission — same trick that worked for
-     // debugging the Zoho relay.
-     function testRelayManually() {
-       const fake = {
-         session_id: "00000000-0000-4000-8000-000000000000",
-         teacher_id: "00000000-0000-4000-8000-000000000001",
-       };
-       const res = UrlFetchApp.fetch(ENDPOINT_URL, {
-         method: "post",
-         contentType: "application/json",
-         headers: { "x-google-feedback-secret": SHARED_SECRET },
-         payload: JSON.stringify(fake),
-         muteHttpExceptions: true,
-       });
-       Logger.log(res.getResponseCode() + " " + res.getContentText());
-     }
-     ```
-   - Left sidebar clock icon → **Triggers** → **+ Add Trigger** → choose
-     function `onFormSubmit`, event source **From form**, select the real
-     "YMU Teacher Relays" form, event type **On form submit** → **Save**
-     (this will prompt an OAuth consent screen the first time — authorize
-     it, it needs access to read form responses and make external requests).
-   - `testRelayManually()` will 400 until migration `0022` is applied
-     (the RPC won't exist yet) — that's expected, it still proves the HTTP
-     round-trip works. Once `0022` is applied it should return `{"error":
-     "No attendance session found..."}` (also expected, the fake session id
-     doesn't exist) rather than a 401/500 — that's the real "wiring is
-     correct" signal.
-6. **Apply migration `0022`** the same way `0017`–`0021` were applied
+1. **Apply migration `0022`** the same way `0017`–`0021` were applied
    (dashboard SQL editor, or `supabase db push` from a machine with CLI
    access — this sandbox has neither, see item 8 in "Finish Phase 9" below).
-7. **Set env vars** (`.env.local` for local testing, Vercel for production —
-   Production environment + redeploy, same gotcha as every other server-side
-   var in this project): `FEEDBACK_FORM_PROVIDER=google`,
-   `GOOGLE_FEEDBACK_FORM_URL`, `GOOGLE_FEEDBACK_FIELD_SESSION`,
-   `GOOGLE_FEEDBACK_FIELD_TEACHER_ID`, `GOOGLE_FEEDBACK_WEBHOOK_SECRET`.
-8. **Test end to end**: log in as a teacher, clock in to any class, go to
-   `/feedback`, click "Open feedback form" — it should open the real Google
-   Form with `session_id`/`teacher_id` already filled in (verify by checking
-   those two fields aren't blank). Submit it. Within ~4s the app should flip
-   to "Feedback received." If it doesn't, check the Apps Script's
-   **Executions** log the same way the Zoho debugging did (`BUGS.md`'s
-   "debugging trap" section applies equally here: a `302`/redirect-looking
-   response from `/exec` testing is normal, only trust the DB / Executions
-   log, not a raw curl response body).
+2. **Set `FEEDBACK_FORM_PROVIDER=relay`** (`.env.local` for local testing,
+   Vercel Production + redeploy for the real deployment) — no other env vars
+   needed for this path (no secrets, no external URL).
+3. **Test end to end**: log in as a teacher, clock in to any class, go to
+   `/feedback` — the native form should render (Relay Block, Program Area,
+   objective text, achieved-objective radios, objective reflection, 1–5
+   engagement scale, challenge checkboxes, optional pivots). Submit it and
+   confirm you're redirected home with no "Feedback required" banner (i.e.
+   the session actually closed) and no error.
+4. **Test the export**: log in as OM/CPO, open the Manager Dashboard, click
+   "Download CSV" under "PD relay feedback" — confirm the submitted row
+   appears with the right teacher/school/class/answers.
 
 **To go back to Zoho after this week**: just unset `FEEDBACK_FORM_PROVIDER`
 (or set it to `zoho`) and redeploy — no code or migration to revert, the two
-paths are fully independent.
-
-**Open question for whoever picks this up**: since this form doesn't need to
-be embedded (linked in a new tab), and teachers might do several ~20-minute
-relay blocks in one day, confirm with the user whether one Google Form
-submission per relay-block clock-out is the expected cadence (it should be,
-matching the existing "one attendance session per class" model) — nothing
-here changes how often a teacher clocks in/out, only which form they fill
-out at clock-out time.
+paths are fully independent and migration `0022`'s columns simply sit unused.
 
 Where to pick up otherwise. **Migrations `0019` and `0020` are both applied** (the
 user confirmed both directly against the hosted project). `0020` fixed a

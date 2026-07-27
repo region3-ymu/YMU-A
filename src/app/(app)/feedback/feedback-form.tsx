@@ -11,8 +11,9 @@ import {
   ISSUE_STATUS_OPTIONS,
   type FeedbackDraft,
 } from "@/lib/attendance/zoho-feedback";
-import { buildGoogleFeedbackUrl, type FeedbackFormConfig } from "@/lib/attendance/google-feedback";
+import { type FeedbackFormConfig } from "@/lib/attendance/relay-feedback";
 import { clearFeedbackDraft, getFeedbackDraft, saveFeedbackDraft } from "@/lib/attendance/offline-feedback-db";
+import RelayFeedbackForm from "./relay-feedback-form";
 
 export type FeedbackSession = {
   id: string;
@@ -134,20 +135,8 @@ export default function FeedbackForm({
         <p className="mt-4 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-sm">
           The feedback form isn&apos;t configured yet. Ask a manager to finish setting it up.
         </p>
-      ) : feedbackConfig.provider === "google" ? (
-        <div className="mt-4">
-          <a
-            href={buildGoogleFeedbackUrl(feedbackConfig.config, session.id, session.teacherId)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-block rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-accent-foreground"
-          >
-            Open feedback form
-          </a>
-          <p className="mt-2 text-xs opacity-60">
-            Opens in a new tab. This page updates automatically once your submission is received.
-          </p>
-        </div>
+      ) : feedbackConfig.provider === "relay" ? (
+        <RelayFeedbackForm sessionId={session.id} />
       ) : draftLoaded ? (
         <div className="mt-4">
           {draft && (

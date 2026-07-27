@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { requireRole } from "@/lib/auth/dal";
 import { getOpenSession } from "@/lib/attendance/queries";
-import { getFeedbackConfig } from "@/lib/attendance/google-feedback";
+import { getFeedbackConfig } from "@/lib/attendance/relay-feedback";
 import FeedbackForm from "./feedback-form";
 
 export const metadata: Metadata = { title: "Feedback" };
