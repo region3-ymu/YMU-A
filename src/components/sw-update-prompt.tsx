@@ -52,9 +52,19 @@ export default function SwUpdatePrompt() {
     serwist.addEventListener("controlling", onControlling);
 
     const check = () => {
-      serwist.update().catch(() => {
-        /* offline / transient — the interval retries */
-      });
+      // serwist.update() can throw SYNCHRONOUSLY ("Cannot update a Serwist
+      // instance without being registered") if register() hasn't resolved
+      // yet — a real console error confirmed live, not just theoretical. A
+      // bare .catch() only guards an async rejection, not a sync throw, so
+      // this needs a try/catch around the call itself too. Harmless either
+      // way — the 60s interval retries once registration has caught up.
+      try {
+        serwist.update()?.catch(() => {
+          /* offline / transient — the interval retries */
+        });
+      } catch {
+        /* not registered yet — the interval retries */
+      }
     };
     check();
     const interval = setInterval(check, 60_000);
