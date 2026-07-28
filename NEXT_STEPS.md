@@ -1,17 +1,32 @@
 # NEXT_STEPS — YMU-A
 
-## 🔴 Signup / forgot-password / any auth email is broken — SMTP misconfigured (2026-07-28)
+## 🔴 Signup / forgot-password / any auth email is broken — two issues, one fixed
 
-Found via Supabase auth logs while investigating a live "signup didn't work"
-report: `POST /signup` returned 500 with
-`"error":"dial tcp: lookup smtp.resend.com,: no such host"`. The custom SMTP
-host configured in the Supabase dashboard (Project Settings → Auth → SMTP
-Settings) has a **stray trailing comma** — `smtp.resend.com,` instead of
-`smtp.resend.com` — so DNS resolution fails and Supabase can't send ANY
-auth email (signup confirmation, forgot-password, magic link — anything
-that goes through that SMTP config). This is a dashboard config value, not
-something fixable from this repo/environment — the user needs to open the
-Supabase dashboard and remove the trailing comma.
+**Issue 1 (fixed by the user, 2026-07-28):** `POST /signup` was returning 500
+with `"error":"dial tcp: lookup smtp.resend.com,: no such host"` — a stray
+trailing comma in the SMTP host configured in the Supabase dashboard
+(Project Settings → Auth → SMTP Settings). The user removed the comma.
+
+**Issue 2 (found immediately after, still open):** the very next signup
+attempt now gets past DNS and fails at Resend itself:
+`"error":"gomail: could not send email 1: 550 \"The ymu.org domain is not
+verified. Please, add and verify your domain on
+https://resend.com/domains\""`. Resend requires the **sending domain**
+(`ymu.org`, whatever "from" address the SMTP config uses) to be verified via
+DNS records (SPF/DKIM/DMARC — Resend generates the exact records) before it
+will relay mail for that domain at all. This was already a known owed item
+from earlier phases ("Resend domain verification" in HANDOFF.md's old
+punch list) — not a new regression, just now confirmed as the actual
+current blocker.
+
+**Fix (needs whoever manages `ymu.org`'s DNS, not fixable from this repo):**
+1. In the Resend dashboard → Domains, add `ymu.org` (or whichever domain the
+   "from" address uses).
+2. Resend gives a handful of DNS records (TXT for SPF, CNAME/TXT for DKIM,
+   optionally a DMARC TXT record) — add those at the DNS provider that hosts
+   `ymu.org`'s records.
+3. Wait for DNS propagation, then click "Verify" in Resend's dashboard.
+4. Re-test signup/forgot-password once verified.
 
 **Until that's fixed**, for the Relay week: don't rely on in-app signup or
 "Forgot password?" working. Create/update accounts directly via
