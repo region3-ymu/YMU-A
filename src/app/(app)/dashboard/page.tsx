@@ -3,6 +3,8 @@ import Link from "next/link";
 import { requireRole } from "@/lib/auth/dal";
 import { MANAGER_ROLES } from "@/lib/auth/roles";
 import SearchBox from "@/components/search-box";
+import { formatDateTime, formatTime } from "@/lib/format/datetime";
+import AdminEditAttendanceForm from "../flags/admin-edit-attendance-form";
 import { getStuckSessionFlags } from "@/lib/attendance/stuck-sessions";
 import { getReportRoster } from "@/lib/reports/queries";
 import {
@@ -98,7 +100,7 @@ export default async function DashboardPage() {
                 {" · "}
                 {s.event?.summary ?? "Class"}
                 {" · since "}
-                {new Date(s.clock_in_at).toLocaleTimeString()}
+                {formatTime(s.clock_in_at)}
                 {s.clock_in_status === "late" && (
                   <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-warning-container px-2.5 py-1 text-xs font-semibold text-on-warning-container">
                     Late
@@ -162,7 +164,7 @@ export default async function DashboardPage() {
                 {nameById.get(f.teacher_id) ?? "Unknown teacher"} · {f.school?.name ?? "—"} ·{" "}
                 {f.event?.summary ?? "Class"}
                 {f.session?.clock_in_at
-                  ? ` · open since ${new Date(f.session.clock_in_at).toLocaleString()}`
+                  ? ` · open since ${formatDateTime(f.session.clock_in_at)}`
                   : ""}
               </li>
             ))}
@@ -191,7 +193,7 @@ export default async function DashboardPage() {
                 <span className="font-medium">{s.calendar_id}</span>
                 {s.last_error ? ` · ${s.last_error}` : ""}
                 {" · last attempt "}
-                {new Date(s.updated_at).toLocaleString()}
+                {formatDateTime(s.updated_at)}
               </li>
             ))}
           </ul>
@@ -214,7 +216,15 @@ export default async function DashboardPage() {
               >
                 <div className="absolute inset-y-0 left-0 w-1.5 bg-error" aria-hidden />
                 {nameById.get(r.teacher_id) ?? "Unknown teacher"} · {r.summary ?? "Class"} ·{" "}
-                {new Date(r.start_at).toLocaleTimeString()}
+                {formatTime(r.start_at)}
+                {profile.email && (
+                  <AdminEditAttendanceForm
+                    callerEmail={profile.email}
+                    eventId={r.event_id}
+                    teacherId={r.teacher_id}
+                    scheduledStartAt={r.start_at}
+                  />
+                )}
               </li>
             ))}
           </ul>
@@ -242,7 +252,7 @@ export default async function DashboardPage() {
                 {" · "}
                 {e.school?.name ?? "—"}
                 {" · "}
-                {e.start_at ? new Date(e.start_at).toLocaleString() : "—"}
+                {e.start_at ? formatDateTime(e.start_at) : "—"}
                 {" · "}
                 {e.teacher_ids.map((id) => nameById.get(id) ?? "Unknown").join(", ")}
               </li>

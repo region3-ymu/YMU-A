@@ -56,9 +56,17 @@ export const REGION_LABELS: Record<Region, string> = {
 // the Home menu grid and the bottom navigation bar.
 export type NavItem = { href: string; label: string; note: string; icon: string };
 
+// operations_manager/cpo by role, OR profiles.is_app_admin regardless of role
+// (currently only region3@ymu.org — see migration 0024) — the app_feedback
+// inbox's actual authorization rule, mirrored here just for nav visibility.
+export function canViewAppFeedback(role: AppRole, isAppAdmin: boolean): boolean {
+  return role === "operations_manager" || role === "cpo" || isAppAdmin;
+}
+
 // PRD: teachers get Clocking; managers get Lists in its place. OM/CPO also
-// get Team (role promotion).
-export function navForRole(role: AppRole): NavItem[] {
+// get Team (role promotion). isAppAdmin additionally unlocks "App feedback"
+// regardless of role (see canViewAppFeedback above).
+export function navForRole(role: AppRole, isAppAdmin: boolean = false): NavItem[] {
   const items: NavItem[] = [];
   if (role === "teacher") {
     items.push({
@@ -115,6 +123,14 @@ export function navForRole(role: AppRole): NavItem[] {
       label: "Team",
       note: "Roles & regions",
       icon: "badge",
+    });
+  }
+  if (canViewAppFeedback(role, isAppAdmin)) {
+    items.push({
+      href: "/app-feedback",
+      label: "App feedback",
+      note: "Bug reports from users",
+      icon: "bug_report",
     });
   }
   return items;

@@ -5,6 +5,7 @@ import { getNextClass, getOpenSession } from "@/lib/attendance/queries";
 import { getReportRows } from "@/lib/reports/queries";
 import { bucketReportRows } from "@/lib/reports/aggregate";
 import type { PeriodSummary } from "@/lib/reports/types";
+import { formatTime, formatWeekdayLong } from "@/lib/format/datetime";
 import PushOnboardingPrompt from "@/components/push-onboarding-prompt";
 
 // Rotating tint for the bento tile icons (Stitch look — each tile's icon sits
@@ -20,16 +21,6 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 function classTitle(summary: string | null | undefined) {
   return summary?.trim() || "your next class";
-}
-
-function formatTime(iso: string | null) {
-  if (!iso) return "";
-  return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(new Date(iso));
-}
-
-function formatDay(iso: string | null) {
-  if (!iso) return "";
-  return new Intl.DateTimeFormat(undefined, { weekday: "long", month: "short", day: "numeric" }).format(new Date(iso));
 }
 
 // Monday-start week containing now, in UTC — matches the reports aggregate's
@@ -72,7 +63,7 @@ export default async function Home() {
   // The Clocking tile reflects which action is actually available right now:
   // with an open session, clocking in is blocked, so the tile becomes the
   // "Clock out" entry point instead of restating "Clocking".
-  const nav = navForRole(profile.role).map((item) =>
+  const nav = navForRole(profile.role, profile.is_app_admin).map((item) =>
     item.href === "/clocking" && openSession
       ? { ...item, label: "Clock out", note: "Submit feedback to finish" }
       : item,
@@ -135,7 +126,7 @@ export default async function Home() {
           )}
           <div className="mt-4 flex items-center justify-between gap-3">
             <span className="text-sm font-medium text-white/90">
-              {nextClass.start_at ? `${formatDay(nextClass.start_at)} · ` : ""}
+              {nextClass.start_at ? `${formatWeekdayLong(nextClass.start_at)} · ` : ""}
               {formatTime(nextClass.start_at)}
               {nextClass.end_at ? ` – ${formatTime(nextClass.end_at)}` : ""}
             </span>

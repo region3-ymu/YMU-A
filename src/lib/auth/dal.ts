@@ -17,6 +17,9 @@ export type Profile = {
   subjects: string[];
   emergency_contact: string | null;
   archived_at: string | null;
+  // Grants app_feedback visibility regardless of role (see migration 0024) —
+  // whoever's actually operating the app day-to-day, independent of org role.
+  is_app_admin: boolean;
 };
 
 // Memoized per request/render pass. Returns null when signed out. Archived
@@ -34,7 +37,7 @@ export const getProfile = cache(async (): Promise<Profile | null> => {
   const { data: profile } = await supabase
     .from("profiles")
     .select(
-      "id, full_name, phone, role, region, subjects, emergency_contact, archived_at",
+      "id, full_name, phone, role, region, subjects, emergency_contact, archived_at, is_app_admin",
     )
     .eq("id", user.id)
     .single();

@@ -2,10 +2,12 @@ import type { Metadata } from "next";
 import { requireRole } from "@/lib/auth/dal";
 import { MANAGER_ROLES } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/server";
+import { formatDateTime, formatTime } from "@/lib/format/datetime";
 import { getReportRoster } from "@/lib/reports/queries";
 import type { RosterTeacher } from "@/lib/reports/types";
 import ForceCloseForm from "./force-close-form";
 import ResolveFlagButton from "./resolve-flag-button";
+import AdminEditAttendanceForm from "./admin-edit-attendance-form";
 
 export const metadata: Metadata = { title: "Flags" };
 
@@ -91,6 +93,16 @@ export default async function FlagsPage() {
               ) : (
                 <GpsOutOfFenceCard flag={flag} teacher={teacherById.get(flag.teacher_id)} />
               )}
+              {flag.type === "late_clock_in" && caller.email ? (
+                <AdminEditAttendanceForm
+                  callerEmail={caller.email}
+                  sessionId={flag.session?.id}
+                  eventId={flag.event?.id}
+                  teacherId={flag.teacher_id}
+                  scheduledStartAt={(flag.details.scheduled_start_at as string | undefined) ?? flag.event?.start_at}
+                  currentClockInAt={flag.session?.clock_in_at}
+                />
+              ) : null}
               {flag.type === "feedback_stuck" && flag.session_id ? (
                 canForceClose && <ForceCloseForm sessionId={flag.session_id} />
               ) : (
@@ -122,7 +134,7 @@ function StuckFeedbackCard({ flag, teacher }: { flag: FlagRow; teacher: RosterTe
             {" "}at <span className="font-medium text-on-surface">{flag.school.name}</span>
           </>
         ) : null}{" "}
-        clocked in{clockInAt ? ` at ${new Date(clockInAt).toLocaleString()}` : ""} and the class is
+        clocked in{clockInAt ? ` at ${formatDateTime(clockInAt)}` : ""} and the class is
         still open — Zoho&rsquo;s feedback webhook hasn&rsquo;t closed it out. Confirm with the
         teacher directly before force-closing.
       </p>
@@ -155,7 +167,7 @@ function LateClockInCard({ flag, teacher }: { flag: FlagRow; teacher: RosterTeac
         ) : null}
         {startAt ? (
           <>
-            {" "}(scheduled {new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(new Date(startAt))})
+            {" "}(scheduled {formatTime(startAt)})
           </>
         ) : null}
         , more than 5 minutes past the scheduled start.

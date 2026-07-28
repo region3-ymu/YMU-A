@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireProfile } from "@/lib/auth/dal";
 import { HOME_NAV_ITEM, navForRole, ROLE_LABELS } from "@/lib/auth/roles";
+import AppFeedbackButton from "@/components/app-feedback-button";
 import BackButton from "@/components/back-button";
 import BottomNav from "@/components/bottom-nav";
 import GpsCheckSampler from "@/components/gps-check-sampler";
@@ -17,7 +18,7 @@ export default async function AppLayout({
 
   // Bottom nav = Home hub + the role's top destinations, capped so the bar
   // stays thumb-friendly on mobile. The full menu always lives on Home.
-  const navItems = [HOME_NAV_ITEM, ...navForRole(profile.role).slice(0, 4)];
+  const navItems = [HOME_NAV_ITEM, ...navForRole(profile.role, profile.is_app_admin).slice(0, 4)];
 
   return (
     <div
@@ -74,6 +75,7 @@ export default async function AppLayout({
           all (RLS-scoped), so this is a no-op for managers. Mounted here
           (not per-page) so sampling continues across in-app navigation. */}
       {profile.role === "teacher" && <GpsCheckSampler />}
+      <AppFeedbackButton userId={profile.id} />
     </div>
   );
 }

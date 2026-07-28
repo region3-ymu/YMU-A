@@ -27,7 +27,7 @@ export async function GET(request: Request) {
 
   const { data: profileRow } = await supabase
     .from("profiles")
-    .select("id, full_name, phone, role, region, subjects, emergency_contact, archived_at")
+    .select("id, full_name, phone, role, region, subjects, emergency_contact, archived_at, is_app_admin")
     .eq("id", user.id)
     .single();
   if (!profileRow || !isAppRole(profileRow.role)) {
