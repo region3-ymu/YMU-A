@@ -1,5 +1,56 @@
 # NEXT_STEPS — YMU-A
 
+## ✅ Fixed: class times showed +4h wrong on server-rendered screens (2026-07-28)
+
+Live-reported during the Relay: a teacher whose class was 12:30–2:30 PM saw
+4:30–6:30 PM on the **clock-in screen** (and the event-detail page, Flags,
+Dashboard). The Schedules **list** was correct, which is the tell.
+
+Root cause: every human-readable time was formatted with
+`Intl.DateTimeFormat(undefined, …)` — no `timeZone` — which uses the
+*runtime's* zone. A React Server Component's runtime is Vercel, which runs in
+**UTC**, so a 12:30 PM Eastern class (stored 16:30 UTC) rendered "4:30 PM".
+The Schedules list looked fine only because it's a Client Component that ran
+on the teacher's Miami phone. NOT a Google Calendar problem and NOT a data
+problem — the stored `start_at` (UTC) and the stored on_time/late status were
+always correct; only the display strings were wrong.
+
+Fix: new `src/lib/format/datetime.ts` pins all clock-time/date rendering to
+`America/New_York` (YMU is Miami-only; the IANA zone handles EDT/EST DST
+automatically — do not use a fixed offset). All display sites converted.
+Verified under `TZ=UTC`: old → "4:30 PM", new → "12:30 PM – 2:30 PM".
+
+Split across two commits by deploy-safety:
+- `2ad1c92` — the teacher-facing surfaces with NO DB dependency (Clocking,
+  Schedules, feedback line, search). **Safe to push immediately, no
+  migration needed.**
+- `3f8153e` — the rest (Dashboard/Flags/Home), bundled with the two features
+  below because they touch the same files.
+
+Any stale Flag cards from BEFORE the schedule was corrected in Google
+Calendar will still show their old (wrong) frozen `scheduled_start_at` — those
+are obsolete; just "Mark resolved" them.
+
+## 🔴 MUST apply migrations 0023 + 0024 before deploying commit 3f8153e
+
+`dal.ts` now selects `profiles.is_app_admin` on every page load. If commit
+`3f8153e` reaches Vercel before migration 0024 adds that column, `getProfile()`
+fails for everyone → the whole app bounces to signout. Apply BOTH migrations
+(0023 first, then 0024) via the Supabase SQL editor, THEN push `3f8153e`.
+(Commit `2ad1c92`, the timezone fix, has no such dependency — push it anytime.)
+
+**Two new features these commits/migrations add:**
+1. **Manager attendance correction** (migration 0023): RM/OM/CPO can edit a
+   clock-in's status/time or record a class a teacher gave but never clocked
+   in for. Requires the manager to re-enter their OWN password; writes an
+   audit trail (`admin_edited_by/at/reason`); RM is region-scoped. On Flags +
+   Dashboard. This finally closes the long-standing "no way to fix
+   attendance" gap the paper backup was covering.
+2. **In-app feedback button** (migration 0024): global "report a problem"
+   button (message + optional screenshot → private `app-feedback` Storage
+   bucket) for every role; inbox at `/app-feedback` for OM/CPO + anyone with
+   the new `profiles.is_app_admin` flag (seeded to `region3@ymu.org`).
+
 ## 🔴 Signup / forgot-password / any auth email is broken — two issues, one fixed
 
 **Issue 1 (fixed by the user, 2026-07-28):** `POST /signup` was returning 500
