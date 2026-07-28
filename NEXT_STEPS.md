@@ -1,5 +1,67 @@
 # NEXT_STEPS — YMU-A
 
+## ✅ Calendar-sync cron confirmed running fully on its own (2026-07-28)
+
+Confirmed via `net._http_response`/edge-function logs: `calendar-sync` fired
+automatically at `00:15:25`, `00:20:25`, `00:25:25` (exactly every 5 min,
+nobody triggered it manually), all 51 calendars synced with `status: 200`
+each time. The Edge Function redeploy from the previous session fully fixed
+this — no more "I had to trigger it myself" needed.
+
+## 🔴 PENDING (user confirmation needed before executing): clean-slate user wipe
+
+User wants to delete every profile except: the CPO, the Operations Manager,
+and `region3@ymu.org` (Emilio Medrano, Central Regional Manager) — then, in
+a **separate later step** (after this round of testing is fully done), also
+wipe all teacher accounts so onboarding real teachers starts clean. **Do
+NOT execute this until the user explicitly confirms** — they asked to wait
+until after one more full testing pass.
+
+**Found a real ambiguity querying current profiles** — needs the user's
+answer before running anything:
+- **Two `cpo`-role profiles exist**: `cpo@ymu.test` ("Seed CPO", a test
+  account) and `programs@youngmusiciansunite.org` ("YMU Programs" — looks
+  real). Confirm which one to keep.
+- **No real `operations_manager` profile exists** — only
+  `om@ymu.test` ("Seed Operations Manager", a test account). Confirm
+  whether to keep that test OM account as a placeholder, or whether a real
+  OM email should be created instead.
+- Full current profile list (12 rows: 2 cpo, 2 regional_manager, 1
+  operations_manager, 7 teacher) is in this session's transcript — re-query
+  `select p.*, au.email from profiles p left join auth.users au on au.id =
+  p.id` before executing, since more test/real accounts may be added before
+  this actually runs.
+
+**Execution plan once confirmed** (do NOT run without explicit go-ahead):
+delete via `supabase.auth.admin.deleteUser(id)` for each profile to remove
+(cascades to `profiles` via the FK) — NOT a raw `delete from profiles`,
+which would leave an orphaned `auth.users` row. Do teachers in the same
+batch or a separate one, per the user's "test now, wipe teachers later"
+sequencing.
+
+## 🟡 Stitch MCP connection — user needs to run this in their OWN terminal
+
+User wants Google Stitch (AI UI design tool) connected for the app redesign
+work. Same limitation as the earlier GitHub PAT attempt: this sandbox has no
+`claude` CLI binary (`command not found`), so `claude mcp add stitch ...`
+cannot be run from here — it must be run in the user's own terminal. Once
+added there (project-scoped `.mcp.json`), it may become available in a
+running session automatically without a restart — this is exactly what
+happened with the Supabase MCP connection earlier this session. Check via
+`ToolSearch` for `mcp__stitch__*` tools at the start of a future session
+before assuming it isn't connected.
+
+User also wants a **base44** design (another AI app-design tool) reviewed
+for inspiration alongside Stitch's output, once they share the link — not
+done yet, no link received.
+
+The Google-Stitch design-brief prompt (covering all key screens: login,
+teacher home, clocking, feedback form, schedules, reports, manager
+dashboard, flags, lists, settings) was already generated and sent to the
+user as a file this session — regenerate by reviewing this file's git
+history / the session transcript if it's needed again and not saved
+locally.
+
 ## ✅ Relay feedback form confirmed live in production (2026-07-27)
 
 Live-verified end to end against `https://ymu-a-navy.vercel.app` (commit
