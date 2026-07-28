@@ -1,5 +1,65 @@
 # NEXT_STEPS — YMU-A
 
+## ✅ Google Stitch + Base44 design rework applied app-wide (2026-07-28)
+
+User exported a Google Stitch design ("YMU Tempo" — Material 3, Inter,
+Material Symbols) as a zip (`code.html` + `screen.png` per screen + a
+`DESIGN.md` token spec) and shared a Base44 reference app
+(`https://ymu-connect-flow.base44.app/teacher`) for a second opinion. Both
+were applied to the real app across two commits:
+
+**Commit `03ad3a8`** — full Material 3 token system ported into
+`src/app/globals.css` (surface/primary/tertiary/error/warning containers,
+light + dark), Inter + Material Symbols loaded in the root layout, a new
+mobile bottom-nav component, and every screen restyled to match (Home,
+Clocking, Feedback, Schedules, Dashboard, Lists/Directory, Flags, Reports,
+Settings, Team/Users, all auth screens, shared widgets). **Visual-only** —
+no logic, data flow, routes, or form fields changed; done via 8 parallel
+subagents each restyling an independent file group off a shared conversion
+guide, then verified with `tsc`/`eslint`/route-compile checks (no visual
+diff tool available in this environment, but Login/Signup were screenshotted
+directly and match the Stitch mockup).
+
+**Commit `78f9973`** — refinements per user feedback after reviewing Base44
+side-by-side:
+- **Regional Manager's accent color changed from teal (`#0d9488`) to violet
+  (`#7c3aed`)** — teal read as "success" (already used for on-time/in-zone
+  everywhere else) and didn't fit the indigo/violet palette both references
+  use. OM (amber) and CPO (rose) were left as-is.
+- Adopted from Base44: a contextual Home greeting ("You teach X at Y"), a
+  gradient indigo→violet "Next up" hero card with a white Clock-in pill
+  (teacher Home, shown when there's a next class and no open session), a
+  "This week" stat row (Hours/On-time/Attendance, reusing the same
+  `bucketReportRows` aggregate Reports uses), and an M3 pill highlight
+  behind the active bottom-nav tab.
+
+**Convention change to note for future work**: inline alert/status text
+should now use the M3 tokens (`text-error`, `text-tertiary`,
+`bg-error-container text-on-error-container`, etc. — see
+`src/app/globals.css`'s `@theme inline` block) instead of the old
+`text-red-600 dark:text-red-400` / `border-amber-500/40 bg-amber-500/5`
+pattern HANDOFF.md's "Conventions to preserve" describes. Any new
+screen/component should follow the new tokens, not the old ad-hoc
+Tailwind colors.
+
+**Not yet pushed by the agent** — this build environment has no GitHub
+credentials (`git push` fails with "could not read Username… Device not
+configured" even outside the sandbox); the user pushed `03ad3a8`
+themselves, `78f9973` is committed locally and still needs `git push
+origin main` run from the user's own terminal.
+
+**QA seed data now exists on the hosted (production) Supabase project**
+(user explicitly confirmed running this against `vgyogyojxlvhiwujidhy`,
+there is no separate staging project) — `SEED_ALLOW=1 npm run seed:test`
+created/updated: `teacher@ymu.test` / `rm@ymu.test` / `om@ymu.test` /
+`cpo@ymu.test` (password `YmuTest123!`), a "Seed Test School" (~100 km
+geofence so clock-in works without exact GPS), a "Seed Test Year" school
+year, and a "Seed Test Class" calendar event. Re-running the script is
+idempotent (updates the same fixed rows, never deletes). These test
+rows/accounts must be cleaned up as part of the clean-slate wipe below
+before real onboarding, since they're currently visible to real
+managers in Lists/Schedules/Reports (clearly named "Seed"/"Test").
+
 ## ✅ Calendar-sync cron confirmed running fully on its own (2026-07-28)
 
 Confirmed via `net._http_response`/edge-function logs: `calendar-sync` fired
@@ -8,14 +68,46 @@ nobody triggered it manually), all 51 calendars synced with `status: 200`
 each time. The Edge Function redeploy from the previous session fully fixed
 this — no more "I had to trigger it myself" needed.
 
-## 🔴 PENDING (user confirmation needed before executing): clean-slate user wipe
+## 🔴 PENDING (user confirmation needed before executing): clean-slate user wipe + CSV teacher import
 
-User wants to delete every profile except: the CPO, the Operations Manager,
-and `region3@ymu.org` (Emilio Medrano, Central Regional Manager) — then, in
-a **separate later step** (after this round of testing is fully done), also
-wipe all teacher accounts so onboarding real teachers starts clean. **Do
-NOT execute this until the user explicitly confirms** — they asked to wait
-until after one more full testing pass.
+Sequencing, per the user (2026-07-28), unchanged in spirit from the earlier
+note but now with the follow-on step spelled out — **do NOT execute any of
+this until the user explicitly says the final test pass succeeded**:
+
+1. User is about to do a final manual test pass: Google Calendar sync (a real
+   event, a real school) and the Resend email path (notifications/reminders),
+   using the seeded `teacher@ymu.test` account and the "Seed Test Class"
+   event from the redesign work above.
+2. **Only if that passes**, wipe every profile except the regional manager(s)
+   to keep — delete via `supabase.auth.admin.deleteUser(id)` (cascades to
+   `profiles` via the FK), NOT a raw `delete from profiles` (would orphan the
+   `auth.users` row).
+3. **Delete all teacher accounts** (including the seeded `teacher@ymu.test`
+   and any real teachers created so far) so onboarding starts clean.
+4. **Create additional Regional Manager accounts** (count/emails/regions:
+   ask the user when this step is reached — not specified yet).
+5. **Bulk-create real teacher accounts from a CSV** the user will provide,
+   all sharing one default password (teachers change it themselves after
+   first login — standard Supabase `resetPasswordForEmail` flow, already
+   built). This needs a small one-off script (similar shape to
+   `scripts/seed-test-data.ts`'s account-creation loop, but reading rows from
+   a CSV instead of the hardcoded `ACCOUNTS` array) — not written yet.
+6. Whatever else turns out to be needed so the app is ready for real use
+   "tomorrow" — re-derive the exact list with the user once step 1's test
+   results are in, since new gaps may surface during that pass.
+
+**Still-unresolved ambiguity from before** (re-check before executing step 2,
+since more accounts may have been added since):
+- **Two `cpo`-role profiles exist**: `cpo@ymu.test` ("Seed CPO", a test
+  account) and `programs@youngmusiciansunite.org` ("YMU Programs" — looks
+  real). Confirm which one to keep.
+- **No real `operations_manager` profile exists** — only
+  `om@ymu.test` ("Seed Operations Manager", a test account). Confirm
+  whether to keep that test OM account as a placeholder, or whether a real
+  OM email should be created instead.
+- Re-query `select p.*, au.email from profiles p left join auth.users au on
+  au.id = p.id` right before executing step 2/3, rather than trusting any
+  previously-recorded row count.
 
 **Found a real ambiguity querying current profiles** — needs the user's
 answer before running anything:

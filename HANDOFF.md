@@ -71,12 +71,42 @@ installed as a PWA (Serwist service worker).
   TypeScript (`src/lib/reports/aggregate.ts`) over raw rows, not in SQL.
 - **Conventions to preserve**: one `lib/<feature>/` directory per feature area;
   server actions return `{error?, success?}` via `useActionState`, errors
-  rendered as `<p role="alert" className="text-red-600 dark:text-red-400">`;
-  every mutation-bearing RPC is either `security definer` with explicit
-  role/ownership checks or `service_role`-only, never a raw client write path;
-  every migration gets an RLS test in `tests/*-rls.test.ts` run against the
-  **hosted** project (no local Docker stack) via disposable service-role-created
-  users, cleaned up in `afterAll`.
+  rendered as `<p role="alert" className="text-error">` (Material 3 token —
+  see the "Design system" section below; the old `text-red-600 dark:text-red-400`
+  ad-hoc Tailwind pattern predates the redesign and shouldn't be reintroduced
+  in new code); every mutation-bearing RPC is either `security definer` with
+  explicit role/ownership checks or `service_role`-only, never a raw client
+  write path; every migration gets an RLS test in `tests/*-rls.test.ts` run
+  against the **hosted** project (no local Docker stack) via disposable
+  service-role-created users, cleaned up in `afterAll`.
+
+## Design system (Google Stitch + Base44 rework, post-Phase-9, 2026-07-28)
+
+The app's visual design was reworked app-wide from an exported Google Stitch
+design ("YMU Tempo," Material 3) plus refinements adopted from a Base44
+reference app, side by side. Full detail and rationale in NEXT_STEPS.md's
+"Google Stitch + Base44 design rework" entry — summary for anyone touching UI
+after this point:
+
+- **Tokens live in `src/app/globals.css`**, exposed to Tailwind via `@theme
+  inline`: `bg-surface`/`bg-surface-container[-low|-high|-highest]`,
+  `text-on-surface`/`text-on-surface-variant`, and per-status container pairs
+  (`bg-primary`/`text-on-primary`, `-tertiary-` = success, `-error-` = danger,
+  `-warning-` = needs-attention, `-secondary-` = alt accent). Both light and
+  dark values are defined; don't hand-roll a new color.
+- **`primary` is bound to the existing per-role `--accent`**, not hardcoded —
+  teacher stays indigo (Stitch's own primary), regional_manager is **violet**
+  (`#7c3aed`, changed from an earlier teal that read as "success" and clashed),
+  operations_manager is amber, cpo is rose. Set in `globals.css`'s
+  `[data-role="..."]` blocks.
+- Inter (self-hosted via `next/font`) and Material Symbols (loaded via a
+  `<link>` in the root layout's `<head>`) are the app's only font/icon system
+  now — no more Geist or inline SVG icons in restyled files.
+- New shared component: `src/components/bottom-nav.tsx` (mobile bottom
+  navigation, active-tab pill highlight).
+- This was a **visual-only** rework — no route, RPC, RLS, or data-flow changes
+  anywhere in the two commits (`03ad3a8`, `78f9973`). Safe to treat as
+  orthogonal to everything else in this file.
 
 ## Phase-by-phase summary
 
