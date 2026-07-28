@@ -1,5 +1,47 @@
 # NEXT_STEPS — YMU-A
 
+## 🟡 FUTURE (not this week): 24-hour feedback grace period + a teacher-facing "feedback owed" list
+
+User request (2026-07-28), explicitly **not for this week** — just recording
+the idea before it's forgotten. Not designed in detail, not built.
+
+**The problem this solves**: today, clocking into a new class is blocked
+until feedback for the previous class is submitted (`attendance_sessions`
+with `clock_out_at IS NULL` — DECISIONS.md's "the open session IS the
+Demand"). Back-to-back classes with little/no gap between them make this a
+real problem — a teacher physically can't stop to fill out the Zoho form
+before their next class starts, so the block fires when it shouldn't.
+
+**Proposed relief**: let a teacher clock into their next class even with a
+prior class's feedback still unsubmitted, but only for **24 hours** from
+[start? end? clock-in? — needs deciding] of the class the feedback is owed
+for. If 24 hours pass with that feedback still missing, clock-in blocks again
+until it's filled — same hard stop as today, just delayed instead of
+immediate.
+
+**Also wanted**: some teacher-facing way to see which class(es) they still
+owe feedback for during that grace window — the user described it as "like
+flags, but for teachers" while trying to recall if this was already named
+something. It wasn't — searched NEXT_STEPS/HANDOFF/DECISIONS, no prior
+teacher-facing "feedback owed" concept exists under any name. `flags` is
+manager-only (no teacher-visible RLS policy at all, per HANDOFF.md's
+architecture notes) — this would be a new, separate teacher-facing surface,
+not a reuse of that table.
+
+**Why this isn't a small tweak**: it changes the core "open session is the
+Demand" design multiple later phases were built on top of (Phase 4's
+decision, reaffirmed since). Clocking in would need to stop being gated on
+"does any session have `clock_out_at IS NULL`" and instead on something like
+"does any session's class end more than 24h ago AND still lack feedback" —
+which means clock-out and feedback-submitted need to become decoupled
+(a session could be clocked out without feedback yet, unlike today). Needs a
+real design pass before building: what exactly starts the 24h clock, what the
+teacher-facing list looks like, whether multiple overdue feedbacks stack or
+only the oldest blocks, and how this interacts with the Zoho-webhook-closes-
+the-session flow (Phase 4/9) vs. the native relay form (current PD-week
+path) — both close a session on feedback submission today, and both would
+need to know about this grace window.
+
 ## ✅ Fixed: class times showed +4h wrong on server-rendered screens (2026-07-28)
 
 Live-reported during the Relay: a teacher whose class was 12:30–2:30 PM saw
