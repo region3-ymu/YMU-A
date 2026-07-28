@@ -111,7 +111,7 @@ export default function SwUpdatePrompt() {
         <span className="material-symbols-outlined text-base" aria-hidden>
           system_update
         </span>
-        Hay una versión nueva de la app.
+        A new version of the app is available.
       </span>
       <button
         type="button"
@@ -119,7 +119,7 @@ export default function SwUpdatePrompt() {
         disabled={reloading}
         className="shrink-0 text-sm font-bold text-primary-fixed disabled:opacity-60"
       >
-        {reloading ? "Actualizando…" : "Actualizar"}
+        {reloading ? "Updating…" : "Update"}
       </button>
     </div>
   );
