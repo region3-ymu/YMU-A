@@ -533,6 +533,43 @@ Originally picked teal (`#0d9488`) for RM when the per-role accents were first d
 ### Reports' per-teacher period tables became status-striped cards, not a restyled `<table>`
 The Stitch/Base44 references show Reports as vertical timeline cards (one per class, left status stripe, metrics as pills), but this app's Reports screen aggregates into weekly/monthly/quarterly *period* rows (`bucketReportRows()`), not one row per class — there's no per-class timeline data at this screen. Rather than invent per-class data or leave the mismatch unaddressed, the existing `<table>` of period summaries was restructured into the same card-with-stripe visual language (stripe color derived from whichever of missed/late/on-time is present in that period), keeping every underlying data value, `href`, and computation untouched. This is a DOM-structure change (table → divs), not just a className swap — flagged here since it's a bigger change than the rest of the restyle, which was strictly className-only.
 
+## Fixed: infinite login↔home redirect loop on a revoked-but-unexpired session (2026-07-28)
+
+Hit live: the production app ( `https://ymu-a-navy.vercel.app` ) became
+completely unreachable in one Safari session with "Load cannot follow more
+than 20 redirections." Confirmed via Supabase auth logs (`get_logs`,
+service `auth`) that around the same time, repeated `400
+refresh_token_not_found` (`POST /token`) and `403 Session not found` (`GET
+/user`) requests were coming from that same browser — the session had been
+revoked server-side while the client kept presenting it.
+
+**Root cause**: `src/proxy.ts`'s optimistic check (`getClaims()`, a local
+JWT decode) and `src/lib/auth/dal.ts`'s authoritative check (`getUser()`, a
+real call to the auth server) can disagree. A revoked session (e.g. a
+password change via `admin.auth.admin.updateUserById` — which is exactly
+what re-running `scripts/seed-test-data.ts` against an already-signed-in
+seed account does) invalidates the refresh token immediately, but the
+still-unexpired access-token JWT keeps decoding as "valid" locally for the
+rest of its lifetime. So: proxy sees valid claims → lets `/` through →
+`requireProfile()`'s authoritative `getUser()` call fails → redirects to
+`/login` → proxy sees the *same* still-valid-looking claims on `/login` →
+bounces straight back to `/` → forever. Two auth checks with different
+staleness windows, each redirecting the other way, is the general shape of
+the bug — worth remembering for any future change to either check.
+
+**Fix** (`src/lib/auth/dal.ts`): `requireProfile()`'s null-profile branch
+now redirects to `/auth/signout` instead of a bare `redirect("/login")` —
+the existing route handler used for archived accounts, which actually
+clears the session cookie (a route handler can write cookies mid-request;
+a Server Component mid-render cannot). That's what breaks the loop: the
+*next* request has no stale cookie left for the proxy to misread as
+"signed in."
+
+**Immediate workaround for anyone already stuck in the loop** (needed
+regardless of the code fix, since the fix only prevents *new* occurrences —
+an already-stuck browser still has the old bad cookie until it's cleared):
+clear cookies/site data for the app's domain, or open the app in a private/incognito window.
+
 ## Product-level decisions (confirmed with user before Phase 0, full detail in the plan file)
 
 | Area | Decision |
