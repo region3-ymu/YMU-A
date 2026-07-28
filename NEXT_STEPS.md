@@ -31,13 +31,12 @@ Any stale Flag cards from BEFORE the schedule was corrected in Google
 Calendar will still show their old (wrong) frozen `scheduled_start_at` — those
 are obsolete; just "Mark resolved" them.
 
-## 🔴 MUST apply migrations 0023 + 0024 before deploying commit 3f8153e
+## ✅ Migrations 0023 + 0024 applied — safe to deploy everything (2026-07-28)
 
-`dal.ts` now selects `profiles.is_app_admin` on every page load. If commit
-`3f8153e` reaches Vercel before migration 0024 adds that column, `getProfile()`
-fails for everyone → the whole app bounces to signout. Apply BOTH migrations
-(0023 first, then 0024) via the Supabase SQL editor, THEN push `3f8153e`.
-(Commit `2ad1c92`, the timezone fix, has no such dependency — push it anytime.)
+The user applied both migrations via the Supabase SQL editor. The
+`dal.ts`-selects-`is_app_admin` deploy hazard is therefore cleared — the
+whole branch (timezone fix + both features) can now ship in a single
+`git push origin main`, no ordering constraint left.
 
 **Two new features these commits/migrations add:**
 1. **Manager attendance correction** (migration 0023): RM/OM/CPO can edit a
