@@ -8,11 +8,14 @@ import MapPreview from "./map-preview";
 import type { School } from "./types";
 
 const INPUT_CLASSES =
-  "rounded-lg border border-foreground/20 bg-background px-2 py-1.5 text-sm";
+  "rounded-lg bg-surface-container-low px-2 py-1.5 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary";
+
+const SAVE_BUTTON_CLASSES =
+  "rounded-full bg-primary px-3 py-1.5 text-xs font-bold text-on-primary shadow-sm active:scale-[0.98] disabled:opacity-40";
 
 function RegionBadge({ region }: { region: School["region"] }) {
   return (
-    <span className="rounded-full border border-foreground/20 px-2 py-0.5 text-xs opacity-70">
+    <span className="inline-flex items-center gap-1 rounded-full bg-primary-container px-2.5 py-1 text-xs font-semibold text-on-primary-container">
       {region ? REGION_LABELS[region] : "Unassigned"}
     </span>
   );
@@ -36,15 +39,11 @@ function RegionForm({ school }: { school: School }) {
           </option>
         ))}
       </select>
-      <button
-        type="submit"
-        disabled={pending}
-        className="rounded-lg bg-accent px-2.5 py-1.5 text-xs font-semibold text-accent-foreground disabled:opacity-40"
-      >
+      <button type="submit" disabled={pending} className={SAVE_BUTTON_CLASSES}>
         {pending ? "Saving…" : "Save region"}
       </button>
       {state?.error && (
-        <p role="alert" className="w-full text-xs text-red-600 dark:text-red-400">
+        <p role="alert" className="w-full text-xs text-error">
           {state.error}
         </p>
       )}
@@ -87,27 +86,21 @@ function LocationEditor({ school }: { school: School }) {
           className={`${INPUT_CLASSES} w-32`}
           aria-label="Longitude"
         />
-        <button
-          type="submit"
-          disabled={pending}
-          className="rounded-lg bg-accent px-2.5 py-1.5 text-xs font-semibold text-accent-foreground disabled:opacity-40"
-        >
+        <button type="submit" disabled={pending} className={SAVE_BUTTON_CLASSES}>
           {pending ? "Saving…" : "Override pin"}
         </button>
       </div>
       {drift !== null && drift > 1 && (
-        <p className="text-xs opacity-60">
+        <p className="text-xs text-on-surface-variant">
           Moves the pin ~{Math.round(drift)} m from the geocoded location.
         </p>
       )}
       {state?.error && (
-        <p role="alert" className="text-xs text-red-600 dark:text-red-400">
+        <p role="alert" className="text-xs text-error">
           {state.error}
         </p>
       )}
-      {state?.success && (
-        <p className="text-xs text-green-700 dark:text-green-300">{state.success}</p>
-      )}
+      {state?.success && <p className="text-xs text-tertiary">{state.success}</p>}
     </form>
   );
 }
@@ -118,7 +111,7 @@ function ContactEditor({ school }: { school: School }) {
     <form action={action} className="flex flex-wrap items-end gap-2">
       <input type="hidden" name="school_id" value={school.id} />
       <div className="flex flex-col gap-1">
-        <label className="text-xs opacity-60">Contact name</label>
+        <label className="text-xs text-on-surface-variant">Contact name</label>
         <input
           name="contact_name"
           defaultValue={school.contact_name ?? ""}
@@ -126,7 +119,7 @@ function ContactEditor({ school }: { school: School }) {
         />
       </div>
       <div className="flex flex-col gap-1">
-        <label className="text-xs opacity-60">Contact phone</label>
+        <label className="text-xs text-on-surface-variant">Contact phone</label>
         <input
           name="contact_phone"
           defaultValue={school.contact_phone ?? ""}
@@ -134,7 +127,7 @@ function ContactEditor({ school }: { school: School }) {
         />
       </div>
       <div className="flex flex-col gap-1">
-        <label className="text-xs opacity-60">Geofence (m)</label>
+        <label className="text-xs text-on-surface-variant">Geofence (m)</label>
         <input
           name="geofence_radius_m"
           type="number"
@@ -143,15 +136,11 @@ function ContactEditor({ school }: { school: School }) {
           className={`${INPUT_CLASSES} w-20`}
         />
       </div>
-      <button
-        type="submit"
-        disabled={pending}
-        className="rounded-lg bg-accent px-2.5 py-1.5 text-xs font-semibold text-accent-foreground disabled:opacity-40"
-      >
+      <button type="submit" disabled={pending} className={SAVE_BUTTON_CLASSES}>
         {pending ? "Saving…" : "Save"}
       </button>
       {state?.error && (
-        <p role="alert" className="w-full text-xs text-red-600 dark:text-red-400">
+        <p role="alert" className="w-full text-xs text-error">
           {state.error}
         </p>
       )}
@@ -177,18 +166,30 @@ export default function SchoolCard({
   const canAssignRegion = callerRole === "operations_manager" || callerRole === "cpo";
 
   return (
-    <li className="flex flex-col gap-3 rounded-2xl border border-foreground/10 p-4">
+    <li className="relative flex flex-col gap-3 overflow-hidden rounded-2xl bg-surface-container p-4 shadow-sm">
+      <div className="absolute inset-y-0 left-0 w-1.5 bg-primary" aria-hidden />
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="font-semibold">{school.name}</p>
-          <p className="text-xs opacity-60">{school.address}</p>
-          {(school.contact_name || school.contact_phone) && (
-            <p className="mt-1 text-xs opacity-60">
-              {school.contact_name}
-              {school.contact_name && school.contact_phone ? " · " : ""}
-              {school.contact_phone}
-            </p>
-          )}
+        <div className="flex items-start gap-3">
+          <span
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary-container text-on-primary-container"
+            aria-hidden
+          >
+            <span className="material-symbols-outlined">school</span>
+          </span>
+          <div>
+            <p className="font-semibold text-on-surface">{school.name}</p>
+            <p className="text-xs text-on-surface-variant">{school.address}</p>
+            {(school.contact_name || school.contact_phone) && (
+              <p className="mt-1 flex items-center gap-1 text-xs text-on-surface-variant">
+                <span className="material-symbols-outlined text-sm" aria-hidden>
+                  call
+                </span>
+                {school.contact_name}
+                {school.contact_name && school.contact_phone ? " · " : ""}
+                {school.contact_phone}
+              </p>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-2">
           {canAssignRegion ? <RegionForm school={school} /> : <RegionBadge region={school.region} />}
@@ -200,8 +201,11 @@ export default function SchoolCard({
           <button
             type="button"
             onClick={onToggleMap}
-            className="self-start rounded-xl border border-dashed border-foreground/20 px-4 py-2 text-xs opacity-70 hover:opacity-100"
+            className="inline-flex items-center gap-1 self-start rounded-full bg-surface-container-high px-4 py-2 text-xs font-medium text-on-surface-variant"
           >
+            <span className="material-symbols-outlined text-sm" aria-hidden>
+              location_on
+            </span>
             Show map
           </button>
         ) : (
@@ -210,14 +214,17 @@ export default function SchoolCard({
             <button
               type="button"
               onClick={onToggleMap}
-              className="self-start text-xs underline opacity-70"
+              className="self-start text-xs font-medium text-primary"
             >
               Hide map
             </button>
           </div>
         )
       ) : (
-        <p className="rounded-xl border border-dashed border-foreground/20 p-4 text-center text-xs opacity-60">
+        <p className="inline-flex items-center gap-1 rounded-xl bg-warning-container p-4 text-center text-xs text-on-warning-container">
+          <span className="material-symbols-outlined text-sm" aria-hidden>
+            warning
+          </span>
           No coordinates yet — geocoding failed. Add lat/lng below.
         </p>
       )}
@@ -225,13 +232,16 @@ export default function SchoolCard({
       <button
         type="button"
         onClick={() => setExpanded((value) => !value)}
-        className="self-start text-xs underline opacity-70"
+        className="inline-flex items-center gap-1 self-start text-xs font-medium text-primary"
       >
+        <span className="material-symbols-outlined text-sm" aria-hidden>
+          edit_note
+        </span>
         {expanded ? "Hide details" : "Edit contact / pin"}
       </button>
 
       {expanded && (
-        <div className="flex flex-col gap-3 border-t border-foreground/10 pt-3">
+        <div className="flex flex-col gap-3 border-t border-outline-variant pt-3">
           <ContactEditor school={school} />
           <LocationEditor school={school} />
         </div>

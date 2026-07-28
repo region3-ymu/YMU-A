@@ -98,25 +98,29 @@ export default function FeedbackForm({
 
   if (closed) {
     return (
-      <section className="rounded-2xl border border-green-500/40 bg-green-500/5 p-5">
-        <h2 className="text-lg font-semibold">Feedback received</h2>
-        <p className="mt-1 text-sm opacity-80">You&apos;re clocked out. Thanks!</p>
+      <section className="rounded-2xl bg-tertiary-container p-5 text-on-tertiary-container">
+        <h2 className="flex items-center gap-2 text-lg font-semibold">
+          <span className="material-symbols-outlined filled" aria-hidden>check_circle</span>
+          Feedback received
+        </h2>
+        <p className="mt-1 text-sm opacity-90">You&apos;re clocked out. Thanks!</p>
       </section>
     );
   }
 
   return (
-    <section className="rounded-2xl border border-accent/40 bg-accent/5 p-5">
-      <h2 className="text-lg font-semibold">Class feedback</h2>
-      <p className="mt-1 text-sm opacity-80">
-        You clocked in to <span className="font-medium">{session.className}</span>
+    <section className="relative overflow-hidden rounded-2xl bg-surface-container p-5 shadow-sm">
+      <div className="absolute inset-y-0 left-0 w-1.5 bg-primary" aria-hidden />
+      <h2 className="text-lg font-semibold text-on-surface">Class feedback</h2>
+      <p className="mt-1 text-sm text-on-surface-variant">
+        You clocked in to <span className="font-medium text-on-surface">{session.className}</span>
         {session.schoolName ? (
           <>
-            {" "}at <span className="font-medium">{session.schoolName}</span>
+            {" "}at <span className="font-medium text-on-surface">{session.schoolName}</span>
           </>
         ) : null}{" "}
         at {new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(clockedIn)} ·{" "}
-        <span className={session.status === "late" ? "text-red-600 dark:text-red-400" : "text-green-700 dark:text-green-400"}>
+        <span className={`font-semibold ${session.status === "late" ? "text-error" : "text-tertiary"}`}>
           {STATUS_LABELS[session.status]}
         </span>
         . Complete this to clock out — until you do, you can&apos;t clock into your next class.
@@ -126,13 +130,13 @@ export default function FeedbackForm({
         feedbackConfig?.provider === "zoho" ? (
           draftLoaded && <OfflineDraftForm sessionId={session.id} initialDraft={draft} onSaved={setDraft} />
         ) : (
-          <p className="mt-4 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-sm">
+          <p className="mt-4 rounded-lg bg-warning-container p-3 text-sm text-on-warning-container">
             This form needs an internet connection to submit. It&apos;ll be available as soon as you&apos;re back
             online.
           </p>
         )
       ) : !feedbackConfig ? (
-        <p className="mt-4 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-sm">
+        <p className="mt-4 rounded-lg bg-warning-container p-3 text-sm text-on-warning-container">
           The feedback form isn&apos;t configured yet. Ask a manager to finish setting it up.
         </p>
       ) : feedbackConfig.provider === "relay" ? (
@@ -140,7 +144,7 @@ export default function FeedbackForm({
       ) : draftLoaded ? (
         <div className="mt-4">
           {draft && (
-            <p className="mb-2 text-sm opacity-70">
+            <p className="mb-2 text-sm text-on-surface-variant">
               You answered these questions while offline — review and submit below.
             </p>
           )}
@@ -158,9 +162,9 @@ export default function FeedbackForm({
               draft ?? undefined,
             )}
             title="Class feedback form"
-            className="h-[640px] w-full rounded-lg border border-foreground/10"
+            className="h-[640px] w-full rounded-lg bg-surface-container-lowest shadow-sm"
           />
-          <p className="mt-2 text-xs opacity-60">
+          <p className="mt-2 text-xs text-on-surface-variant">
             This page updates automatically once your submission is received.
           </p>
         </div>
@@ -195,7 +199,7 @@ function OfflineDraftForm({
 
   return (
     <form onSubmit={save} className="mt-4 grid gap-4">
-      <p className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-sm">
+      <p className="rounded-lg bg-warning-container p-3 text-sm text-on-warning-container">
         You&apos;re offline. Answer here — it&apos;s saved on this device, and you&apos;ll review and submit it
         through the feedback form once you&apos;re back online. You still can&apos;t clock into another class
         until that final submission goes through.
@@ -209,7 +213,7 @@ function OfflineDraftForm({
           required
           value={draft.engagement ?? ""}
           onChange={(e) => setDraftState((d) => ({ ...d, engagement: e.target.value || null }))}
-          className="rounded-lg border border-foreground/20 bg-background px-3 py-2 text-sm"
+          className="rounded-lg bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary"
         >
           <option value="" disabled>
             Select…
@@ -252,7 +256,7 @@ function OfflineDraftForm({
             required
             value={draft.issueStatus ?? ""}
             onChange={(e) => setDraftState((d) => ({ ...d, issueStatus: e.target.value || null }))}
-            className="rounded-lg border border-foreground/20 bg-background px-3 py-2 text-sm"
+            className="rounded-lg bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary"
           >
             <option value="" disabled>
               Select…
@@ -274,17 +278,17 @@ function OfflineDraftForm({
           rows={3}
           value={draft.notes}
           onChange={(e) => setDraftState((d) => ({ ...d, notes: e.target.value }))}
-          className="rounded-lg border border-foreground/20 bg-background px-3 py-2 text-sm"
+          className="rounded-lg bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary"
         />
       </label>
 
       <button
         type="submit"
-        className="justify-self-start rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-accent-foreground"
+        className="justify-self-start rounded-full bg-primary px-6 py-3 text-sm font-bold text-on-primary shadow-md transition-transform active:scale-[0.98]"
       >
         Save draft
       </button>
-      {saved && <p className="text-sm text-green-700 dark:text-green-400">Saved on this device.</p>}
+      {saved && <p className="text-sm font-medium text-tertiary">Saved on this device.</p>}
     </form>
   );
 }

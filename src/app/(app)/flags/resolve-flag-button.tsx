@@ -14,11 +14,14 @@ export default function ResolveFlagButton({ flagId }: { flagId: string }) {
       <button
         type="submit"
         disabled={pending}
-        className="rounded-lg border border-foreground/20 px-3 py-1.5 text-sm font-semibold disabled:opacity-50"
+        className="inline-flex items-center gap-1.5 rounded-full border-2 border-outline px-5 py-2.5 text-sm font-bold text-on-surface transition-transform active:scale-[0.98] disabled:opacity-50"
       >
+        <span className="material-symbols-outlined text-sm" aria-hidden>
+          check
+        </span>
         {pending ? "Resolving…" : "Mark resolved"}
       </button>
-      {state?.error && <p className="mt-1 text-sm text-red-600 dark:text-red-400">{state.error}</p>}
+      {state?.error && <p className="mt-1 text-sm text-error">{state.error}</p>}
     </form>
   );
 }

@@ -106,13 +106,18 @@ export default function SwUpdatePrompt() {
   if (!updateReady) return null;
 
   return (
-    <div className="fixed inset-x-0 top-0 z-[60] mx-auto flex w-full max-w-xl items-center justify-between gap-3 border-b border-accent bg-accent px-4 py-2 text-accent-foreground shadow sm:top-4 sm:rounded-2xl sm:border">
-      <span className="text-sm font-semibold">Hay una versión nueva de la app.</span>
+    <div className="fixed inset-x-0 top-0 z-[60] mx-auto flex w-full max-w-xl items-center justify-between gap-3 bg-inverse-surface px-4 py-3 text-inverse-on-surface shadow-lg sm:top-4 sm:rounded-full">
+      <span className="flex items-center gap-2 text-sm font-semibold">
+        <span className="material-symbols-outlined text-base" aria-hidden>
+          system_update
+        </span>
+        Hay una versión nueva de la app.
+      </span>
       <button
         type="button"
         onClick={applyUpdate}
         disabled={reloading}
-        className="shrink-0 rounded-lg bg-background px-3 py-1.5 text-sm font-semibold text-foreground disabled:opacity-60"
+        className="shrink-0 text-sm font-bold text-primary-fixed disabled:opacity-60"
       >
         {reloading ? "Actualizando…" : "Actualizar"}
       </button>

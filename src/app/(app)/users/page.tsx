@@ -43,13 +43,18 @@ export default async function UsersPage() {
 
   return (
     <main className="flex flex-1 flex-col p-6">
-      <h1 className="text-2xl font-bold tracking-tight">Team</h1>
-      <p className="mt-1 text-sm opacity-70">
+      <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight text-on-surface">
+        <span className="material-symbols-outlined" aria-hidden>
+          groups
+        </span>
+        Team
+      </h1>
+      <p className="mt-1 text-sm text-on-surface-variant">
         Promote teachers to Regional Manager and assign their region
         {caller.role === "cpo" ? ", or appoint Operations Managers" : ""}.
       </p>
       {error && (
-        <p role="alert" className="mt-6 text-sm text-red-600 dark:text-red-400">
+        <p role="alert" className="mt-6 text-sm text-error">
           Couldn&rsquo;t load the team: {error.message}
         </p>
       )}
@@ -59,21 +64,21 @@ export default async function UsersPage() {
           return (
             <li
               key={row.id}
-              className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-foreground/10 p-4"
+              className="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-surface-container p-4 shadow-sm"
             >
               <div>
-                <p className="font-semibold">
+                <p className="font-semibold text-on-surface">
                   {row.full_name}
                   {row.id === caller.id && (
-                    <span className="ml-2 text-xs opacity-60">(you)</span>
+                    <span className="ml-2 text-xs text-on-surface-variant">(you)</span>
                   )}
                   {row.archived_at && (
-                    <span className="ml-2 rounded-full border border-foreground/20 px-2 py-0.5 text-xs opacity-60">
+                    <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-surface-container-high px-2.5 py-0.5 text-xs font-semibold text-on-surface-variant">
                       Archived
                     </span>
                   )}
                 </p>
-                <p className="text-xs opacity-60">
+                <p className="text-xs text-on-surface-variant">
                   {ROLE_LABELS[row.role as AppRole]}
                   {row.region
                     ? ` — ${REGION_LABELS[row.region as Region]}`

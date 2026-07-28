@@ -1,6 +1,6 @@
 import { SerwistProvider } from "@serwist/turbopack/react";
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Inter } from "next/font/google";
 import Script from "next/script";
 import InstallPrompt from "@/components/install-prompt";
 import SwUpdatePrompt from "@/components/sw-update-prompt";
@@ -18,13 +18,10 @@ try {
 } catch (e) {}
 `;
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+// Inter is the Stitch design system's sole typeface (see the export's
+// DESIGN.md). Self-hosted via next/font so it still works offline in the PWA.
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
 });
 
@@ -50,7 +47,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#4f46e5",
+  themeColor: "#4648d4",
   width: "device-width",
   initialScale: 1,
   // The app is used at arm's length while walking to a school; keep pinch-zoom
@@ -65,9 +62,18 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${inter.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">
+      <head>
+        {/* Material Symbols — the Stitch design's icon set. Loaded as a
+            stylesheet link (not a metadata field); degrades to the ligature
+            text name if unavailable offline. */}
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=block"
+        />
+      </head>
+      <body className="min-h-full flex flex-col bg-background text-on-surface">
         <Script id="theme-init" strategy="beforeInteractive">
           {THEME_INIT_SCRIPT}
         </Script>

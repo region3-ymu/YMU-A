@@ -9,7 +9,9 @@ export default function UpdateForm() {
 
   return (
     <form action={action} className="flex flex-col gap-4">
-      <h2 className="text-lg font-semibold">Choose a new password</h2>
+      <h2 className="text-center text-xl font-bold text-on-surface">
+        Choose a new password
+      </h2>
       <FormMessage error={state?.error} />
       <Field
         label="New password"

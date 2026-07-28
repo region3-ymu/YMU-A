@@ -25,12 +25,11 @@ export default function BackButton() {
       type="button"
       onClick={goBack}
       aria-label="Back"
-      className="flex items-center gap-1 text-sm opacity-70 transition-opacity hover:opacity-100"
+      className="flex h-9 w-9 items-center justify-center rounded-full text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-on-surface"
     >
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-        <path d="M10 3L5 8l5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-      Back
+      <span className="material-symbols-outlined text-xl" aria-hidden>
+        arrow_back
+      </span>
     </button>
   );
 }

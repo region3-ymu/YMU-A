@@ -78,32 +78,42 @@ export default function InstallPrompt() {
   if (dismissed || (!deferredPrompt && !iosPrompt)) return null;
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-50 mx-auto flex w-full max-w-xl flex-col gap-2 border-t border-accent bg-background p-4 shadow-[0_-4px_16px_rgba(0,0,0,0.08)] sm:bottom-4 sm:rounded-2xl sm:border">
+    <div className="fixed inset-x-0 bottom-0 z-50 mx-auto flex w-full max-w-xl flex-col gap-2 bg-inverse-surface p-4 text-inverse-on-surface shadow-lg sm:bottom-4 sm:rounded-3xl">
       {iosPrompt ? (
         <>
-          <p className="text-sm font-semibold text-accent">Install YMU-A on your phone</p>
-          <p className="text-xs opacity-80">
+          <p className="flex items-center gap-2 text-sm font-bold">
+            <span className="material-symbols-outlined text-base" aria-hidden>
+              install_mobile
+            </span>
+            Install YMU-A on your phone
+          </p>
+          <p className="text-xs text-inverse-on-surface/80">
             Tap the <strong>Share</strong> icon in Safari, then <strong>&quot;Add to Home Screen&quot;</strong> — it
             opens like a real app and works offline.
           </p>
         </>
       ) : (
         <>
-          <p className="text-sm font-semibold text-accent">Install YMU-A on your phone</p>
-          <p className="text-xs opacity-80">Add it to your home screen for quick, full-screen access.</p>
+          <p className="flex items-center gap-2 text-sm font-bold">
+            <span className="material-symbols-outlined text-base" aria-hidden>
+              install_mobile
+            </span>
+            Install YMU-A on your phone
+          </p>
+          <p className="text-xs text-inverse-on-surface/80">Add it to your home screen for quick, full-screen access.</p>
         </>
       )}
-      <div className="mt-1 flex gap-3">
+      <div className="mt-1 flex items-center gap-4">
         {deferredPrompt && (
           <button
             type="button"
             onClick={handleInstall}
-            className="rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-accent-foreground"
+            className="text-sm font-bold text-primary-fixed"
           >
             Install
           </button>
         )}
-        <button type="button" onClick={dismiss} className="text-sm font-semibold opacity-70 underline">
+        <button type="button" onClick={dismiss} className="text-sm font-semibold text-inverse-on-surface/70 underline">
           Not now
         </button>
       </div>

@@ -25,8 +25,13 @@ export default async function ReportsPage({
   return (
     <main className="flex flex-1 flex-col gap-6 p-6">
       <header>
-        <h1 className="text-2xl font-bold tracking-tight">Reports</h1>
-        <p className="mt-1 text-sm opacity-70">
+        <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight text-on-surface">
+          <span className="material-symbols-outlined text-primary" aria-hidden>
+            analytics
+          </span>
+          Reports
+        </h1>
+        <p className="mt-1 text-sm text-on-surface-variant">
           Hours worked, attendance rate, and on-time/late/missed counts — weekly, monthly, or per
           9-week quarter.
         </p>
@@ -36,14 +41,14 @@ export default async function ReportsPage({
 
       {report.canPickTeacher && profile.role === "regional_manager" && (
         <form className="flex flex-wrap items-center gap-2 text-sm">
-          <label htmlFor="teacher" className="font-medium">
+          <label htmlFor="teacher" className="font-medium text-on-surface-variant">
             Teacher
           </label>
           <select
             id="teacher"
             name="teacher"
             defaultValue={teacherParam ?? ""}
-            className="rounded-lg border border-foreground/20 bg-transparent px-2 py-1"
+            className="rounded-lg bg-surface-container-low px-3 py-2 text-on-surface outline-none focus:ring-2 focus:ring-primary"
           >
             <option value="">All teachers in my region</option>
             {roster.map((t) => (
@@ -52,7 +57,10 @@ export default async function ReportsPage({
               </option>
             ))}
           </select>
-          <button type="submit" className="rounded-lg border border-foreground/20 px-3 py-1">
+          <button
+            type="submit"
+            className="rounded-full bg-primary px-5 py-2 text-sm font-bold text-on-primary shadow-sm active:scale-[0.98]"
+          >
             View
           </button>
         </form>

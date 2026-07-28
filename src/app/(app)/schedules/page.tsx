@@ -34,9 +34,9 @@ export default async function SchedulesPage() {
 
   return (
     <main className="flex flex-1 flex-col gap-2 p-6">
-      <h1 className="text-2xl font-bold tracking-tight">Schedules</h1>
-      <p className="text-sm opacity-70">{caller.role === "teacher" ? "Your upcoming classes" : "Classes by school and region"}</p>
-      {(eventsError || schoolsError || calendarIssuesError) && <p role="alert" className="mt-4 text-sm text-red-600 dark:text-red-400">Couldn&apos;t load schedules: {(eventsError ?? schoolsError ?? calendarIssuesError)?.message}</p>}
+      <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight text-on-surface"><span className="material-symbols-outlined" aria-hidden>calendar_month</span>Schedules</h1>
+      <p className="text-sm text-on-surface-variant">{caller.role === "teacher" ? "Your upcoming classes" : "Classes by school and region"}</p>
+      {(eventsError || schoolsError || calendarIssuesError) && <p role="alert" className="mt-4 rounded-2xl bg-error-container p-4 text-sm text-on-error-container shadow-sm">Couldn&apos;t load schedules: {(eventsError ?? schoolsError ?? calendarIssuesError)?.message}</p>}
       <div className="mt-4">
         <SchedulesExplorer
           events={(events ?? []) as unknown as ScheduleEvent[]}

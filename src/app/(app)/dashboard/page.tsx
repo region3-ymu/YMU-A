@@ -37,14 +37,22 @@ export default async function DashboardPage() {
 
   return (
     <main className="flex flex-1 flex-col gap-6 p-6">
-      <header>
-        <h1 className="text-2xl font-bold tracking-tight">Manager Dashboard</h1>
-        <p className="mt-1 text-sm opacity-70">Today at a glance.</p>
+      <header className="flex items-center gap-3">
+        <span
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary-container text-on-primary-container"
+          aria-hidden
+        >
+          <span className="material-symbols-outlined">dashboard</span>
+        </span>
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-on-surface">Manager Dashboard</h1>
+          <p className="mt-1 text-sm text-on-surface-variant">Today at a glance.</p>
+        </div>
       </header>
 
       <SearchBox />
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard label="Scheduled today" value={scheduledTeacherIds.size} note={`${todayRows.length} classes`} />
         <StatCard label="Clocked in now" value={openSessions.length} />
         <StatCard label="Late" value={lateFlags.length} warn={lateFlags.length > 0} />
@@ -70,13 +78,20 @@ export default async function DashboardPage() {
       </div>
 
       <section>
-        <h2 className="mb-2 text-lg font-semibold">Clocked in now &amp; pending feedback</h2>
+        <h2 className="mb-3 flex items-center gap-2 text-lg font-semibold text-on-surface">
+          <span className="material-symbols-outlined text-primary" aria-hidden>my_location</span>
+          Clocked in now &amp; pending feedback
+        </h2>
         {openSessions.length === 0 ? (
-          <Empty text="No one is currently clocked in." />
+          <Empty text="No one is currently clocked in." icon="event_busy" />
         ) : (
-          <ul className="grid gap-2">
+          <ul className="grid gap-3">
             {openSessions.map((s) => (
-              <li key={s.id} className="rounded-xl border border-foreground/10 p-3 text-sm">
+              <li
+                key={s.id}
+                className="relative overflow-hidden rounded-2xl bg-surface-container p-3 pl-5 text-sm text-on-surface shadow-sm"
+              >
+                <div className="absolute inset-y-0 left-0 w-1.5 bg-primary" aria-hidden />
                 <span className="font-medium">{nameById.get(s.teacher_id) ?? "Unknown teacher"}</span>
                 {" · "}
                 {s.school?.name ?? "—"}
@@ -85,7 +100,7 @@ export default async function DashboardPage() {
                 {" · since "}
                 {new Date(s.clock_in_at).toLocaleTimeString()}
                 {s.clock_in_status === "late" && (
-                  <span className="ml-2 rounded-full bg-amber-500/20 px-2 py-0.5 text-xs text-amber-800 dark:text-amber-300">
+                  <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-warning-container px-2.5 py-1 text-xs font-semibold text-on-warning-container">
                     Late
                   </span>
                 )}
@@ -96,38 +111,54 @@ export default async function DashboardPage() {
       </section>
 
       <section>
-        <h2 className="mb-2 text-lg font-semibold">Late clock-ins</h2>
+        <h2 className="mb-3 flex items-center gap-2 text-lg font-semibold text-on-surface">
+          <span className="material-symbols-outlined text-warning" aria-hidden>timer</span>
+          Late clock-ins
+        </h2>
         {lateFlags.length === 0 ? (
-          <Empty text="No open late flags." />
+          <Empty text="No open late flags." icon="check_circle" />
         ) : (
-          <ul className="grid gap-2">
+          <ul className="grid gap-3">
             {lateFlags.map((f) => (
               <li
                 key={f.id}
-                className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 text-sm"
+                className="relative flex items-center justify-between gap-3 overflow-hidden rounded-2xl bg-surface-container p-3 pl-5 text-sm text-on-surface shadow-sm"
               >
-                {nameById.get(f.teacher_id) ?? "Unknown teacher"} · {f.school?.name ?? "—"} ·{" "}
-                {f.event?.summary ?? "Class"}
+                <div className="absolute inset-y-0 left-0 w-1.5 bg-warning" aria-hidden />
+                <span>
+                  {nameById.get(f.teacher_id) ?? "Unknown teacher"} · {f.school?.name ?? "—"} ·{" "}
+                  {f.event?.summary ?? "Class"}
+                </span>
+                <span
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-warning-container text-on-warning-container"
+                  aria-hidden
+                >
+                  <span className="material-symbols-outlined text-lg">call</span>
+                </span>
               </li>
             ))}
           </ul>
         )}
-        <Link href="/flags" className="mt-2 inline-block text-sm underline opacity-70">
+        <Link href="/flags" className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-primary hover:underline">
           View all flags →
         </Link>
       </section>
 
       <section>
-        <h2 className="mb-2 text-lg font-semibold">Stuck feedback sessions</h2>
+        <h2 className="mb-3 flex items-center gap-2 text-lg font-semibold text-on-surface">
+          <span className="material-symbols-outlined text-error" aria-hidden>flag</span>
+          Stuck feedback sessions
+        </h2>
         {stuckFeedback.length === 0 ? (
-          <Empty text="No sessions stuck waiting on a Zoho webhook." />
+          <Empty text="No sessions stuck waiting on a Zoho webhook." icon="check_circle" />
         ) : (
-          <ul className="grid gap-2">
+          <ul className="grid gap-3">
             {stuckFeedback.map((f) => (
               <li
                 key={f.id}
-                className="rounded-xl border border-red-500/30 bg-red-500/5 p-3 text-sm"
+                className="relative overflow-hidden rounded-2xl bg-surface-container p-3 pl-5 text-sm text-on-surface shadow-sm"
               >
+                <div className="absolute inset-y-0 left-0 w-1.5 bg-error" aria-hidden />
                 {nameById.get(f.teacher_id) ?? "Unknown teacher"} · {f.school?.name ?? "—"} ·{" "}
                 {f.event?.summary ?? "Class"}
                 {f.session?.clock_in_at
@@ -137,22 +168,26 @@ export default async function DashboardPage() {
             ))}
           </ul>
         )}
-        <Link href="/flags" className="mt-2 inline-block text-sm underline opacity-70">
+        <Link href="/flags" className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-primary hover:underline">
           View all flags →
         </Link>
       </section>
 
       <section>
-        <h2 className="mb-2 text-lg font-semibold">Calendar sync</h2>
+        <h2 className="mb-3 flex items-center gap-2 text-lg font-semibold text-on-surface">
+          <span className="material-symbols-outlined text-primary" aria-hidden>calendar_month</span>
+          Calendar sync
+        </h2>
         {syncFailures.length === 0 ? (
-          <Empty text="All synced calendars are healthy." />
+          <Empty text="All synced calendars are healthy." icon="event_available" />
         ) : (
-          <ul className="grid gap-2">
+          <ul className="grid gap-3">
             {syncFailures.map((s) => (
               <li
                 key={s.calendar_id}
-                className="rounded-xl border border-red-500/30 bg-red-500/5 p-3 text-sm"
+                className="relative overflow-hidden rounded-2xl bg-surface-container p-3 pl-5 text-sm text-on-surface shadow-sm"
               >
+                <div className="absolute inset-y-0 left-0 w-1.5 bg-error" aria-hidden />
                 <span className="font-medium">{s.calendar_id}</span>
                 {s.last_error ? ` · ${s.last_error}` : ""}
                 {" · last attempt "}
@@ -164,16 +199,20 @@ export default async function DashboardPage() {
       </section>
 
       <section>
-        <h2 className="mb-2 text-lg font-semibold">Missing clock-ins today</h2>
+        <h2 className="mb-3 flex items-center gap-2 text-lg font-semibold text-on-surface">
+          <span className="material-symbols-outlined text-error" aria-hidden>event_busy</span>
+          Missing clock-ins today
+        </h2>
         {missing.length === 0 ? (
-          <Empty text="Nothing missing today." />
+          <Empty text="Nothing missing today." icon="check_circle" />
         ) : (
-          <ul className="grid gap-2">
+          <ul className="grid gap-3">
             {missing.map((r) => (
               <li
                 key={`${r.event_id}-${r.teacher_id}`}
-                className="rounded-xl border border-red-500/30 bg-red-500/5 p-3 text-sm"
+                className="relative overflow-hidden rounded-2xl bg-surface-container p-3 pl-5 text-sm text-on-surface shadow-sm"
               >
+                <div className="absolute inset-y-0 left-0 w-1.5 bg-error" aria-hidden />
                 {nameById.get(r.teacher_id) ?? "Unknown teacher"} · {r.summary ?? "Class"} ·{" "}
                 {new Date(r.start_at).toLocaleTimeString()}
               </li>
@@ -183,14 +222,21 @@ export default async function DashboardPage() {
       </section>
 
       <section>
-        <h2 className="mb-2 text-lg font-semibold">Upcoming classes</h2>
+        <h2 className="mb-3 flex items-center gap-2 text-lg font-semibold text-on-surface">
+          <span className="material-symbols-outlined text-primary" aria-hidden>schedule</span>
+          Upcoming classes
+        </h2>
         {upcoming.length === 0 ? (
-          <Empty text="Nothing else scheduled." />
+          <Empty text="Nothing else scheduled." icon="event_available" />
         ) : (
-          <ul className="grid gap-2">
+          <ul className="grid gap-3">
             {upcoming.map((e) => (
-              <li key={e.id} className="rounded-xl border border-foreground/10 p-3 text-sm">
-                <Link href={`/schedules/${e.id}`} className="font-medium hover:underline">
+              <li
+                key={e.id}
+                className="relative overflow-hidden rounded-2xl bg-surface-container p-3 pl-5 text-sm text-on-surface shadow-sm"
+              >
+                <div className="absolute inset-y-0 left-0 w-1.5 bg-primary" aria-hidden />
+                <Link href={`/schedules/${e.id}`} className="font-medium text-primary hover:underline">
                   {e.summary ?? "Untitled event"}
                 </Link>
                 {" · "}
@@ -207,11 +253,18 @@ export default async function DashboardPage() {
 
       {(profile.role === "operations_manager" || profile.role === "cpo") && (
         <section>
-          <h2 className="mb-2 text-lg font-semibold">PD relay feedback (this week)</h2>
-          <p className="text-sm opacity-70">
+          <h2 className="mb-3 flex items-center gap-2 text-lg font-semibold text-on-surface">
+            <span className="material-symbols-outlined text-primary" aria-hidden>campaign</span>
+            PD relay feedback (this week)
+          </h2>
+          <p className="text-sm text-on-surface-variant">
             Responses to the native in-app relay self-reflection form (temporary — see NEXT_STEPS.md).
           </p>
-          <a href="/api/relay-feedback/export" className="mt-2 inline-block text-sm font-semibold text-accent underline">
+          <a
+            href="/api/relay-feedback/export"
+            className="mt-3 inline-flex items-center gap-1 rounded-full bg-primary px-5 py-2.5 text-sm font-bold text-on-primary shadow-sm active:scale-[0.98]"
+          >
+            <span className="material-symbols-outlined text-lg" aria-hidden>download</span>
             Download CSV →
           </a>
         </section>
@@ -233,17 +286,44 @@ function StatCard({
 }) {
   return (
     <div
-      className={`rounded-2xl border p-4 ${
-        warn ? "border-amber-500/40 bg-amber-500/5" : "border-foreground/10"
+      className={`relative overflow-hidden rounded-2xl p-4 shadow-sm ${
+        warn ? "bg-error-container" : "bg-surface-container"
       }`}
     >
-      <p className="text-xs uppercase tracking-wide opacity-60">{label}</p>
-      <p className="mt-1 text-2xl font-bold">{value}</p>
-      {note && <p className="text-xs opacity-60">{note}</p>}
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className={`text-3xl font-bold ${warn ? "text-on-error-container" : "text-on-surface"}`}>
+            {value}
+          </p>
+          <p className={`mt-1 text-sm ${warn ? "text-on-error-container" : "text-on-surface-variant"}`}>
+            {label}
+          </p>
+          {note && (
+            <p className={`text-xs ${warn ? "text-on-error-container" : "text-on-surface-variant"}`}>
+              {note}
+            </p>
+          )}
+        </div>
+        <span
+          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
+            warn ? "bg-error text-on-error" : "bg-primary-container text-on-primary-container"
+          }`}
+          aria-hidden
+        >
+          <span className="material-symbols-outlined text-xl">{warn ? "warning" : "analytics"}</span>
+        </span>
+      </div>
     </div>
   );
 }
 
-function Empty({ text }: { text: string }) {
-  return <p className="text-sm opacity-60">{text}</p>;
+function Empty({ text, icon = "inbox" }: { text: string; icon?: string }) {
+  return (
+    <div className="flex flex-col items-center gap-2 rounded-2xl bg-surface-container p-8 text-center shadow-sm">
+      <span className="material-symbols-outlined text-4xl text-on-surface-variant" aria-hidden>
+        {icon}
+      </span>
+      <p className="text-sm text-on-surface-variant">{text}</p>
+    </div>
+  );
 }

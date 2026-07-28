@@ -11,7 +11,7 @@ import {
 import { promoteUser } from "./actions";
 
 const SELECT_CLASSES =
-  "rounded-lg border border-foreground/20 bg-background px-2 py-1.5 text-sm";
+  "rounded-lg bg-surface-container-low px-2 py-1.5 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary";
 
 export default function RowForm({
   targetId,
@@ -65,17 +65,17 @@ export default function RowForm({
       <button
         type="submit"
         disabled={pending || (unchanged && role !== "regional_manager")}
-        className="rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-accent-foreground disabled:opacity-40"
+        className="rounded-full bg-primary px-4 py-1.5 text-sm font-bold text-on-primary shadow-sm active:scale-[0.98] disabled:opacity-40"
       >
         {pending ? "Saving…" : "Save"}
       </button>
       {state?.error && (
-        <p role="alert" className="w-full text-xs text-red-600 dark:text-red-400">
+        <p role="alert" className="w-full text-xs text-error">
           {state.error}
         </p>
       )}
       {state?.success && (
-        <p className="w-full text-xs text-green-700 dark:text-green-300">
+        <p className="w-full text-xs text-tertiary">
           {state.success}
         </p>
       )}

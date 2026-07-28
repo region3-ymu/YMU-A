@@ -52,7 +52,9 @@ export const REGION_LABELS: Record<Region, string> = {
   south: "South",
 };
 
-export type NavItem = { href: string; label: string; note: string };
+// `icon` is a Material Symbols ligature name (see the Stitch design). Used by
+// the Home menu grid and the bottom navigation bar.
+export type NavItem = { href: string; label: string; note: string; icon: string };
 
 // PRD: teachers get Clocking; managers get Lists in its place. OM/CPO also
 // get Team (role promotion).
@@ -63,29 +65,48 @@ export function navForRole(role: AppRole): NavItem[] {
       href: "/clocking",
       label: "Clocking",
       note: "Next class & clock-in",
+      icon: "schedule",
     });
   } else {
     items.push({
       href: "/dashboard",
       label: "Dashboard",
       note: "Today at a glance",
+      icon: "dashboard",
     });
     items.push({
       href: "/lists",
       label: "Lists",
       note: "Schools & teachers",
+      icon: "groups",
     });
   }
   items.push(
-    { href: "/schedules", label: "Schedules", note: "Classes by school" },
-    { href: "/reports", label: "Reports", note: "Hours & attendance" },
-    { href: "/settings", label: "Settings", note: "Notifications & theme" },
+    {
+      href: "/schedules",
+      label: "Schedules",
+      note: "Classes by school",
+      icon: "calendar_month",
+    },
+    {
+      href: "/reports",
+      label: "Reports",
+      note: "Hours & attendance",
+      icon: "analytics",
+    },
+    {
+      href: "/settings",
+      label: "Settings",
+      note: "Notifications & theme",
+      icon: "settings",
+    },
   );
   if (isManagerRole(role)) {
     items.push({
       href: "/flags",
       label: "Flags",
       note: "GPS & late clock-in escalations",
+      icon: "flag",
     });
   }
   if (role === "operations_manager" || role === "cpo") {
@@ -93,10 +114,19 @@ export function navForRole(role: AppRole): NavItem[] {
       href: "/users",
       label: "Team",
       note: "Roles & regions",
+      icon: "badge",
     });
   }
   return items;
 }
+
+// Home ("/") is the menu hub — a fixed entry that leads the bottom nav.
+export const HOME_NAV_ITEM: NavItem = {
+  href: "/",
+  label: "Home",
+  note: "Menu",
+  icon: "home",
+};
 
 // Path prefixes with restricted roles, used for optimistic gating in
 // src/proxy.ts and echoed authoritatively by requireRole() in each page.

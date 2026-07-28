@@ -28,7 +28,7 @@ export default function SyncForm({ schools }: { schools: { id: string; name: str
         <button
           type="button"
           onClick={toggleAll}
-          className="text-sm underline opacity-70 hover:opacity-100"
+          className="text-sm font-medium text-primary"
         >
           {allSelected ? "Deselect all" : "Select all"}
         </button>
@@ -36,8 +36,11 @@ export default function SyncForm({ schools }: { schools: { id: string; name: str
           <button
             type="submit"
             disabled={pending}
-            className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-bold text-on-primary shadow-sm active:scale-[0.98] disabled:opacity-50"
           >
+            <span className="material-symbols-outlined text-base" aria-hidden>
+              sync
+            </span>
             {pending
               ? "Syncing…"
               : selected.size === 0
@@ -47,44 +50,44 @@ export default function SyncForm({ schools }: { schools: { id: string; name: str
         </div>
       </div>
 
-      <ul className="grid max-h-96 gap-1 overflow-y-auto rounded-xl border border-foreground/10 p-2 sm:grid-cols-2">
+      <ul className="grid max-h-96 gap-1 overflow-y-auto rounded-2xl bg-surface-container p-2 shadow-sm sm:grid-cols-2">
         {schools.map((school) => (
           <li key={school.id}>
-            <label className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-foreground/5">
+            <label className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-on-surface hover:bg-surface-container-high">
               <input
                 type="checkbox"
                 name="school_id"
                 value={school.id}
                 checked={selected.has(school.id)}
                 onChange={() => toggleOne(school.id)}
-                className="shrink-0"
+                className="shrink-0 accent-primary"
               />
               {school.name}
             </label>
           </li>
         ))}
       </ul>
-      <p className="text-xs opacity-60">
+      <p className="text-xs text-on-surface-variant">
         Leave everything unchecked to sync every school. Checking one or more syncs only those.
       </p>
 
       {state?.error && (
-        <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+        <p role="alert" className="rounded-2xl bg-error-container px-4 py-3 text-sm text-on-error-container shadow-sm">
           {state.error}
         </p>
       )}
 
       {state?.summary && !state.summary.skipped && (
-        <div className="rounded-xl border border-foreground/10 p-4 text-sm">
-          <p className="font-semibold">
+        <div className="rounded-2xl bg-surface-container p-4 text-sm shadow-sm">
+          <p className="font-semibold text-on-surface">
             Done{state.summary.partial ? " (partial — some calendars left for the next run)" : ""}.
           </p>
-          <p className="mt-1 opacity-80">
+          <p className="mt-1 text-on-surface-variant">
             {state.summary.discovered} calendars discovered · {state.summary.autoMatched} auto-matched ·{" "}
             {state.summary.issuesRaised} need attention · {state.summary.synced.length} synced this run
           </p>
           {state.summary.synced.some((s) => s.error) && (
-            <ul className="mt-2 grid gap-1 text-red-600 dark:text-red-400">
+            <ul className="mt-2 grid gap-1 text-error">
               {state.summary.synced
                 .filter((s) => s.error)
                 .map((s) => (
@@ -98,7 +101,7 @@ export default function SyncForm({ schools }: { schools: { id: string; name: str
       )}
 
       {state?.summary && state.summary.skipped && (
-        <p className="text-sm opacity-70">
+        <p className="text-sm text-on-surface-variant">
           Another sync was already running — nothing to do, try again shortly.
         </p>
       )}

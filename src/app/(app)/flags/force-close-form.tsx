@@ -12,8 +12,11 @@ export default function ForceCloseForm({ sessionId }: { sessionId: string }) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="mt-3 rounded-lg border border-red-500/40 px-3 py-1.5 text-sm font-semibold text-red-600 dark:text-red-400"
+        className="mt-3 inline-flex items-center gap-1.5 rounded-full border-2 border-error px-5 py-2.5 text-sm font-bold text-error transition-transform active:scale-[0.98]"
       >
+        <span className="material-symbols-outlined text-sm" aria-hidden>
+          lock
+        </span>
         Force close session
       </button>
     );
@@ -22,7 +25,7 @@ export default function ForceCloseForm({ sessionId }: { sessionId: string }) {
   return (
     <form action={action} className="mt-3 flex flex-col gap-2">
       <input type="hidden" name="session_id" value={sessionId} />
-      <label htmlFor={`reason-${sessionId}`} className="text-xs font-medium">
+      <label htmlFor={`reason-${sessionId}`} className="text-xs font-medium text-on-surface-variant">
         Reason (required)
       </label>
       <textarea
@@ -31,26 +34,26 @@ export default function ForceCloseForm({ sessionId }: { sessionId: string }) {
         required
         rows={2}
         placeholder="e.g. confirmed by phone the class happened, teacher can't reach the Zoho form"
-        className="rounded-lg border border-foreground/20 bg-background px-3 py-2 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
+        className="rounded-lg bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary"
       />
       <div className="flex items-center gap-2">
         <button
           type="submit"
           disabled={pending}
-          className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50 dark:bg-red-500"
+          className="rounded-full bg-error px-5 py-2.5 text-sm font-bold text-on-error shadow-sm transition-transform active:scale-[0.98] disabled:opacity-50"
         >
           {pending ? "Closing…" : "Confirm force close"}
         </button>
         <button
           type="button"
           onClick={() => setOpen(false)}
-          className="rounded-lg border border-foreground/20 px-3 py-1.5 text-sm"
+          className="rounded-full border-2 border-outline px-5 py-2.5 text-sm font-bold text-on-surface"
         >
           Cancel
         </button>
       </div>
       {state?.error && (
-        <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+        <p role="alert" className="text-sm text-error">
           {state.error}
         </p>
       )}

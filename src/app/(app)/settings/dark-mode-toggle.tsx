@@ -33,10 +33,15 @@ export default function DarkModeToggle() {
   }
 
   return (
-    <label className="flex items-center justify-between gap-3 rounded-xl border border-foreground/10 p-4">
-      <span>
-        <span className="block font-semibold">Dark mode</span>
-        <span className="block text-sm opacity-70">Stored on this device only.</span>
+    <label className="flex items-center justify-between gap-3 rounded-2xl bg-surface-container p-4 shadow-sm">
+      <span className="flex items-center gap-3">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary-container text-on-primary-container">
+          <span className="material-symbols-outlined" aria-hidden>dark_mode</span>
+        </span>
+        <span>
+          <span className="block font-semibold text-on-surface">Dark mode</span>
+          <span className="block text-sm text-on-surface-variant">Stored on this device only.</span>
+        </span>
       </span>
       <input
         type="checkbox"
@@ -44,7 +49,7 @@ export default function DarkModeToggle() {
         aria-checked={dark}
         checked={dark}
         onChange={(e) => apply(e.target.checked)}
-        className="h-6 w-11 shrink-0 cursor-pointer appearance-none rounded-full bg-foreground/20 transition-colors checked:bg-accent relative before:absolute before:left-0.5 before:top-0.5 before:h-5 before:w-5 before:rounded-full before:bg-white before:transition-transform checked:before:translate-x-5"
+        className="h-6 w-11 shrink-0 cursor-pointer appearance-none rounded-full bg-surface-container-high transition-colors checked:bg-primary relative before:absolute before:left-0.5 before:top-0.5 before:h-5 before:w-5 before:rounded-full before:bg-white before:transition-transform checked:before:translate-x-5"
       />
     </label>
   );

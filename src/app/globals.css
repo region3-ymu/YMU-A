@@ -1,57 +1,313 @@
 @import "tailwindcss";
 
+/* ============================================================================
+   YMU-A design system — Material 3 tokens ported from the Google Stitch
+   "YMU Tempo / Resonant Academy" export (see stitch export DESIGN.md).
+
+   The neutral / surface / secondary / tertiary / error tokens come straight
+   from Stitch. `primary` is intentionally NOT hard-coded to Stitch's indigo:
+   it is bound to the existing per-role `--accent` (see the [data-role] blocks
+   below), so the PRD's per-role coloring is preserved while the rest of the
+   chrome adopts the Stitch look. Teacher's accent already matches Stitch's
+   indigo, so teachers see the export 1:1.
+   ============================================================================ */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-  /* Role accent — swapped per signed-in role (PRD: each role has its own main
-     color). Teacher is the default; manager roles override via data-role. */
-  --accent: #4f46e5;
+  color-scheme: light;
+
+  /* Neutrals & surfaces (M3 light) */
+  --background: #faf8ff;
+  --surface: #faf8ff;
+  --surface-dim: #d2d9f4;
+  --surface-bright: #faf8ff;
+  --surface-container-lowest: #ffffff;
+  --surface-container-low: #f2f3ff;
+  --surface-container: #eaedff;
+  --surface-container-high: #e2e7ff;
+  --surface-container-highest: #dae2fd;
+  --surface-variant: #dae2fd;
+  --on-surface: #131b2e;
+  --on-surface-variant: #464554;
+  --on-background: #131b2e;
+  --outline: #767586;
+  --outline-variant: #c7c4d7;
+  --inverse-surface: #283044;
+  --inverse-on-surface: #eef0ff;
+
+  /* Legacy alias kept for components that still use `foreground`. */
+  --foreground: var(--on-surface);
+
+  /* Primary = per-role accent (default = teacher indigo, == Stitch primary). */
+  --accent: #4648d4;
   --accent-foreground: #ffffff;
+  --primary: var(--accent);
+  --on-primary: var(--accent-foreground);
+  --primary-container: #6063ee;
+  --on-primary-container: #fffbff;
+  --primary-fixed: #e1e0ff;
+  --primary-fixed-dim: #c0c1ff;
+  --inverse-primary: #c0c1ff;
+
+  /* Secondary (rose) */
+  --secondary: #b90538;
+  --on-secondary: #ffffff;
+  --secondary-container: #dc2c4f;
+  --on-secondary-container: #fffbff;
+
+  /* Tertiary (green — "on time" / success) */
+  --tertiary: #006c49;
+  --on-tertiary: #ffffff;
+  --tertiary-container: #00885d;
+  --on-tertiary-container: #ffffff;
+
+  /* Error (red — "missed" / danger) */
+  --error: #ba1a1a;
+  --on-error: #ffffff;
+  --error-container: #ffdad6;
+  --on-error-container: #93000a;
+
+  /* Warning (amber — "late"). Not a native M3 slot; kept explicit so status
+     signalling has three unambiguous colors (success/warning/danger). */
+  --warning: #a15c00;
+  --on-warning: #ffffff;
+  --warning-container: #ffddb0;
+  --on-warning-container: #291800;
 }
 
-/* Set on the (app) layout's wrapper div rather than <html>: the root layout
-   is not re-rendered on soft navigations (e.g. the post-login redirect), so an
-   attribute there would go stale. The group layout mounts fresh on login. */
-[data-role="regional_manager"] {
-  --accent: #0d9488;
-}
-
-[data-role="operations_manager"] {
-  --accent: #b45309;
-}
-
-[data-role="cpo"] {
-  --accent: #be123c;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
+/* Dark theme (M3 dark, same hues). Applied both by the OS preference and by an
+   explicit [data-theme="dark"] set pre-hydration in the root layout. */
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    color-scheme: dark;
+
+    --background: #111318;
+    --surface: #111318;
+    --surface-dim: #111318;
+    --surface-bright: #37393e;
+    --surface-container-lowest: #0c0e13;
+    --surface-container-low: #191c20;
+    --surface-container: #1d2024;
+    --surface-container-high: #282a2f;
+    --surface-container-highest: #33353a;
+    --surface-variant: #44464e;
+    --on-surface: #e3e2e6;
+    --on-surface-variant: #c7c5d0;
+    --on-background: #e3e2e6;
+    --outline: #90909a;
+    --outline-variant: #45464f;
+    --inverse-surface: #e3e2e6;
+    --inverse-on-surface: #2f3036;
+
+    --primary-container: #2f2ebe;
+    --on-primary-container: #e1e0ff;
+
+    --secondary: #ffb2b7;
+    --on-secondary: #650020;
+    --secondary-container: #92002a;
+    --on-secondary-container: #ffdadb;
+
+    --tertiary: #4edea3;
+    --on-tertiary: #003824;
+    --tertiary-container: #005236;
+    --on-tertiary-container: #6ffbbe;
+
+    --error: #ffb4ab;
+    --on-error: #690005;
+    --error-container: #93000a;
+    --on-error-container: #ffdad6;
+
+    --warning: #ffb951;
+    --on-warning: #452b00;
+    --warning-container: #623f00;
+    --on-warning-container: #ffddb0;
   }
 }
 
 :root[data-theme="dark"] {
-  --background: #0a0a0a;
-  --foreground: #ededed;
+  color-scheme: dark;
+
+  --background: #111318;
+  --surface: #111318;
+  --surface-dim: #111318;
+  --surface-bright: #37393e;
+  --surface-container-lowest: #0c0e13;
+  --surface-container-low: #191c20;
+  --surface-container: #1d2024;
+  --surface-container-high: #282a2f;
+  --surface-container-highest: #33353a;
+  --surface-variant: #44464e;
+  --on-surface: #e3e2e6;
+  --on-surface-variant: #c7c5d0;
+  --on-background: #e3e2e6;
+  --outline: #90909a;
+  --outline-variant: #45464f;
+  --inverse-surface: #e3e2e6;
+  --inverse-on-surface: #2f3036;
+
+  --primary-container: #2f2ebe;
+  --on-primary-container: #e1e0ff;
+
+  --secondary: #ffb2b7;
+  --on-secondary: #650020;
+  --secondary-container: #92002a;
+  --on-secondary-container: #ffdadb;
+
+  --tertiary: #4edea3;
+  --on-tertiary: #003824;
+  --tertiary-container: #005236;
+  --on-tertiary-container: #6ffbbe;
+
+  --error: #ffb4ab;
+  --on-error: #690005;
+  --error-container: #93000a;
+  --on-error-container: #ffdad6;
+
+  --warning: #ffb951;
+  --on-warning: #452b00;
+  --warning-container: #623f00;
+  --on-warning-container: #ffddb0;
 }
 
 :root[data-theme="light"] {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light;
+
+  --background: #faf8ff;
+  --surface: #faf8ff;
+  --surface-dim: #d2d9f4;
+  --surface-bright: #faf8ff;
+  --surface-container-lowest: #ffffff;
+  --surface-container-low: #f2f3ff;
+  --surface-container: #eaedff;
+  --surface-container-high: #e2e7ff;
+  --surface-container-highest: #dae2fd;
+  --surface-variant: #dae2fd;
+  --on-surface: #131b2e;
+  --on-surface-variant: #464554;
+  --on-background: #131b2e;
+  --outline: #767586;
+  --outline-variant: #c7c4d7;
+  --inverse-surface: #283044;
+  --inverse-on-surface: #eef0ff;
+
+  --primary-container: #6063ee;
+  --on-primary-container: #fffbff;
+
+  --secondary: #b90538;
+  --on-secondary: #ffffff;
+  --secondary-container: #dc2c4f;
+  --on-secondary-container: #fffbff;
+
+  --tertiary: #006c49;
+  --on-tertiary: #ffffff;
+  --tertiary-container: #00885d;
+  --on-tertiary-container: #ffffff;
+
+  --error: #ba1a1a;
+  --on-error: #ffffff;
+  --error-container: #ffdad6;
+  --on-error-container: #93000a;
+
+  --warning: #a15c00;
+  --on-warning: #ffffff;
+  --warning-container: #ffddb0;
+  --on-warning-container: #291800;
+}
+
+/* --------------------------------------------------------------------------
+   Per-role accent overrides (PRD: each role has its own main color). These set
+   only the accent + its container, so they apply in both light and dark. The
+   teacher default lives in :root above.
+   -------------------------------------------------------------------------- */
+[data-role="regional_manager"] {
+  --accent: #0d9488;
+  --primary-container: #14b8a6;
+}
+
+[data-role="operations_manager"] {
+  --accent: #b45309;
+  --primary-container: #d97706;
+}
+
+[data-role="cpo"] {
+  --accent: #be123c;
+  --primary-container: #e11d48;
+}
+
+/* --------------------------------------------------------------------------
+   Expose the tokens to Tailwind v4 so `bg-surface`, `text-on-surface`,
+   `bg-primary`, `border-outline-variant`, etc. resolve as utilities.
+   -------------------------------------------------------------------------- */
+@theme inline {
+  --font-sans: var(--font-inter);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-on-background: var(--on-background);
+
+  --color-surface: var(--surface);
+  --color-surface-dim: var(--surface-dim);
+  --color-surface-bright: var(--surface-bright);
+  --color-surface-container-lowest: var(--surface-container-lowest);
+  --color-surface-container-low: var(--surface-container-low);
+  --color-surface-container: var(--surface-container);
+  --color-surface-container-high: var(--surface-container-high);
+  --color-surface-container-highest: var(--surface-container-highest);
+  --color-surface-variant: var(--surface-variant);
+  --color-on-surface: var(--on-surface);
+  --color-on-surface-variant: var(--on-surface-variant);
+  --color-outline: var(--outline);
+  --color-outline-variant: var(--outline-variant);
+  --color-inverse-surface: var(--inverse-surface);
+  --color-inverse-on-surface: var(--inverse-on-surface);
+
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-primary: var(--primary);
+  --color-on-primary: var(--on-primary);
+  --color-primary-container: var(--primary-container);
+  --color-on-primary-container: var(--on-primary-container);
+  --color-primary-fixed: var(--primary-fixed);
+  --color-primary-fixed-dim: var(--primary-fixed-dim);
+  --color-inverse-primary: var(--inverse-primary);
+
+  --color-secondary: var(--secondary);
+  --color-on-secondary: var(--on-secondary);
+  --color-secondary-container: var(--secondary-container);
+  --color-on-secondary-container: var(--on-secondary-container);
+
+  --color-tertiary: var(--tertiary);
+  --color-on-tertiary: var(--on-tertiary);
+  --color-tertiary-container: var(--tertiary-container);
+  --color-on-tertiary-container: var(--on-tertiary-container);
+
+  --color-error: var(--error);
+  --color-on-error: var(--on-error);
+  --color-error-container: var(--error-container);
+  --color-on-error-container: var(--on-error-container);
+
+  --color-warning: var(--warning);
+  --color-on-warning: var(--on-warning);
+  --color-warning-container: var(--warning-container);
+  --color-on-warning-container: var(--on-warning-container);
 }
 
 body {
   background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  color: var(--on-surface);
+  font-family: var(--font-sans), "Inter", Arial, Helvetica, sans-serif;
+}
+
+/* Material Symbols (loaded in the root layout). Default to the outlined,
+   unfilled axis; `.material-symbols-outlined.filled` opts into the filled
+   variant used for active/emphasis states. */
+.material-symbols-outlined {
+  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+  line-height: 1;
+  -webkit-font-feature-settings: "liga";
+  font-feature-settings: "liga";
+  user-select: none;
+}
+
+.material-symbols-outlined.filled {
+  font-variation-settings: "FILL" 1, "wght" 400, "GRAD" 0, "opsz" 24;
 }

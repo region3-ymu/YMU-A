@@ -19,8 +19,8 @@ export default async function FeedbackPage() {
   return (
     <main className="mx-auto flex w-full max-w-xl flex-1 flex-col gap-4 p-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Class feedback</h1>
-        <p className="text-sm opacity-70">Feedback clocks you out and is required before your next class.</p>
+        <h1 className="text-2xl font-bold tracking-tight text-on-surface">Class feedback</h1>
+        <p className="text-sm text-on-surface-variant">Feedback clocks you out and is required before your next class.</p>
       </div>
 
       {openSession ? (
@@ -37,13 +37,17 @@ export default async function FeedbackPage() {
           feedbackConfig={feedbackConfig}
         />
       ) : (
-        <div className="rounded-2xl border border-foreground/10 p-5">
-          <p className="font-medium">Nothing to submit</p>
-          <p className="mt-1 text-sm opacity-80">
+        <div className="rounded-2xl bg-surface-container p-5 shadow-sm">
+          <p className="font-semibold text-on-surface">Nothing to submit</p>
+          <p className="mt-1 text-sm text-on-surface-variant">
             You&apos;re not clocked into a class right now, so there&apos;s no feedback pending.
           </p>
-          <Link href="/clocking" className="mt-3 inline-block text-sm font-semibold text-accent underline">
+          <Link
+            href="/clocking"
+            className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-primary hover:underline"
+          >
             Go to Clocking
+            <span className="material-symbols-outlined text-base" aria-hidden>arrow_forward</span>
           </Link>
         </div>
       )}

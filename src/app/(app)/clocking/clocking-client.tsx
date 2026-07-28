@@ -151,7 +151,7 @@ export default function ClockingClient({
 
   if (!hasSchoolCoords) {
     return (
-      <p className="rounded-xl border border-amber-500/40 bg-amber-500/5 p-4 text-sm">
+      <p className="rounded-2xl bg-warning-container p-4 text-sm text-on-warning-container">
         {school.name}&apos;s location hasn&apos;t been set yet, so clock-in can&apos;t verify you&apos;re there. Ask a
         manager to set the school&apos;s map location.
       </p>
@@ -191,9 +191,9 @@ export default function ClockingClient({
 
   if (offlineSaved) {
     return (
-      <div className="rounded-xl border border-green-500/40 bg-green-500/5 p-4">
-        <p className="font-semibold text-green-700 dark:text-green-400">Clocked in — saved offline</p>
-        <p className="mt-1 text-sm opacity-80">
+      <div className="rounded-2xl bg-tertiary-container p-4 text-on-tertiary-container">
+        <p className="font-semibold">Clocked in — saved offline</p>
+        <p className="mt-1 text-sm opacity-90">
           You&apos;re clocked in to <span className="font-medium">{className}</span>. This is saved on your device
           and will sync automatically the moment you&apos;re back online — no need to do anything. Your GPS checks
           will be captured on this device in the meantime.
@@ -205,13 +205,13 @@ export default function ClockingClient({
   return (
     <div className="grid gap-4">
       {geoError && (
-        <div role="alert" className="rounded-xl border border-red-500/40 bg-red-500/5 p-4">
+        <div role="alert" className="rounded-2xl bg-error-container p-4 text-on-error-container">
           <p className="font-semibold">{describeGeoError(geoError).title}</p>
-          <p className="mt-1 text-sm opacity-80">{describeGeoError(geoError).detail}</p>
+          <p className="mt-1 text-sm opacity-90">{describeGeoError(geoError).detail}</p>
           <button
             type="button"
             onClick={locate}
-            className="mt-3 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground"
+            className="mt-3 rounded-lg bg-error px-4 py-2 text-sm font-semibold text-on-error"
           >
             Try again
           </button>
@@ -223,15 +223,18 @@ export default function ClockingClient({
           type="button"
           onClick={locate}
           disabled={locating}
-          className="rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-accent-foreground disabled:opacity-50"
+          className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-primary text-sm font-bold text-on-primary shadow-md transition-transform active:scale-[0.98] disabled:opacity-50"
         >
+          <span className="material-symbols-outlined text-xl" aria-hidden>
+            my_location
+          </span>
           {locating ? "Getting your location…" : "Check my location"}
         </button>
       )}
 
       {position && (
         <>
-          <div className="h-64 w-full overflow-hidden rounded-xl border border-foreground/10">
+          <div className="h-64 w-full overflow-hidden rounded-2xl shadow-sm">
             <GeoMap
               teacherLat={position.lat}
               teacherLng={position.lng}
@@ -250,9 +253,9 @@ export default function ClockingClient({
           </p>
 
           {lowAccuracy ? (
-            <div role="alert" className="rounded-xl border border-amber-500/40 bg-amber-500/5 p-4">
+            <div role="alert" className="rounded-2xl bg-warning-container p-4 text-on-warning-container">
               <p className="font-semibold">Location too imprecise</p>
-              <p className="mt-1 text-sm opacity-80">
+              <p className="mt-1 text-sm opacity-90">
                 Your fix is only accurate to ±{Math.round(position.accuracy)} m, which can&apos;t confirm you&apos;re
                 inside the {school.radiusM} m zone. Move into the open and try again.
               </p>
@@ -260,28 +263,28 @@ export default function ClockingClient({
                 type="button"
                 onClick={locate}
                 disabled={locating}
-                className="mt-3 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground disabled:opacity-50"
+                className="mt-3 rounded-lg bg-on-warning-container px-4 py-2 text-sm font-semibold text-warning-container disabled:opacity-50"
               >
                 {locating ? "Getting your location…" : "Try again"}
               </button>
             </div>
           ) : !inside ? (
-            <div role="alert" className="rounded-xl border border-red-500/40 bg-red-500/5 p-4">
+            <div role="alert" className="rounded-2xl bg-error-container p-4 text-on-error-container">
               <p className="font-semibold">You&apos;re outside the clock-in zone</p>
-              <p className="mt-1 text-sm opacity-80">Move closer to {school.name} and check your location again.</p>
+              <p className="mt-1 text-sm opacity-90">Move closer to {school.name} and check your location again.</p>
               <button
                 type="button"
                 onClick={locate}
                 disabled={locating}
-                className="mt-3 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground disabled:opacity-50"
+                className="mt-3 rounded-lg bg-error px-4 py-2 text-sm font-semibold text-on-error disabled:opacity-50"
               >
                 {locating ? "Getting your location…" : "Retry location"}
               </button>
             </div>
           ) : (
-            <div className="rounded-xl border border-green-500/40 bg-green-500/5 p-4">
-              <p className="font-semibold text-green-700 dark:text-green-400">You&apos;re inside the clock-in zone</p>
-              <p className="mt-1 text-sm opacity-80">
+            <div className="rounded-2xl bg-tertiary-container p-4 text-on-tertiary-container">
+              <p className="font-semibold">You&apos;re inside the clock-in zone</p>
+              <p className="mt-1 text-sm opacity-90">
                 Clocking in now will be recorded as{" "}
                 <span className="font-medium">
                   {STATUS_LABELS[previewStatus]}
@@ -290,7 +293,7 @@ export default function ClockingClient({
                 .
               </p>
               {online ? (
-                <form action={formAction} className="mt-3">
+                <form action={formAction} className="mt-4">
                   <input type="hidden" name="event_id" value={eventId} />
                   <input type="hidden" name="lat" value={position.lat} />
                   <input type="hidden" name="lng" value={position.lng} />
@@ -299,22 +302,28 @@ export default function ClockingClient({
                   <button
                     type="submit"
                     disabled={pending || !canClockIn}
-                    className="rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-accent-foreground disabled:opacity-50"
+                    className="flex h-14 w-full items-center justify-center gap-2 rounded-full bg-primary text-base font-bold text-on-primary shadow-md transition-transform active:scale-[0.98] disabled:opacity-50"
                   >
+                    <span className="material-symbols-outlined" aria-hidden>
+                      fingerprint
+                    </span>
                     {pending ? `Clocking in to ${className}…` : "Clock in"}
                   </button>
                 </form>
               ) : (
-                <div className="mt-3">
-                  <p className="mb-2 text-xs text-amber-700 dark:text-amber-400">
+                <div className="mt-4">
+                  <p className="mb-2 text-xs opacity-90">
                     You&apos;re offline — this will be saved on your device and synced when you reconnect.
                   </p>
                   <button
                     type="button"
                     onClick={clockInOffline}
                     disabled={savingOffline || !canClockIn}
-                    className="rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-accent-foreground disabled:opacity-50"
+                    className="flex h-14 w-full items-center justify-center gap-2 rounded-full bg-primary text-base font-bold text-on-primary shadow-md transition-transform active:scale-[0.98] disabled:opacity-50"
                   >
+                    <span className="material-symbols-outlined" aria-hidden>
+                      fingerprint
+                    </span>
                     {savingOffline ? "Saving…" : "Clock in (offline)"}
                   </button>
                 </div>
@@ -323,7 +332,7 @@ export default function ClockingClient({
           )}
 
           {state?.error && (
-            <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+            <p role="alert" className="text-sm font-medium text-error">
               {state.error}
             </p>
           )}

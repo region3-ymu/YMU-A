@@ -106,16 +106,21 @@ export default function NotificationSettings({
 
   return (
     <div className="mt-6 flex flex-col gap-3">
-      <h2 className="text-lg font-bold">Notifications</h2>
-      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+      <h2 className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">Notifications</h2>
+      {error && <p className="text-sm text-error">{error}</p>}
       {TYPE_META.map((meta) => {
         const row = state[meta.type];
         return (
-          <div key={meta.type} className="rounded-xl border border-foreground/10 p-4">
+          <div key={meta.type} className="rounded-2xl bg-surface-container p-4 shadow-sm">
             <div className="flex items-center justify-between gap-3">
-              <label className="flex-1">
-                <span className="block font-semibold">{meta.label}</span>
-                <span className="block text-sm opacity-70">{meta.note}</span>
+              <label className="flex flex-1 items-center gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary-container text-on-primary-container">
+                  <span className="material-symbols-outlined" aria-hidden>notifications</span>
+                </span>
+                <span>
+                  <span className="block font-semibold text-on-surface">{meta.label}</span>
+                  <span className="block text-sm text-on-surface-variant">{meta.note}</span>
+                </span>
               </label>
               <input
                 type="checkbox"
@@ -124,12 +129,12 @@ export default function NotificationSettings({
                 checked={row.enabled}
                 disabled={savingType === meta.type}
                 onChange={(e) => handleToggle(meta.type, meta.label, e.target.checked)}
-                className="h-6 w-11 shrink-0 cursor-pointer appearance-none rounded-full bg-foreground/20 transition-colors checked:bg-accent relative before:absolute before:left-0.5 before:top-0.5 before:h-5 before:w-5 before:rounded-full before:bg-white before:transition-transform checked:before:translate-x-5 disabled:opacity-50"
+                className="h-6 w-11 shrink-0 cursor-pointer appearance-none rounded-full bg-surface-container-high transition-colors checked:bg-primary relative before:absolute before:left-0.5 before:top-0.5 before:h-5 before:w-5 before:rounded-full before:bg-white before:transition-transform checked:before:translate-x-5 disabled:opacity-50"
               />
             </div>
             {meta.hasLead && (
-              <label className="mt-3 flex items-center gap-2 text-sm">
-                <span className="opacity-70">Lead time (minutes):</span>
+              <label className="mt-3 flex items-center gap-2 text-sm text-on-surface">
+                <span className="text-on-surface-variant">Lead time (minutes):</span>
                 <input
                   type="number"
                   min={0}
@@ -141,7 +146,7 @@ export default function NotificationSettings({
                     if (Number.isFinite(value) && value >= 0 && value <= 180) setLeadMinutes(meta.type, value);
                     else e.target.value = String(row.leadMinutes);
                   }}
-                  className="w-20 rounded-lg border border-foreground/20 bg-transparent px-2 py-1 disabled:opacity-50"
+                  className="w-20 rounded-lg bg-surface-container-low px-2 py-1 text-on-surface outline-none focus:ring-2 focus:ring-primary disabled:opacity-50"
                 />
               </label>
             )}

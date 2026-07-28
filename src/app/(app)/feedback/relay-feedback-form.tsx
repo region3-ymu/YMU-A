@@ -38,7 +38,7 @@ export default function RelayFeedbackForm({ sessionId }: { sessionId: string }) 
           name="relay_block"
           required
           defaultValue=""
-          className="rounded-lg border border-foreground/20 bg-background px-3 py-2 text-sm"
+          className="rounded-lg bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary"
         >
           <option value="" disabled>
             Choose…
@@ -59,7 +59,7 @@ export default function RelayFeedbackForm({ sessionId }: { sessionId: string }) 
           name="program_area"
           required
           defaultValue=""
-          className="rounded-lg border border-foreground/20 bg-background px-3 py-2 text-sm"
+          className="rounded-lg bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary"
         >
           <option value="" disabled>
             Choose…
@@ -84,7 +84,7 @@ export default function RelayFeedbackForm({ sessionId }: { sessionId: string }) 
           type="text"
           name="objective"
           required
-          className="rounded-lg border border-foreground/20 bg-background px-3 py-2 text-sm"
+          className="rounded-lg bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary"
         />
       </label>
 
@@ -110,7 +110,7 @@ export default function RelayFeedbackForm({ sessionId }: { sessionId: string }) 
           name="objective_reflection"
           required
           rows={3}
-          className="rounded-lg border border-foreground/20 bg-background px-3 py-2 text-sm"
+          className="rounded-lg bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary"
         />
       </label>
 
@@ -165,22 +165,27 @@ export default function RelayFeedbackForm({ sessionId }: { sessionId: string }) 
         <textarea
           name="pivots"
           rows={3}
-          className="rounded-lg border border-foreground/20 bg-background px-3 py-2 text-sm"
+          className="rounded-lg bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary"
         />
       </label>
 
       <button
         type="submit"
         disabled={pending || challenges.length === 0}
-        className="justify-self-start rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-accent-foreground disabled:opacity-50"
+        className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-primary text-sm font-bold text-on-primary shadow-md transition-transform active:scale-[0.98] disabled:opacity-50"
       >
         {pending ? "Submitting…" : "Submit feedback"}
+        {!pending && (
+          <span className="material-symbols-outlined text-xl" aria-hidden>
+            check
+          </span>
+        )}
       </button>
       {challenges.length === 0 && (
-        <p className="-mt-2 text-xs opacity-60">Select at least one challenge option above to submit.</p>
+        <p className="-mt-2 text-xs text-on-surface-variant">Select at least one challenge option above to submit.</p>
       )}
       {state?.error && (
-        <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+        <p role="alert" className="text-sm font-medium text-error">
           {state.error}
         </p>
       )}

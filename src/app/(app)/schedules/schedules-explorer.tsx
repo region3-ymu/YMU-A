@@ -31,15 +31,15 @@ export default function SchedulesExplorer({ events, schools, calendarIssues, cal
   return (
     <div className="grid gap-6">
       {managersView && (
-        <div className="flex flex-wrap gap-3 rounded-xl border border-foreground/10 p-3">
-          <label className="grid gap-1 text-sm font-medium">Region
-            <select value={region} onChange={(event) => setRegion(event.target.value as Region | "all")} className="rounded-md border border-foreground/20 bg-background px-2 py-1.5 font-normal">
+        <div className="flex flex-wrap gap-3 rounded-2xl bg-surface-container p-4 shadow-sm">
+          <label className="grid gap-1 text-sm font-medium text-on-surface">Region
+            <select value={region} onChange={(event) => setRegion(event.target.value as Region | "all")} className="rounded-lg bg-surface-container-low px-3 py-2 font-normal text-on-surface outline-none focus:ring-2 focus:ring-primary">
               <option value="all">All visible regions</option>
               {Object.entries(REGION_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
           </label>
-          <label className="grid gap-1 text-sm font-medium">School
-            <select value={schoolId} onChange={(event) => setSchoolId(event.target.value)} className="rounded-md border border-foreground/20 bg-background px-2 py-1.5 font-normal">
+          <label className="grid gap-1 text-sm font-medium text-on-surface">School
+            <select value={schoolId} onChange={(event) => setSchoolId(event.target.value)} className="rounded-lg bg-surface-container-low px-3 py-2 font-normal text-on-surface outline-none focus:ring-2 focus:ring-primary">
               <option value="all">All visible schools</option>
               {schools.map((school) => <option key={school.id} value={school.id}>{school.name}</option>)}
             </select>
@@ -54,14 +54,19 @@ export default function SchedulesExplorer({ events, schools, calendarIssues, cal
         <div className="grid gap-6">
           {groups.map(([key, dayEvents]) => (
             <section key={key}>
-              <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide opacity-65">{dayHeading(key)}</h2>
-              <div className="grid gap-2">
+              <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-on-surface-variant">{dayHeading(key)}</h2>
+              <div className="grid gap-3">
                 {dayEvents.map((event) => <EventCard key={event.id} event={event} now={now} managersView={managersView} />)}
               </div>
             </section>
           ))}
         </div>
-      ) : <p className="rounded-xl border border-dashed border-foreground/20 p-6 text-sm opacity-70">No scheduled events match these filters.</p>}
+      ) : (
+        <div className="flex flex-col items-center gap-2 rounded-2xl bg-surface-container p-8 text-center shadow-sm">
+          <span className="material-symbols-outlined text-4xl text-on-surface-variant" aria-hidden>event_busy</span>
+          <p className="text-sm text-on-surface-variant">No scheduled events match these filters.</p>
+        </div>
+      )}
     </div>
   );
 }
@@ -79,16 +84,31 @@ function EventCard({ event, now, managersView }: { event: ScheduleEvent; now: Da
   const currentlyInShift = isCurrentlyInShift(event, now);
   const schoolName = event.school?.name ?? (event.location_raw ? "School not matched" : "No school location");
   return (
-    <Link href={`/schedules/${event.id}`} className="block rounded-xl border border-foreground/10 p-4 transition hover:border-accent hover:bg-accent/5">
+    <Link
+      href={`/schedules/${event.id}`}
+      className="relative block overflow-hidden rounded-2xl bg-surface-container p-4 pl-5 shadow-sm transition-transform active:scale-[0.99]"
+    >
+      <div className={`absolute inset-y-0 left-0 w-1.5 ${currentlyInShift ? "bg-tertiary" : "bg-primary"}`} aria-hidden />
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h3 className="font-semibold">{eventTitle(event)}</h3>
-          <p className="mt-0.5 text-sm opacity-75">{formatEventTime(event)}</p>
+          <h3 className="font-semibold text-on-surface">{eventTitle(event)}</h3>
+          <p className="mt-0.5 flex items-center gap-1 text-sm text-on-surface-variant">
+            <span className="material-symbols-outlined text-base" aria-hidden>schedule</span>
+            {formatEventTime(event)}
+          </p>
         </div>
-        {currentlyInShift && <span className="rounded-full bg-green-600 px-2.5 py-0.5 text-xs font-semibold text-white">Currently in shift</span>}
+        {currentlyInShift && (
+          <span className="flex items-center gap-1 rounded-full bg-tertiary-container px-2.5 py-1 text-xs font-semibold text-on-tertiary-container">
+            <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden />
+            In shift
+          </span>
+        )}
       </div>
-      <p className="mt-2 text-sm"><span className="font-medium">{schoolName}</span>{event.location_raw && event.school ? ` · ${event.location_raw}` : ""}</p>
-      {managersView && <p className="mt-1 text-xs opacity-65">{event.teacher_ids.length ? `${event.teacher_ids.length} matched teacher${event.teacher_ids.length === 1 ? "" : "s"}` : "No teacher matched"}{event.school?.region ? ` · ${REGION_LABELS[event.school.region]}` : ""}</p>}
+      <p className="mt-2 flex items-center gap-1 text-sm text-on-surface">
+        <span className="material-symbols-outlined text-base text-on-surface-variant" aria-hidden>location_on</span>
+        <span className="font-medium">{schoolName}</span>{event.location_raw && event.school ? ` · ${event.location_raw}` : ""}
+      </p>
+      {managersView && <p className="mt-1 text-xs text-on-surface-variant">{event.teacher_ids.length ? `${event.teacher_ids.length} matched teacher${event.teacher_ids.length === 1 ? "" : "s"}` : "No teacher matched"}{event.school?.region ? ` · ${REGION_LABELS[event.school.region]}` : ""}</p>}
     </Link>
   );
 }

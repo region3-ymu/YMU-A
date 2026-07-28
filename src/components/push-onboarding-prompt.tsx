@@ -59,40 +59,45 @@ export default function PushOnboardingPrompt() {
   if (state === "hidden") return null;
 
   return (
-    <div className="mb-6 rounded-2xl border border-accent bg-accent/10 p-4">
+    <div className="mb-6 flex gap-3 rounded-2xl bg-primary-container p-4 text-on-primary-container shadow-sm">
+      <span className="material-symbols-outlined mt-0.5 text-2xl" aria-hidden>
+        notifications
+      </span>
+      <div className="flex-1">
       {state === "ios-needs-install" ? (
         <>
-          <p className="font-semibold text-accent">Get reminders on your phone</p>
-          <p className="mt-1 text-sm opacity-80">
+          <p className="font-bold">Get reminders on your phone</p>
+          <p className="mt-1 text-sm text-on-primary-container/80">
             Add YMU-A to your Home Screen to get push reminders (be-there-soon, clock-in, clock-out): tap the{" "}
             <strong>Share</strong> icon in Safari → <strong>Add to Home Screen</strong> → open YMU-A from the new icon.
           </p>
-          <button type="button" onClick={dismiss} className="mt-3 text-sm font-semibold opacity-70 underline">
+          <button type="button" onClick={dismiss} className="mt-3 text-sm font-semibold text-on-primary-container/70 underline">
             Not now
           </button>
         </>
       ) : (
         <>
-          <p className="font-semibold text-accent">Turn on notifications?</p>
-          <p className="mt-1 text-sm opacity-80">
+          <p className="font-bold">Turn on notifications?</p>
+          <p className="mt-1 text-sm text-on-primary-container/80">
             Get reminders before class starts, at clock-in/clock-out, and if your schedule changes.
           </p>
-          {error && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
-          <div className="mt-3 flex gap-3">
+          {error && <p className="mt-2 text-sm text-error">{error}</p>}
+          <div className="mt-3 flex items-center gap-4">
             <button
               type="button"
               disabled={busy}
               onClick={handleEnable}
-              className="rounded-lg bg-accent px-3 py-1.5 text-sm font-semibold text-accent-foreground disabled:opacity-50"
+              className="rounded-full bg-primary px-5 py-2.5 text-sm font-bold text-on-primary shadow-sm active:scale-[0.98] disabled:opacity-50"
             >
               {busy ? "Working…" : "Enable notifications"}
             </button>
-            <button type="button" onClick={dismiss} className="text-sm font-semibold opacity-70 underline">
+            <button type="button" onClick={dismiss} className="text-sm font-semibold text-on-primary-container/70 underline">
               Not now
             </button>
           </div>
         </>
       )}
+      </div>
     </div>
   );
 }

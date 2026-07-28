@@ -61,7 +61,7 @@ export default function PushSettings() {
 
   if (support === "unsupported") {
     return (
-      <div className="rounded-xl border border-foreground/10 p-4 text-sm opacity-70">
+      <div className="rounded-2xl bg-surface-container p-4 text-sm text-on-surface-variant shadow-sm">
         Push notifications aren&apos;t supported in this browser. Email backups (for schedule changes, cancellations,
         and clock-out reminders) will still arrive.
       </div>
@@ -70,13 +70,13 @@ export default function PushSettings() {
 
   if (support === "ios-needs-install") {
     return (
-      <div className="rounded-xl border border-foreground/10 p-4">
-        <p className="font-semibold">Install YMU-A to your Home Screen first</p>
-        <p className="mt-1 text-sm opacity-70">
+      <div className="rounded-2xl bg-surface-container p-4 shadow-sm">
+        <p className="font-semibold text-on-surface">Install YMU-A to your Home Screen first</p>
+        <p className="mt-1 text-sm text-on-surface-variant">
           iPhone/iPad only allow push notifications for apps added to your Home Screen — not for a page open in a
           browser tab.
         </p>
-        <ol className="mt-3 list-decimal space-y-1 pl-5 text-sm">
+        <ol className="mt-3 list-decimal space-y-1 pl-5 text-sm text-on-surface">
           <li>
             Tap the <strong>Share</strong> icon in Safari&apos;s toolbar.
           </li>
@@ -91,22 +91,27 @@ export default function PushSettings() {
   }
 
   return (
-    <div className="rounded-xl border border-foreground/10 p-4">
+    <div className="rounded-2xl bg-surface-container p-4 shadow-sm">
       <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="font-semibold">Push notifications</p>
-          <p className="text-sm opacity-70">{subscribed ? "Enabled on this device." : "Not enabled on this device."}</p>
+        <div className="flex items-center gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary-container text-on-primary-container">
+            <span className="material-symbols-outlined" aria-hidden>notifications</span>
+          </span>
+          <div>
+            <p className="font-semibold text-on-surface">Push notifications</p>
+            <p className="text-sm text-on-surface-variant">{subscribed ? "Enabled on this device." : "Not enabled on this device."}</p>
+          </div>
         </div>
         <button
           type="button"
           disabled={busy}
           onClick={subscribed ? handleDisable : handleEnable}
-          className="shrink-0 rounded-lg border border-foreground/20 px-3 py-1.5 text-sm font-semibold disabled:opacity-50"
+          className="shrink-0 rounded-full border-2 border-outline px-4 py-1.5 text-sm font-bold text-on-surface active:scale-[0.98] disabled:opacity-50"
         >
           {busy ? "Working…" : subscribed ? "Disable" : "Enable notifications"}
         </button>
       </div>
-      {error && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
+      {error && <p className="mt-2 text-sm text-error">{error}</p>}
     </div>
   );
 }

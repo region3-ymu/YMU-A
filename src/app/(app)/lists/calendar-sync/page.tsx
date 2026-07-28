@@ -14,11 +14,19 @@ export default async function CalendarSyncPage() {
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 p-6">
       <header>
-        <Link href="/lists" className="text-sm underline opacity-70">
+        <Link
+          href="/lists"
+          className="inline-flex items-center gap-1 text-sm font-medium text-primary"
+        >
           ← Lists
         </Link>
-        <h1 className="mt-2 text-2xl font-bold tracking-tight">Sync calendars</h1>
-        <p className="mt-1 text-sm opacity-70">
+        <h1 className="mt-2 flex items-center gap-2 text-2xl font-bold tracking-tight text-on-surface">
+          <span className="material-symbols-outlined text-primary" aria-hidden>
+            calendar_month
+          </span>
+          Sync calendars
+        </h1>
+        <p className="mt-1 text-sm text-on-surface-variant">
           Google Calendar syncs automatically every 5 minutes. Use this to
           pull a change in immediately instead of waiting, or to retry a
           specific school after fixing its calendar sharing.
@@ -26,10 +34,10 @@ export default async function CalendarSyncPage() {
       </header>
 
       {schools.length === 0 ? (
-        <p className="text-sm opacity-60">
+        <p className="rounded-2xl bg-surface-container p-6 text-sm text-on-surface-variant shadow-sm">
           No school has a Google Calendar linked yet — link one from the
           &ldquo;Calendars needing attention&rdquo; queue on{" "}
-          <Link href="/schedules" className="underline">
+          <Link href="/schedules" className="font-medium text-primary underline">
             Schedules
           </Link>{" "}
           first.

@@ -10,7 +10,9 @@ export default function SignupForm() {
 
   return (
     <form action={action} className="flex flex-col gap-4">
-      <h2 className="text-lg font-semibold">Create your account</h2>
+      <h2 className="text-center text-xl font-bold text-on-surface">
+        Create your account
+      </h2>
       <FormMessage error={state?.error} />
       <Field
         label="Full name"
@@ -45,9 +47,9 @@ export default function SignupForm() {
         error={state?.fieldErrors?.password}
       />
       <SubmitButton pending={pending}>Sign up</SubmitButton>
-      <p className="text-sm opacity-70">
+      <p className="text-center text-sm text-on-surface-variant">
         Already have an account?{" "}
-        <Link href="/login" className="underline">
+        <Link href="/login" className="font-medium text-primary hover:underline">
           Log in
         </Link>
       </p>

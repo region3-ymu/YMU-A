@@ -36,13 +36,13 @@ export default function ResponsibilityCheckDialog({
       aria-modal="true"
       aria-labelledby="responsibility-check-title"
     >
-      <div className="w-full max-w-sm rounded-2xl border border-foreground/10 bg-background p-6 shadow-xl">
+      <div className="w-full max-w-sm rounded-2xl bg-surface-container-high p-6 shadow-xl">
         {step === 1 ? (
           <>
-            <h2 id="responsibility-check-title" className="text-lg font-bold">
+            <h2 id="responsibility-check-title" className="text-lg font-bold text-on-surface">
               Turn off &ldquo;{typeLabel}&rdquo;?
             </h2>
-            <p className="mt-2 text-sm opacity-80">
+            <p className="mt-2 text-sm text-on-surface-variant">
               You won&apos;t be notified about this anymore. If that leads to a missed clock-in, a missed clock-out, or
               a missed schedule change, no reminder will catch it — checking for it becomes your responsibility.
             </p>
@@ -53,14 +53,14 @@ export default function ResponsibilityCheckDialog({
                   reset();
                   onCancel();
                 }}
-                className="rounded-lg px-3 py-1.5 text-sm font-semibold opacity-70"
+                className="rounded-full px-4 py-1.5 text-sm font-bold text-on-surface-variant active:scale-[0.98]"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={() => setStep(2)}
-                className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-semibold text-white"
+                className="rounded-full bg-error px-4 py-1.5 text-sm font-bold text-on-error shadow-sm active:scale-[0.98]"
               >
                 Continue
               </button>
@@ -68,15 +68,15 @@ export default function ResponsibilityCheckDialog({
           </>
         ) : (
           <>
-            <h2 id="responsibility-check-title" className="text-lg font-bold">
+            <h2 id="responsibility-check-title" className="text-lg font-bold text-on-surface">
               Are you sure?
             </h2>
-            <label className="mt-3 flex items-start gap-2 text-sm">
+            <label className="mt-3 flex items-start gap-2 text-sm text-on-surface">
               <input
                 type="checkbox"
                 checked={acknowledged}
                 onChange={(e) => setAcknowledged(e.target.checked)}
-                className="mt-0.5"
+                className="mt-0.5 accent-primary"
               />
               <span>
                 I understand I&apos;m turning off &ldquo;{typeLabel}&rdquo; and accept responsibility for checking it
@@ -90,7 +90,7 @@ export default function ResponsibilityCheckDialog({
                   reset();
                   onCancel();
                 }}
-                className="rounded-lg px-3 py-1.5 text-sm font-semibold opacity-70"
+                className="rounded-full px-4 py-1.5 text-sm font-bold text-on-surface-variant active:scale-[0.98]"
               >
                 Cancel
               </button>
@@ -101,7 +101,7 @@ export default function ResponsibilityCheckDialog({
                   reset();
                   onConfirm();
                 }}
-                className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-40"
+                className="rounded-full bg-error px-4 py-1.5 text-sm font-bold text-on-error shadow-sm active:scale-[0.98] disabled:opacity-40"
               >
                 Turn off
               </button>

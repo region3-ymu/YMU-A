@@ -52,16 +52,22 @@ export default function OfflineIndicator() {
       {!online && (
         <span
           title="You're offline. Clock-ins are saved on this device and will sync when you reconnect."
-          className="rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-semibold text-amber-700 dark:text-amber-400"
+          className="inline-flex items-center gap-1 rounded-full bg-warning-container px-2.5 py-1 text-xs font-semibold text-on-warning-container"
         >
+          <span className="material-symbols-outlined text-sm" aria-hidden>
+            cloud_off
+          </span>
           Offline
         </span>
       )}
       {pending > 0 && (
         <span
           title={online ? "Syncing your offline actions…" : "Waiting to sync when you reconnect."}
-          className="rounded-full bg-foreground/10 px-2.5 py-0.5 text-xs font-semibold"
+          className="inline-flex items-center gap-1 rounded-full bg-inverse-surface px-2.5 py-1 text-xs font-semibold text-inverse-on-surface"
         >
+          <span className="material-symbols-outlined text-sm" aria-hidden>
+            sync
+          </span>
           {pending} pending{online ? " · syncing…" : ""}
         </span>
       )}

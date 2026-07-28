@@ -6,26 +6,40 @@ export function Field({
   name,
   type = "text",
   error,
+  icon,
   ...rest
 }: {
   label: string;
   name: string;
   type?: string;
   error?: string;
+  icon?: string;
 } & React.InputHTMLAttributes<HTMLInputElement>) {
   return (
-    <div className="flex flex-col gap-1">
-      <label htmlFor={name} className="text-sm font-medium">
+    <div className="flex flex-col gap-1.5">
+      <label htmlFor={name} className="text-sm font-semibold text-on-surface">
         {label}
       </label>
-      <input
-        id={name}
-        name={name}
-        type={type}
-        className="rounded-lg border border-foreground/20 bg-background px-3 py-2 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
-        {...rest}
-      />
-      {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
+      <div className="relative flex items-center">
+        {icon && (
+          <span
+            className="material-symbols-outlined pointer-events-none absolute left-3 text-outline-variant"
+            aria-hidden
+          >
+            {icon}
+          </span>
+        )}
+        <input
+          id={name}
+          name={name}
+          type={type}
+          className={`w-full rounded-lg bg-surface-container-low py-3 text-on-surface outline-none transition-shadow placeholder:text-outline-variant focus:ring-2 focus:ring-primary ${
+            icon ? "pl-11 pr-3" : "px-3"
+          }`}
+          {...rest}
+        />
+      </div>
+      {error && <p className="text-xs text-error">{error}</p>}
     </div>
   );
 }
@@ -41,9 +55,18 @@ export function SubmitButton({
     <button
       type="submit"
       disabled={pending}
-      className="mt-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-accent-foreground disabled:opacity-50"
+      className="mt-2 flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-primary text-sm font-bold text-on-primary shadow-md transition-transform active:scale-[0.98] disabled:opacity-50"
     >
-      {pending ? "Working…" : children}
+      {pending ? (
+        "Working…"
+      ) : (
+        <>
+          {children}
+          <span className="material-symbols-outlined text-xl" aria-hidden>
+            arrow_forward
+          </span>
+        </>
+      )}
     </button>
   );
 }
@@ -59,15 +82,21 @@ export function FormMessage({
     return (
       <p
         role="alert"
-        className="rounded-lg border border-red-600/30 bg-red-600/10 px-3 py-2 text-sm text-red-700 dark:text-red-300"
+        className="flex items-center gap-2 rounded-lg bg-error-container px-3 py-2 text-sm text-on-error-container"
       >
+        <span className="material-symbols-outlined text-base" aria-hidden>
+          error
+        </span>
         {error}
       </p>
     );
   }
   if (success) {
     return (
-      <p className="rounded-lg border border-green-600/30 bg-green-600/10 px-3 py-2 text-sm text-green-700 dark:text-green-300">
+      <p className="flex items-center gap-2 rounded-lg bg-tertiary-container px-3 py-2 text-sm text-on-tertiary-container">
+        <span className="material-symbols-outlined text-base" aria-hidden>
+          check_circle
+        </span>
         {success}
       </p>
     );

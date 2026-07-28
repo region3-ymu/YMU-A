@@ -28,8 +28,8 @@ export default async function ClockingPage() {
   return (
     <main className="mx-auto flex w-full max-w-xl flex-1 flex-col gap-4 p-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Clocking</h1>
-        <p className="text-sm opacity-70">Clock in at your class, clock out with feedback.</p>
+        <h1 className="text-2xl font-bold tracking-tight text-on-surface">Clocking</h1>
+        <p className="text-sm text-on-surface-variant">Clock in at your class, clock out with feedback.</p>
       </div>
 
       {openSession ? (
@@ -50,11 +50,20 @@ export default async function ClockingPage() {
         />
       ) : nextClass ? (
         <section className="grid gap-4">
-          <div className="rounded-2xl border border-foreground/10 p-5">
-            <p className="text-xs font-semibold uppercase tracking-wide opacity-60">Next class</p>
-            <h2 className="mt-1 text-lg font-semibold">{classTitle(nextClass.summary)}</h2>
-            <p className="mt-0.5 text-sm opacity-80">{formatWhen(nextClass.start_at, nextClass.end_at)}</p>
-            {nextClass.school && <p className="mt-0.5 text-sm opacity-80">{nextClass.school.name}</p>}
+          <div className="relative overflow-hidden rounded-2xl bg-surface-container p-5 shadow-sm">
+            <div className="absolute inset-y-0 left-0 w-1.5 bg-primary" aria-hidden />
+            <p className="text-xs font-semibold uppercase tracking-wide text-primary">Next class</p>
+            <h2 className="mt-1 text-lg font-semibold text-on-surface">{classTitle(nextClass.summary)}</h2>
+            <p className="mt-1 flex items-center gap-1 text-sm text-on-surface-variant">
+              <span className="material-symbols-outlined text-base" aria-hidden>schedule</span>
+              {formatWhen(nextClass.start_at, nextClass.end_at)}
+            </p>
+            {nextClass.school && (
+              <p className="mt-0.5 flex items-center gap-1 text-sm text-on-surface-variant">
+                <span className="material-symbols-outlined text-base" aria-hidden>location_on</span>
+                {nextClass.school.name}
+              </p>
+            )}
           </div>
 
           {nextClass.school ? (
@@ -71,15 +80,20 @@ export default async function ClockingPage() {
               }}
             />
           ) : (
-            <p className="rounded-xl border border-amber-500/40 bg-amber-500/5 p-4 text-sm">
+            <p className="rounded-2xl bg-warning-container p-4 text-sm text-on-warning-container">
               This class isn&apos;t matched to a school yet, so its location can&apos;t be verified for clock-in.
             </p>
           )}
         </section>
       ) : (
-        <p className="rounded-xl border border-foreground/10 p-5 text-sm opacity-80">
-          You have no upcoming classes to clock into. Check the Schedules tab for your timetable.
-        </p>
+        <div className="flex flex-col items-center gap-2 rounded-2xl bg-surface-container p-8 text-center shadow-sm">
+          <span className="material-symbols-outlined text-4xl text-on-surface-variant" aria-hidden>
+            event_available
+          </span>
+          <p className="text-sm text-on-surface-variant">
+            You have no upcoming classes to clock into. Check the Schedules tab for your timetable.
+          </p>
+        </div>
       )}
     </main>
   );

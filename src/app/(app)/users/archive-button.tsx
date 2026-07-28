@@ -21,21 +21,21 @@ export default function ArchiveButton({
       <button
         type="submit"
         disabled={pending}
-        className={`rounded-lg border px-3 py-1.5 text-sm font-semibold disabled:opacity-40 ${
+        className={`rounded-full px-4 py-1.5 text-sm font-bold active:scale-[0.98] disabled:opacity-40 ${
           archived
-            ? "border-foreground/20"
-            : "border-red-500/40 text-red-600 dark:text-red-400"
+            ? "border-2 border-outline text-on-surface"
+            : "bg-error-container text-on-error-container shadow-sm"
         }`}
       >
         {pending ? "Saving…" : archived ? "Unarchive" : "Archive"}
       </button>
       {state?.error && (
-        <p role="alert" className="text-xs text-red-600 dark:text-red-400">
+        <p role="alert" className="text-xs text-error">
           {state.error}
         </p>
       )}
       {state?.success && (
-        <p className="text-xs text-green-700 dark:text-green-300">{state.success}</p>
+        <p className="text-xs text-tertiary">{state.success}</p>
       )}
     </form>
   );

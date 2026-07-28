@@ -74,35 +74,46 @@ export default function ListsExplorer({
       <AddSchoolForm />
 
       <div className="flex flex-col gap-1">
-        <label htmlFor="lists-search" className="text-sm font-medium">
+        <label htmlFor="lists-search" className="text-sm font-medium text-on-surface">
           Search schools &amp; teachers
         </label>
-        <input
-          id="lists-search"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Name, address, email, phone…"
-          className="rounded-lg border border-foreground/20 bg-background px-3 py-2 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
-        />
+        <div className="relative">
+          <span
+            className="material-symbols-outlined pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant"
+            aria-hidden
+          >
+            search
+          </span>
+          <input
+            id="lists-search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Name, address, email, phone…"
+            className="w-full rounded-full bg-surface-container-low py-2.5 pl-11 pr-4 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary"
+          />
+        </div>
       </div>
 
       <section className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-lg font-semibold">
-            Schools <span className="text-sm font-normal opacity-60">({filteredSchools.length})</span>
+          <h2 className="text-lg font-semibold text-on-surface">
+            Schools{" "}
+            <span className="text-sm font-normal text-on-surface-variant">({filteredSchools.length})</span>
           </h2>
           {filteredSchools.length > 0 && (
             <button
               type="button"
               onClick={toggleAllMaps}
-              className="rounded-lg border border-foreground/20 px-2.5 py-1 text-xs font-medium opacity-80 hover:opacity-100"
+              className="rounded-full border-2 border-outline px-3 py-1 text-xs font-bold text-on-surface"
             >
               {allMapsCollapsed ? "Show maps" : "Hide maps"}
             </button>
           )}
         </div>
         {filteredSchools.length === 0 ? (
-          <p className="text-sm opacity-60">No schools match.</p>
+          <p className="rounded-2xl bg-surface-container p-6 text-center text-sm text-on-surface-variant shadow-sm">
+            No schools match.
+          </p>
         ) : (
           <ul className="flex flex-col gap-3">
             {filteredSchools.map((school) => (
@@ -119,16 +130,19 @@ export default function ListsExplorer({
       </section>
 
       <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-semibold">
-          Teachers <span className="text-sm font-normal opacity-60">({filteredTeachers.length})</span>
+        <h2 className="text-lg font-semibold text-on-surface">
+          Teachers{" "}
+          <span className="text-sm font-normal text-on-surface-variant">({filteredTeachers.length})</span>
         </h2>
-        <p className="text-xs opacity-60">
+        <p className="text-xs text-on-surface-variant">
           Grouped by region for now — per-school rosters arrive once Google
           Calendar sync (Phase 3) links teachers to schools via their
           scheduled events.
         </p>
         {filteredTeachers.length === 0 ? (
-          <p className="text-sm opacity-60">No teachers match.</p>
+          <p className="rounded-2xl bg-surface-container p-6 text-center text-sm text-on-surface-variant shadow-sm">
+            No teachers match.
+          </p>
         ) : (
           <ul className="flex flex-col gap-2">
             {filteredTeachers.map((teacher) => (

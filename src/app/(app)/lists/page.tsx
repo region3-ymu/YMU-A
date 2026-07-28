@@ -25,20 +25,37 @@ export default async function ListsPage() {
 
   return (
     <main className="flex flex-1 flex-col gap-2 p-6">
-      <h1 className="text-2xl font-bold tracking-tight">Lists</h1>
-      <p className="text-sm opacity-70">Schools &amp; teachers by region</p>
+      <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight text-on-surface">
+        <span className="material-symbols-outlined text-primary" aria-hidden>
+          groups
+        </span>
+        Lists
+      </h1>
+      <p className="text-sm text-on-surface-variant">Schools &amp; teachers by region</p>
       <div className="flex flex-wrap gap-x-4 gap-y-1">
-        <Link href="/lists/calendar-sync" className="mt-1 text-sm underline opacity-70">
+        <Link
+          href="/lists/calendar-sync"
+          className="mt-1 inline-flex items-center gap-1 text-sm font-medium text-primary"
+        >
+          <span className="material-symbols-outlined text-base" aria-hidden>
+            calendar_month
+          </span>
           Sync calendars →
         </Link>
         {(caller.role === "operations_manager" || caller.role === "cpo") && (
-          <Link href="/lists/school-years" className="mt-1 text-sm underline opacity-70">
+          <Link
+            href="/lists/school-years"
+            className="mt-1 inline-flex items-center gap-1 text-sm font-medium text-primary"
+          >
+            <span className="material-symbols-outlined text-base" aria-hidden>
+              school
+            </span>
             Manage school years →
           </Link>
         )}
       </div>
       {(schoolsError || teachersError) && (
-        <p role="alert" className="mt-4 text-sm text-red-600 dark:text-red-400">
+        <p role="alert" className="mt-4 rounded-2xl bg-error-container px-4 py-3 text-sm text-on-error-container shadow-sm">
           Couldn&rsquo;t load lists: {(schoolsError ?? teachersError)?.message}
         </p>
       )}
