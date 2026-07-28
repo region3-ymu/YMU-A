@@ -1,5 +1,31 @@
 # NEXT_STEPS — YMU-A
 
+## 🔴 Signup / forgot-password / any auth email is broken — SMTP misconfigured (2026-07-28)
+
+Found via Supabase auth logs while investigating a live "signup didn't work"
+report: `POST /signup` returned 500 with
+`"error":"dial tcp: lookup smtp.resend.com,: no such host"`. The custom SMTP
+host configured in the Supabase dashboard (Project Settings → Auth → SMTP
+Settings) has a **stray trailing comma** — `smtp.resend.com,` instead of
+`smtp.resend.com` — so DNS resolution fails and Supabase can't send ANY
+auth email (signup confirmation, forgot-password, magic link — anything
+that goes through that SMTP config). This is a dashboard config value, not
+something fixable from this repo/environment — the user needs to open the
+Supabase dashboard and remove the trailing comma.
+
+**Until that's fixed**, for the Relay week: don't rely on in-app signup or
+"Forgot password?" working. Create/update accounts directly via
+`scripts/onboard-real-users.ts`-style admin scripts (service-role key), and
+edit phone numbers etc. the same way (or directly in the `profiles` table)
+rather than expecting teachers to self-serve.
+
+**Also flagged by the user**: there's currently no "change my password" option
+inside Settings while already signed in — only the recovery-email flow
+(`/reset-password` → email link → `/update-password`), which itself needs
+the SMTP fix above to work at all. A future phase could add a simple
+"change password" action in Settings (re-auth with current password, then
+`supabase.auth.updateUser({ password })`) — not built, only noted.
+
 ## ✅ Clean-slate wipe + real Relay-week onboarding executed (2026-07-28)
 
 Executed the plan from the previous entry, once the user's final test pass
