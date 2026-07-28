@@ -1,5 +1,65 @@
 # NEXT_STEPS — YMU-A
 
+## ✅ Clean-slate wipe + real Relay-week onboarding executed (2026-07-28)
+
+Executed the plan from the previous entry, once the user's final test pass
+(Safari redirect loop, now fixed — see the DECISIONS.md entry) came back
+clean. Ran via a new script, `scripts/onboard-real-users.ts`
+(`ONBOARD_ALLOW=1 npm run onboard:real`, same shape/conventions as
+`seed-test-data.ts`):
+
+1. **Deleted** all 10 test/seed accounts (the 4 `*@ymu.test` seed accounts,
+   2 ad hoc manual-test teacher accounts, 2 leftover `events-rls-*` test
+   fixtures, and 2 other stray test teacher accounts) — kept only
+   `region3@ymu.org` (Emilio Medrano, Central RM) and
+   `programs@youngmusiciansunite.org` (YMU Programs, CPO).
+2. **Created** two new regional managers: `region1@ymu.org` (Eric Levy,
+   North) and `region2@ymu.org` (Julian Bermudez, South). Operations Manager
+   intentionally not created yet.
+3. **Created 48 teacher accounts** — everyone confirmed to (a) have a Gmail
+   address and (b) appear on this week's 3-day Relay check-in roster
+   (`Teacher Relay Schedules.xlsx`, cross-referenced against `YMU Teacher
+   Candidates - Sheet1.csv`). Shared password `ymu12345` for all of them —
+   teachers should change it via "Forgot password?" on first login (there's
+   no in-app "change my password while signed in" flow currently, only the
+   recovery-email one).
+4. **Two Relay-roster people have NO record in the candidates CSV at all**
+   (no email on file) and **5 more have an email but it's not Gmail** (2 of
+   those 5 are ALSO marked "Accepted Offer = FALSE" in the CSV despite being
+   on this week's roster — likely a stale CSV, flagged to the user, not
+   independently verified). None of those 7 have accounts yet. Full names
+   and the CSV/roster discrepancy detail were handed to the user directly
+   (not restated here to avoid duplicating contact info across documents).
+5. **`profiles.phone`** filled in from the CSV where present; 26 of the 48
+   created teachers have no phone on file (also handed to the user
+   directly, to ask in person at the Relay).
+
+**Not committed to git**: `scripts/onboard-real-users.ts` (and the
+`package.json` line that references it) contain real teachers' names,
+emails, and phone numbers as literal source — left uncommitted pending the
+user confirming they're fine with that contact info living permanently in
+git history. Ask before committing if picking this back up.
+
+**Still owed / found while doing this:**
+- **No role can currently edit an existing clock-in's late/on-time status or
+  timestamp** — confirmed by reading every function that writes to
+  `attendance_sessions` (`clock_in`, `close_session_from_zoho`,
+  `admin_close_stuck_session` — the last is OM/CPO-only and only force-closes
+  a stuck *open* session via `clock_out_at`/`admin_closed_*`, it doesn't touch
+  `clock_in_status`/`clock_in_at`). The user is running a **paper backup**
+  check-in/check-out log for the Relay week specifically because of this, and
+  said that's the source of truth if it ever disagrees with the app. If a
+  manager-side correction UI is wanted later, it needs a new RPC (server-side
+  guarded, not a raw grant) — not built, only discussed.
+- **All of this week's Relay attendance/feedback data (clock-ins, clock-outs,
+  reports) must be wiped after this week**, before the official classes
+  start mid/end of August, so real teachers start with a clean slate. Not
+  scheduled yet — revisit after the Relay week wraps.
+- **The whole app must be English regardless of role** (user confirmed) —
+  found and fixed one leftover Spanish string (the "new version available"
+  update banner, predates this session — see DECISIONS.md). Grepped the
+  entire `src/` tree for Spanish afterward; nothing else found.
+
 ## ✅ Google Stitch + Base44 design rework applied app-wide (2026-07-28)
 
 User exported a Google Stitch design ("YMU Tempo" — Material 3, Inter,
