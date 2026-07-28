@@ -219,8 +219,8 @@
    teacher default lives in :root above.
    -------------------------------------------------------------------------- */
 [data-role="regional_manager"] {
-  --accent: #0d9488;
-  --primary-container: #14b8a6;
+  --accent: #7c3aed;
+  --primary-container: #8b5cf6;
 }
 
 [data-role="operations_manager"] {

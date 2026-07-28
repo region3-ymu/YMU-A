@@ -28,10 +28,16 @@ export default function BottomNav({ items }: { items: NavItem[] }) {
                 }`}
               >
                 <span
-                  className={`material-symbols-outlined text-2xl ${active ? "filled" : ""}`}
-                  aria-hidden
+                  className={`flex h-8 w-14 items-center justify-center rounded-full transition-colors ${
+                    active ? "bg-primary-container text-on-primary-container" : ""
+                  }`}
                 >
-                  {item.icon}
+                  <span
+                    className={`material-symbols-outlined text-2xl ${active ? "filled" : ""}`}
+                    aria-hidden
+                  >
+                    {item.icon}
+                  </span>
                 </span>
                 <span className="text-[11px] font-medium leading-none">
                   {item.label}
