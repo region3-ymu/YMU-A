@@ -106,7 +106,7 @@ export default function SwUpdatePrompt() {
   if (!updateReady) return null;
 
   return (
-    <div className="fixed inset-x-0 top-0 z-[60] mx-auto flex w-full max-w-xl items-center justify-between gap-3 bg-inverse-surface px-4 py-3 text-inverse-on-surface shadow-lg sm:top-4 sm:rounded-full">
+    <div className="fixed inset-x-0 top-0 z-[60] mx-auto flex w-full max-w-xl items-center justify-between gap-3 bg-primary px-4 py-3 text-on-primary shadow-lg sm:top-4 sm:rounded-full">
       <span className="flex items-center gap-2 text-sm font-semibold">
         <span className="material-symbols-outlined text-base" aria-hidden>
           system_update
@@ -117,7 +117,7 @@ export default function SwUpdatePrompt() {
         type="button"
         onClick={applyUpdate}
         disabled={reloading}
-        className="shrink-0 text-sm font-bold text-primary-fixed disabled:opacity-60"
+        className="shrink-0 rounded-full bg-on-primary px-3 py-1.5 text-sm font-bold text-primary disabled:opacity-60"
       >
         {reloading ? "Updating…" : "Update"}
       </button>

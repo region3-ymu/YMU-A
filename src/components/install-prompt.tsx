@@ -78,7 +78,7 @@ export default function InstallPrompt() {
   if (dismissed || (!deferredPrompt && !iosPrompt)) return null;
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-50 mx-auto flex w-full max-w-xl flex-col gap-2 bg-inverse-surface p-4 text-inverse-on-surface shadow-lg sm:bottom-4 sm:rounded-3xl">
+    <div className="fixed inset-x-0 bottom-0 z-50 mx-auto flex w-full max-w-xl flex-col gap-2 bg-primary p-4 text-on-primary shadow-lg sm:bottom-4 sm:rounded-3xl">
       {iosPrompt ? (
         <>
           <p className="flex items-center gap-2 text-sm font-bold">
@@ -87,7 +87,7 @@ export default function InstallPrompt() {
             </span>
             Install YMU-A on your phone
           </p>
-          <p className="text-xs text-inverse-on-surface/80">
+          <p className="text-xs text-on-primary/80">
             Tap the <strong>Share</strong> icon in Safari, then <strong>&quot;Add to Home Screen&quot;</strong> — it
             opens like a real app and works offline.
           </p>
@@ -100,7 +100,7 @@ export default function InstallPrompt() {
             </span>
             Install YMU-A on your phone
           </p>
-          <p className="text-xs text-inverse-on-surface/80">Add it to your home screen for quick, full-screen access.</p>
+          <p className="text-xs text-on-primary/80">Add it to your home screen for quick, full-screen access.</p>
         </>
       )}
       <div className="mt-1 flex items-center gap-4">
@@ -108,12 +108,12 @@ export default function InstallPrompt() {
           <button
             type="button"
             onClick={handleInstall}
-            className="text-sm font-bold text-primary-fixed"
+            className="rounded-full bg-on-primary px-3 py-1.5 text-sm font-bold text-primary"
           >
             Install
           </button>
         )}
-        <button type="button" onClick={dismiss} className="text-sm font-semibold text-inverse-on-surface/70 underline">
+        <button type="button" onClick={dismiss} className="text-sm font-semibold text-on-primary/70 underline">
           Not now
         </button>
       </div>
