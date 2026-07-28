@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { requireRole } from "@/lib/auth/dal";
 import { getNextClass, getOpenSession } from "@/lib/attendance/queries";
 import { getFeedbackConfig } from "@/lib/attendance/relay-feedback";
+import { formatTimeRange, formatWeekdayLong } from "@/lib/format/datetime";
 import FeedbackForm from "../feedback/feedback-form";
 import ClockingClient from "./clocking-client";
 
@@ -13,11 +14,7 @@ function classTitle(summary: string | null | undefined) {
 
 function formatWhen(startAt: string | null, endAt: string | null) {
   if (!startAt) return "Time unavailable";
-  const start = new Date(startAt);
-  const end = endAt ? new Date(endAt) : null;
-  const date = new Intl.DateTimeFormat(undefined, { weekday: "long", month: "long", day: "numeric" }).format(start);
-  const time = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
-  return `${date} · ${time.format(start)}${end ? `–${time.format(end)}` : ""}`;
+  return `${formatWeekdayLong(startAt)} · ${formatTimeRange(startAt, endAt)}`;
 }
 
 export default async function ClockingPage() {

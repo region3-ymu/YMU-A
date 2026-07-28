@@ -8,6 +8,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { searchAllAction } from "@/lib/reports/search-action";
+import { formatDate } from "@/lib/format/datetime";
 import type { SearchResults } from "@/lib/reports/search";
 
 export default function SearchBox() {
@@ -69,7 +70,7 @@ export default function SearchBox() {
             {results.sessions.map((s) => (
               <div key={s.id} className="rounded-lg px-2 py-1 text-sm text-on-surface">
                 {s.teacher_name} · {s.school_name ?? "—"} ·{" "}
-                {new Date(s.clock_in_at).toLocaleDateString()} ({s.clock_in_status})
+                {formatDate(s.clock_in_at)} ({s.clock_in_status})
               </div>
             ))}
           </ResultColumn>

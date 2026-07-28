@@ -1,3 +1,4 @@
+import { formatTimeRange, formatWeekdayShort } from "@/lib/format/datetime";
 import type { ScheduleEvent } from "./types";
 
 function rawDate(event: ScheduleEvent, key: "start" | "end") {
@@ -19,16 +20,7 @@ export function formatEventTime(event: ScheduleEvent) {
       : "All day";
   }
   if (!event.start_at) return "Time unavailable";
-  const start = new Date(event.start_at);
-  const end = event.end_at ? new Date(event.end_at) : null;
-  const date = new Intl.DateTimeFormat(undefined, {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).format(start);
-  const time = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
-  return `${date} · ${time.format(start)}${end ? `–${time.format(end)}` : ""}`;
+  return `${formatWeekdayShort(event.start_at)} · ${formatTimeRange(event.start_at, event.end_at)}`;
 }
 
 export function dayKey(event: ScheduleEvent) {

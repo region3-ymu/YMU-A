@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { STATUS_LABELS, type AttendanceStatus } from "@/lib/attendance/status";
+import { formatTime } from "@/lib/format/datetime";
 import {
   buildZohoFeedbackUrl,
   EMPTY_DRAFT,
@@ -119,7 +120,7 @@ export default function FeedbackForm({
             {" "}at <span className="font-medium text-on-surface">{session.schoolName}</span>
           </>
         ) : null}{" "}
-        at {new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(clockedIn)} ·{" "}
+        at {formatTime(clockedIn)} ·{" "}
         <span className={`font-semibold ${session.status === "late" ? "text-error" : "text-tertiary"}`}>
           {STATUS_LABELS[session.status]}
         </span>
