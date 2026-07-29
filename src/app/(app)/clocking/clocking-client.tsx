@@ -27,6 +27,16 @@ const LOW_ACCURACY_THRESHOLD_M = 100;
 
 type GeoErrorKind = "unsupported" | "denied" | "unavailable" | "timeout";
 
+// Mirrors src/lib/push.ts / install-prompt.tsx: iPadOS 13+ reports as
+// "MacIntel" but with touch support, unlike a real Mac.
+function isIOS(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return (
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+  );
+}
+
 type ClockSchool = {
   id: string;
   name: string;
@@ -44,8 +54,9 @@ function describeGeoError(kind: GeoErrorKind): { title: string; detail: string }
     case "denied":
       return {
         title: "Location permission denied",
-        detail:
-          "Clocking in needs your location to confirm you're at the school. Enable location for this site in your browser settings, then try again.",
+        detail: isIOS()
+          ? "First check Settings → Privacy & Security → Location Services is ON. If it is and this still fails, an installed iPhone app can't re-ask for location and shows no location toggle in Settings — delete YMU-A from your Home Screen, reopen ymu-a-navy.vercel.app in Safari, tap Allow when it asks for location, then re-add it via Share → Add to Home Screen."
+          : "Clocking in needs your location to confirm you're at the school. Enable location for this site in your browser settings, then try again.",
       };
     case "unavailable":
       return {
