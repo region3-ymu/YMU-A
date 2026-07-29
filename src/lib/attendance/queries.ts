@@ -55,10 +55,34 @@ export async function getOpenSession(): Promise<OpenSession | null> {
 }
 
 // The soonest matched class the caller can still clock into (not yet ended,
-// not cancelled, matched to a school). null when there's nothing upcoming.
+// not cancelled, matched to a school, AND not already attended). null when
+// there's nothing upcoming.
 export async function getNextClass(): Promise<NextClass | null> {
   const supabase = await createClient();
   const nowIso = new Date().toISOString();
+
+  // Classes the caller has ALREADY clocked into (open OR closed) must not be
+  // re-offered. Without this, a teacher who clocked in and submitted feedback
+  // for a class that hadn't ended yet saw that same class pop back up offering
+  // another clock-in — clocking in again started a second session, so
+  // finishing feedback just looped them straight back to "clock in" once more
+  // (reported live during the relay: "the shift keeps running, it asks me to
+  // clock in again"). RLS scopes attendance_sessions to the caller's own rows,
+  // so this is exactly "events I personally already have a session for".
+  const { data: sessions } = await supabase
+    .from("attendance_sessions")
+    .select("event_id")
+    .not("event_id", "is", null);
+  const attended = new Set(
+    (sessions ?? [])
+      .map((s) => (s as { event_id: string | null }).event_id)
+      .filter((v): v is string => Boolean(v)),
+  );
+
+  // Pull the soonest handful of still-clockable classes, then pick the first
+  // the caller hasn't already attended. Filtering in JS (rather than a dynamic
+  // NOT IN on the query) keeps Supabase's generics from blowing up and a
+  // teacher never has anywhere near this many overlapping upcoming classes.
   const { data } = await supabase
     .from("calendar_events")
     .select(`id, summary, start_at, end_at, all_day, school:schools(${SCHOOL_COLUMNS})`)
@@ -67,7 +91,7 @@ export async function getNextClass(): Promise<NextClass | null> {
     .not("school_id", "is", null)
     .gte("end_at", nowIso)
     .order("start_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-  return (data as unknown as NextClass) ?? null;
+    .limit(50);
+  const candidates = (data as unknown as NextClass[] | null) ?? [];
+  return candidates.find((event) => !attended.has(event.id)) ?? null;
 }
