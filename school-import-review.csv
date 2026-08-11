@@ -1,0 +1,109 @@
+action,roster_name,roster_address,matched_school,match_score,region,note
+skip_exists,Air Base K-8,"12225 SW 280th Street, Homestead, FL 33032",Air Base K-8,1.000,south,Already in the app.
+create,Avocado Elementary,"16969 SW 294th Street, Homestead, FL 33030",,0.300,south,REGION INFERIDA por ciudad - confirmar.
+skip_exists,Barbara Hawkins Elementary,"19010 NW 37th Avenue, Miami Gardens, FL 33056",Barbara Hawkins Elementary,address,north,Same street address as an existing school.
+skip_exists,Beacon College Prep,"2750 NW 135th Street, Opa Locka, FL 33054",Beacon College Prep,address,north,Same street address as an existing school.
+skip_exists,Booker T. Washington Senior High,"1200 NW 6th Avenue, Miami, FL 33136",Booker T. Washington Senior High,address,central,Same street address as an existing school.
+skip_exists,Brentwood Elementary,"3101 NW 191st Street, Miami Gardens, FL 33056",Brentwood Elementary,address,north,Same street address as an existing school.
+skip_exists,Brownsville Middle School,"4899 NW 24th Avenue, Miami, FL 33142",Brownsville Middle School,address,central,Same street address as an existing school.
+skip_exists,Carie P. Meek/Westview K-8,"2101 NW 127th St, North Miami, FL 33167",Carrie P. Meek,address,central,Same street address as an existing school.
+skip_exists,Carol City Elementary,"4375 NW 173rd Drive, Miami Gardens, FL 33055",Carol City Elementary,address,north,Same street address as an existing school.
+skip_exists,Carol City Middle School,"3737 NW 188th Street, Miami Gardens, FL 33055",Carol City Middle School,address,north,Same street address as an existing school.
+skip_exists,Citrus Grove Middle School,"2153 NW 3rd Street, Miami, FL 33125",Citrus Grove Middle School,address,central,Same street address as an existing school.
+skip_exists,Coconut Palm K-8,"24400 SW 124th Avenue, Miami, FL 33032",Coconut Palm K-8,address,south,Same street address as an existing school.
+skip_exists,Coral Gables Senior High,"450 Bird Road, Coral Gables, FL 33146",Coral Gables Senior High,1.000,central,Already in the app.
+skip_exists,Dr. Henry Mack / West Little River K-8,"2450 NW 84th Street, Miami, FL 33147",Little River K-8,address,central,Same street address as an existing school.
+skip_exists,Dr. William Chapman Elementary,"27190 SW 140th Avenue, Homestead, FL 33032",Dr. William Chapman Elementary,address,south,Same street address as an existing school.
+skip_exists,Earlington Heights Elementary School,"4750 NW 22nd Avenue, Miami, FL 33142",Earlington Heights Elementary School,address,central,Same street address as an existing school.
+skip_exists,Edison Park K-8,"500 NW 67th Street, Miami, FL 33150",Edison Park K-8 Center,address,central,Same street address as an existing school.
+skip_exists,Fienberg Fisher K-8,"1420 Washington Avenue, Miami Beach, FL 33139",Fienberg Fisher K-8,address,east,Same street address as an existing school.
+skip_exists,Florida City Elementary,"364 NW 6th Avenue, Florida City, FL 33034",Florida City Elementary,address,south,Same street address as an existing school.
+create,Gateway Environmental K-8,"955 SE 18th Avenue, Homestead, FL 33035",,0.244,south,Region del presupuesto oficial 26/27.
+skip_exists,Georgia Jones-Ayers Middle School,"1331 NW 46th St, Miami, FL 33142",Georgia Jones-Ayers Middle School,address,central,Same street address as an existing school.
+skip_exists,Henry E. S. Reeves K-8 Center,"2005 NW 111th St, Miami, FL 33167",Henry E. S. Reeves K-8 Center,address,central,Same street address as an existing school.
+skip_exists,Homestead Middle School,"650 NW 2nd Avenue, Homestead, FL 33030",Homestead Middle School,address,south,Same street address as an existing school.
+create,Homestead Senior High,"2351 SE 12th Avenue, Homestead, FL 33034",,0.400,south,Region del presupuesto oficial 26/27.
+skip_exists,Horace Mann Middle School,"8950 NW 2nd Avenue, Miami, FL 33150",Horace Mann Middle School,address,central,Same street address as an existing school.
+skip_exists,Kelsey L. Pharr Elementary School,"2000 NW 46th Street, Miami, FL 33142",Kelsey L. Pharr Elementary School,address,central,Same street address as an existing school.
+skip_exists,Lake Stevens Elementary,"5101 NW 183rd Street, Miami Gardens, FL 33055",Lake Stevens Elementary,address,north,Same street address as an existing school.
+skip_exists,Lake Stevens Middle School,"18484 NW 48th Place, Miami Gardens, FL 33055",Lake Stevens Middle School,address,north,Same street address as an existing school.
+skip_exists,Leisure City K-8,"14950 SW 288th Street, Homestead, FL 33033",Leisure City K-8,address,south,Same street address as an existing school.
+skip_exists,Madison Middle School,"3400 NW 87th Street, Miami, FL 33147",Madison Middle School,address,central,Same street address as an existing school.
+skip_exists,Miami Beach Senior High,"2231 Prairie Avenue, Miami Beach, FL 33139",Miami Beach Senior High,address,east,Same street address as an existing school.
+skip_exists,Miami Carol City Senior High School,"3301 Miami Gardens Drive, Miami Gardens, FL 33056",Miami Carol City Senior High School,address,north,Same street address as an existing school.
+create,Miami Central High School,"1781 NW 95th Street, Miami, FL 33147",,0.545,central,Region del presupuesto oficial 26/27.
+skip_exists,Miami Edison Senior High,"6161 NW 5th Court, Miami, FL 33127",Miami Edison Senior High,address,central,Same street address as an existing school.
+skip_exists,Miami Gardens Elementary,"4444 NW 195th Street, Miami Gardens, FL 33055",Miami Gardens Elementary,address,north,Same street address as an existing school.
+skip_exists,Morningside K-8,"6620 NE 5th Avenue, Miami, FL 33138",Morningside K-8,address,central,Same street address as an existing school.
+skip_exists,Myrtle Grove Elementary,"3125 NW 176th Street, Miami Gardens, FL 33056",Myrtle Grove Elementary,address,north,Same street address as an existing school.
+skip_exists,Nautilus Middle School,"4301 N Michigan Avenue, Miami Beach, FL 33140",Nautilus Middle School,address,east,Same street address as an existing school.
+create,North Beach Elementary,"4100 Prairie Avenue, Miami Beach, FL 33140",,0.296,east,REGION INFERIDA por ciudad - confirmar.
+skip_exists,North County K-8 Center,"3250 NW 207th Street, Miami Gardens, FL 33056",North County K-8 Center,address,north,Same street address as an existing school.
+create,North Glade Elementary,"5000 NW 177th Street, Miami, FL 33055",,0.370,north,Region del presupuesto oficial 26/27.
+skip_exists,Northwestern Senior High,"1100 NW 71st Street, Miami, FL 33150",Northwestern Senior High,address,central,Same street address as an existing school.
+skip_exists,Olinda Elementary School,"5536 NW 21st Avenue, Miami, FL 33142",Olinda Elementary School,address,central,Same street address as an existing school.
+create,Pine Villa Elementary,"21799 SW 117th Ct, Miami, FL 33170",,0.593,south,Region del presupuesto oficial 26/27.
+skip_exists,Redland Elementary,"24501 SW 162nd Avenue, Homestead, FL 33031",Redland Elementary,address,south,Same street address as an existing school.
+skip_exists,Redland Middle School,"16001 SW 248th Street, Homestead, FL 33031",Redland Middle School,address,south,Same street address as an existing school.
+create,Redondo Elementary,"18480 SW 304th Street, Homestead, FL 33030",,0.556,south,REGION INFERIDA por ciudad - confirmar.
+skip_exists,Richmond Heights Middle School,"15015 SW 103rd Ave, Miami, FL 33176",Richmond Heights Middle School,address,south,Same street address as an existing school.
+create,Robert Renick Educational Center,"2201 NW 207th Street, Miami Gardens, FL 33056",,0.300,north,Region del presupuesto oficial 26/27.
+skip_exists,SEED School of Miami,"1901 NW 127th Street, Miami, FL 33167",SEED School of Miami,address,north,Same street address as an existing school.
+skip_exists,Skyway Elementary,"4555 NW 206th Terrace, Miami Gardens, FL 33055",Skyway Elementary,address,north,Same street address as an existing school.
+create,South Dade Middle School,"29100 SW 194th Avenue, Homestead, FL 33030",,0.381,south,Region del presupuesto oficial 26/27.
+skip_exists,South Dade Senior High,"28401 SW 167th Avenue, Homestead, FL 33030",South Dade Senior High,address,south,Same street address as an existing school.
+skip_exists,Southridge Senior High School,"19355 SW 114th Ave, Miami, FL 33157",Southridge Senior High School,address,south,Same street address as an existing school.
+create,Treasure Island Elementary,"7540 E Treasure Dr, North Bay Village, FL 33141",,0.538,east,REGION INFERIDA por ciudad - confirmar.
+skip_exists,West Homestead K-8,"1550 SW 6th Street, Homestead, FL 33030",West Homestead K-8,address,south,Same street address as an existing school.
+skip_exists,Young Men's Preparatory Academy,"3001 NW 2nd Avenue, Miami, FL 33127",Young Men's Preparatory Academy,address,central,Same street address as an existing school.
+create,Mater Beach Academy,"8625 Byron Ave, Miami Beach, FL 33141",,0.435,east,Region del presupuesto oficial 26/27.
+create,Hebrew Academy (RASG),"2400 Pine Tree Dr, Miami Beach, FL 33140",,0.308,east,REGION INFERIDA por ciudad - confirmar.
+skip_exists,Andover Middle School,"121 NE 207th St, Miami Gardens, FL 33179",Andover Middle School,address,north,Same street address as an existing school.
+skip_exists,Norland Middle School,"1235 NW 192nd Terrace, Miami Gardens, FL 33169",Norland Middle School,address,north,Same street address as an existing school.
+skip_exists,Norland Senior High School,"1193 NW 193rd St, Miami Gardens, FL 33169",Miami Norland Senior HS,address,north,Same street address as an existing school.
+defer,Highland Oaks Senior High School,"2375 NE 203rd St, Miami, FL 33180",Highland Oaks Middle School,address/level-conflict,north,"PENDIENTE: MDCPS no lista un ""Highland Oaks Senior High""; probable typo del roster por Highland Oaks Middle."
+create,Alonzo Mourning High School,"2601 NE 151st St, Miami, FL 33160",,0.263,north,Region del presupuesto oficial 26/27.
+skip_exists,Arcola Lake Elementary School,"1037 NW 81st St, Miami, FL 33150",Arcola Lake Elementary School,address,central,Same street address as an existing school.
+skip_exists,Arthur and Polly Mays Conservatory,"11700 SW 216th St, Goulds, FL 33170",Arthur & Polly Mays Conservatory of the Arts,address,south,Same street address as an existing school.
+create,Bel-Aire Elementary School,"10205 SW 194th St, Cutler Bay, FL 33157",,0.421,south,Region del presupuesto oficial 26/27.
+skip_exists,Benjamin Franklin K-8 Center,"13100 NW 12th Ave, North Miami, FL 33168",Benjamin Franklin K-8,address,central,Same street address as an existing school.
+create,Bent Tree Elementary School,"4861 SW 140th Ave, Miami, FL 33175",,0.455,west,Region del presupuesto oficial 26/27.
+skip_exists,Bowman Ashe K-8,"6601 SW 152nd Ave, Miami, FL 33193",Bowman Ashe/Doolin K-8 Academy,address,south,Same street address as an existing school.
+skip_exists,Broadmoor Elementary School,"3401 NW 83rd St, Miami, FL 33147",Broadmoor Elementary,address,central,Same street address as an existing school.
+create,Cutler Bay Middle School,"19400 Gulfstream Rd, Cutler Bay, FL 33157",,0.381,south,Region del presupuesto oficial 26/27.
+create,Dante B. Fascell Elementary School,"15625 SW 80th St, Miami, FL 33193",,0.375,west,Region del presupuesto oficial 26/27.
+skip_exists,Dr Rolando Espinosa K-8,"11250 NW 86th St, Doral, FL 33178",Dr. Rolando Espinosa K-8,address,north,Same street address as an existing school.
+skip_exists,Dr. Charles R. Drew K-8 Center,"1775 NW 60th St, Miami, FL 33142",Charles R. Drew K-8,address,central,Same street address as an existing school.
+create,Dr. Manuel C. Barreiro Elementary School,"5125 SW 162nd Ave, Miami, FL 33185",,0.368,west,Region del presupuesto oficial 26/27.
+create,Ethel Koger Beckham Elementary School,"4702 SW 143rd Ct, Miami, FL 33175",,0.324,west,Region del presupuesto oficial 26/27.
+create,G. Holmes Braddock Senior High School,"3601 SW 147th Ave, Miami, FL 33185",,0.303,west,Nombre corregido (Braddack -> Braddock). Region del presupuesto 26/27.
+create,Greenglade Elementary School,"3060 SW 127th Ave, Miami, FL 33175",,0.385,west,Region del presupuesto oficial 26/27.
+create,Henry Filer Middle School,"531 W 29th St, Hialeah, FL 33012",,0.364,north,Region del presupuesto oficial 26/27.
+create,Hialeah Miami Lakes Senior High,"7977 W 12th Ave, Hialeah, FL 33014",,0.600,north,Region del presupuesto oficial 26/27.
+create,Hialeah Middle School,"6027 E 7th Ave, Hialeah, FL 33013",,0.364,north,Region del presupuesto oficial 26/27.
+skip_exists,Hialeah Senior High School,"251 E 47th St, Hialeah, FL 33013",Hialeah Senior High,address,north,Same street address as an existing school.
+skip_exists,Holmes Elementary School,"1175 NW 67th St, Miami, FL 33150",Holmes Elementary School,address,central,Same street address as an existing school.
+create,Howard D. McMillan Middle School,"13100 SW 59th St, Miami, FL 33183",,0.375,west,Region del presupuesto oficial 26/27.
+skip_exists,Irving & Beatrice Peskoe K-8,"29035 SW 144th Ave, Miami, FL 33033",Irving & Beatrice Peskoe K-8,address,south,Same street address as an existing school.
+skip_exists,Jane S. Roberts K-8 Center,"14850 Cottonwood Cir, Miami, FL 33185",Jane S. Roberts K-8 Center,address,south,Same street address as an existing school.
+skip_exists,Joe Hall Elementary School,"1901 SW 134th Ave, Miami, FL 33175",Joe Hall Elementary,address,south,Same street address as an existing school.
+skip_exists,John Ferguson Senior High School,"15900 SW 56th St, Miami, FL 33185",John A. Ferguson Sr. High School,address,south,Same street address as an existing school.
+skip_exists,Lakeview Elementary School,"1290 NW 115th St, Miami, FL 33167",Lakeview Elementary School,address,central,Same street address as an existing school.
+create,Lamar Louise Curry Middle School,"15750 SW 47th St, Miami, FL 33185",,0.328,west,Region del presupuesto oficial 26/27.
+create,Laura C. Saunders Elementary School,"505 SW 8th St, Homestead, FL 33030",,0.313,south,REGION INFERIDA por ciudad - confirmar.
+create,Lehrman Community Day School,"727 Lehrman Dr, Miami Beach, FL 33141",,0.294,east,Region del presupuesto oficial 26/27.
+skip_exists,Liberty City Elementary School,"1855 NW 71st St, Miami, FL 33147",Liberty City Elementary,address,central,Same street address as an existing school.
+skip_exists,Lillie C. Evans K-8 Center,"1895 NW 75th St, Miami, FL 33147",Lillie C. Evans K-8,address,central,Same street address as an existing school.
+create,Marjory Stoneman Douglas Elementary School,"11901 SW 2nd St, Miami, FL 33184",,0.341,west,Region del presupuesto oficial 26/27.
+create,Mast Academy,"3979 Rickenbacker Cswy, Key Biscayne, FL 33149",,0.174,central,Region del presupuesto oficial 26/27.
+skip_exists,Melrose Elementary School,"3050 NW 35th St, Miami, FL 33142",Melrose Elementary School,address,central,Same street address as an existing school.
+create,North Dade Middle School,"1840 NW 157th St, Miami Gardens, FL 33054",,0.560,north,Region del presupuesto oficial 26/27.
+skip_exists,North Miami Middle School,"700 NE 137th St, North Miami, FL 33161",North Miami MS,address,north,Same street address as an existing school.
+skip_exists,Orchard Villa Elementary School,"5720 NW 13th Ave, Miami, FL 33142",Orchard Villa Elementary School,address,central,Same street address as an existing school.
+create,Paul L. Dunbar K-8,"505 NW 20th St, Miami, FL 33127",,0.323,central,Region del presupuesto oficial 26/27.
+create,Paul W. Bell Middle School,"11800 NW 2nd St, Miami, FL 33182",,0.261,west,Region del presupuesto oficial 26/27.
+create,Royal Green Elementary School,"13047 SW 47th St, Miami, FL 33175",,0.417,west,Region del presupuesto oficial 26/27.
+skip_exists,Van E. Blanton Elementary School,"10327 NW 11th Ave, Miami, FL 33150",Van E. Blanton Elementary,address,central,Same street address as an existing school.
+create,Village Green Elementary School,"12265 SW 34th St, Miami, FL 33175",,0.400,west,Region del presupuesto oficial 26/27.
+create,W. R. Thomas Middle School,"13001 SW 26th St, Miami, FL 33175",,0.348,west,Region del presupuesto oficial 26/27.
+create,Zora Neale Hurston Elementary School,"13137 SW 26th St, Miami, FL 33175",,0.350,west,Region del presupuesto oficial 26/27.

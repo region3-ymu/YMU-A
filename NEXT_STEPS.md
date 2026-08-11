@@ -1,5 +1,95 @@
 # NEXT_STEPS — YMU-A
 
+## 🔴 LAUNCH BLOCKERS found 2026-08-11, the day before go-live
+
+Three things stop teachers clocking in tomorrow. None of them are code — all
+three are data that only YMU staff can supply.
+
+### 1. One teacher owns 500 future classes and has no app account
+
+Every future class at **Carol City Middle (356)** and **Madison Middle (144)** —
+the whole 2026-27 year, Aug 13 through Jun 2 — carries exactly one Google
+Calendar attendee: `pedrodiazvaldes@gmail.com`. No `auth.users` row has that
+email, and no profile matches that name, so `calendar_events.teacher_ids` is
+empty for all 500.
+
+`clock_in()` requires the caller to be in `teacher_ids`. **Nobody can clock in
+to any of those 500 classes.** Of 506 future non-cancelled classes org-wide,
+500 are blocked this way — only the 6 classes on Aug 12 are clockable.
+
+Fix: create his app account with that exact email (or change the calendar
+invites to whatever email his account uses), then re-run the sync. The email
+match is case-insensitive but otherwise exact — see `loadTeachers` in
+`supabase/functions/calendar-sync/sync.ts:123-146`.
+
+He is **not** in `scripts/onboard-real-users.ts`. Every other attendee email on
+the calendar already resolves to an account.
+
+### 2. Only 8 of 111 schools have any classes scheduled at all
+
+`select count(distinct school_id) from calendar_events where start_at >= now()`
+→ **8**. The 2026-27 schedule exists in Google for a handful of sites; the rest
+of the year has not been put on the calendars, or those calendars have not
+reached the service account (see #3).
+
+### 3. Google Calendar discovery sees 68 calendars, not ~105
+
+`npm run calendar:coverage` reports 68 calendars visible to the service
+account: 51 pinned to schools, 15 with no school row, 2 duplicates of
+already-pinned schools, plus `schedule@ymu.org` itself.
+
+The likely cause is documented on `subscribeToCalendar()` in
+`src/lib/google/calendar.ts`: **sharing a calendar with the service account
+does not add it to the service account's calendarList.** A service account has
+no UI to accept a share, so an ACL-shared calendar stays invisible to discovery
+until `calendarList.insert` is called for it. `scripts/subscribe-calendars.ts`
+does exactly that, but it needs the list of calendar IDs to subscribe.
+
+**Duplicate calendars in Google** (both empty, so which is live is a human
+call): South Dade Senior High ×2, Dr. William Chapman Elementary ×2, Miami
+Central High School ×2.
+
+---
+
+## ✅ Done 2026-08-11: pilot data wiped, roster completed to 111 schools
+
+- Migration `0025_reset_pilot_data.sql` cleared `attendance_sessions` (85),
+  `gps_checks` (425), `flags` (168) and `notification_queue` (712). Schools,
+  calendar events, school years and accounts untouched.
+- **"Seed Test School" was squatting on a real school's calendar.** The QA
+  fixture (100 km geofence, from `scripts/seed-test-data.ts`) had fuzzy-matched
+  and pinned SEED School of Miami's calendar, and had been syncing that
+  school's events ever since. Converted in place rather than deleted, so the
+  pin and the synced events survive; the 100 km hole is closed.
+- Roster grew 73 → **111 schools** via the new `npm run import:schools`.
+  **The `west` region went from 0 schools to 14** — the single largest gap.
+- Fixed a long-standing typo: "Archola Lake" → "Arcola Lake".
+- One school still has no coordinates and therefore cannot be clocked into:
+  **Lehrman Community Day School** (727 Lehrman Dr, Miami Beach) — neither
+  Census nor Nominatim resolves that address. Set it by hand on `/lists`.
+- One roster row deferred, not created: **"Highland Oaks Senior High School"**
+  shares an address with the existing Highland Oaks Middle School and MDCPS
+  lists no such senior high. Probably a roster typo — confirm before adding.
+
+### The importer is two-step on purpose
+
+`npm run import:schools` writes `school-import-review.csv` and stops. Nothing
+touches the database until a human resolves the `REVIEW` rows and re-runs with
+`IMPORT_ALLOW=1 ... --apply`.
+
+That is not ceremony. Name-only fuzzy matching on this roster paired
+"Homestead Senior High" with "Homestead Middle School" and "Redondo
+Elementary" with "Redland Elementary" — different schools that would have been
+silently merged, each inheriting the other's geofence, breaking clock-in for
+real teachers. Two guards cut the ambiguous set from 14 rows to 1:
+
+- **Level conflict**: `HS`/`MS`/`ES`/`K8` tokens that disagree can never match,
+  however similar the rest of the name.
+- **Street address**: same street number + street name means the same site
+  regardless of the name. This is what caught "Carie P. Meek/Westview K-8" ≙
+  "Carrie P. Meek" and "Dr. Henry Mack / West Little River K-8" ≙ "Little River
+  K-8", which no name matcher would ever reconcile.
+
 ## 🟡 FUTURE (not this week): 24-hour feedback grace period + a teacher-facing "feedback owed" list
 
 User request (2026-07-28), explicitly **not for this week** — just recording
