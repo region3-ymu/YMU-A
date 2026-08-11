@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { STATUS_LABELS, type AttendanceStatus } from "@/lib/attendance/status";
 import { formatTime } from "@/lib/format/datetime";
+import { describeDue, isOverdue } from "@/lib/attendance/feedback-due";
+import Link from "next/link";
 import {
   buildZohoFeedbackUrl,
   EMPTY_DRAFT,
@@ -28,21 +30,29 @@ export type FeedbackSession = {
 
 const POLL_INTERVAL_MS = 4000;
 
-// The clock-out gate. Feedback is now a Zoho-hosted form embedded here; Zoho's
-// webhook (not this client) is what actually closes the session server-side
-// (see close_session_from_zoho in supabase/migrations/0010). There is still
-// no cancel/close control: the only way off this screen is the session
-// actually closing, which we detect by polling our own row (no reliable
-// cross-origin "submitted" signal from inside the Zoho iframe).
+// The feedback form for one class. Zoho's webhook (not this client) is what
+// records a Zoho submission server-side, and there's no reliable cross-origin
+// "submitted" signal from inside its iframe, so we poll our own row.
+//
+// Migration 0026 relaxed the old "no way off this screen" rule. It was right
+// when this form was the only exit from a hard block; inside the 24-hour grace
+// window it is just hostile, and the IndexedDB draft makes leaving safe. The
+// escape hatch is therefore hidden exactly when the block is real again —
+// once the deadline has lapsed.
 export default function FeedbackForm({
   session,
   feedbackConfig,
+  dueAt = null,
 }: {
   session: FeedbackSession;
   feedbackConfig: FeedbackFormConfig;
+  /** Feedback deadline. Inside the window the teacher may leave and come back;
+   *  once it lapses the block is real again and the escape hatch disappears. */
+  dueAt?: string | null;
 }) {
   const router = useRouter();
   const clockedIn = new Date(session.clockInAt);
+  const overdue = isOverdue(dueAt);
   // navigator.onLine isn't known during SSR, so the initial render always
   // assumes online (matching what the server rendered) and syncs the real
   // value in an effect — reading it at useState-init time would make the
@@ -83,12 +93,17 @@ export default function FeedbackForm({
     if (!online || closed) return;
     const supabase = createClient();
     const interval = setInterval(async () => {
+      // Polls the FEEDBACK columns, never clock_out_at. Since migration 0026
+      // a session can be clocked out by cron or by the teacher starting their
+      // next class while this form is still open and unsubmitted — reading
+      // clock_out_at here would tell a teacher their unsent feedback had been
+      // received, and clear their draft.
       const { data } = await supabase
         .from("attendance_sessions")
-        .select("clock_out_at")
+        .select("feedback_submitted_at, relay_feedback_submitted_at")
         .eq("id", session.id)
         .maybeSingle();
-      if (data?.clock_out_at) {
+      if (data?.feedback_submitted_at || data?.relay_feedback_submitted_at) {
         setClosed(true);
         await clearFeedbackDraft(session.id);
         router.refresh();
@@ -104,7 +119,7 @@ export default function FeedbackForm({
           <span className="material-symbols-outlined filled" aria-hidden>check_circle</span>
           Feedback received
         </h2>
-        <p className="mt-1 text-sm opacity-90">You&apos;re clocked out. Thanks!</p>
+        <p className="mt-1 text-sm opacity-90">Thanks — that&apos;s this class done.</p>
       </section>
     );
   }
@@ -124,7 +139,14 @@ export default function FeedbackForm({
         <span className={`font-semibold ${session.status === "late" ? "text-error" : "text-tertiary"}`}>
           {STATUS_LABELS[session.status]}
         </span>
-        . Complete this to clock out — until you do, you can&apos;t clock into your next class.
+        .
+      </p>
+      <p className="mt-2 text-sm text-on-surface-variant">
+        {overdue
+          ? "This feedback is overdue. You can't clock into another class until you submit it."
+          : dueAt
+            ? `${describeDue(dueAt)} — you can keep teaching until then, but clock-in locks once it lapses.`
+            : "Submit this when you get a moment."}
       </p>
 
       {!online ? (
@@ -170,6 +192,17 @@ export default function FeedbackForm({
           </p>
         </div>
       ) : null}
+
+      {!overdue && (
+        <p className="mt-4 text-center">
+          <Link
+            href="/feedback"
+            className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+          >
+            Do this later
+          </Link>
+        </p>
+      )}
     </section>
   );
 }

@@ -36,8 +36,24 @@ export type NextClass = {
 
 const SCHOOL_COLUMNS = "id, name, address, lat, lng, geofence_radius_m";
 
-// The caller's currently-open session (clocked in, feedback not yet
-// submitted), or null. An open session IS the blocking feedback obligation.
+// A class the caller still owes feedback for. Since migration 0026 this is no
+// longer the same thing as an open session: clock-out and feedback are
+// separate, and a settled-but-not-clocked-out row (or vice versa) is normal.
+export type OwedFeedback = {
+  id: string;
+  event_id: string | null;
+  clock_in_at: string;
+  clock_in_status: AttendanceStatus;
+  clock_out_at: string | null;
+  scheduled_end_at: string | null;
+  feedback_due_at: string | null;
+  event: { summary: string | null; start_at: string | null; end_at: string | null } | null;
+  school: { name: string } | null;
+};
+
+// The caller's currently-open session — "am I clocked in right now". Since
+// 0026 this no longer implies feedback is owed; use getFeedbackOwed() for
+// that. GPS sampling and the Clock out button key off this one.
 export async function getOpenSession(): Promise<OpenSession | null> {
   const supabase = await createClient();
   const { data } = await supabase
@@ -52,6 +68,44 @@ export async function getOpenSession(): Promise<OpenSession | null> {
     .limit(1)
     .maybeSingle();
   return (data as unknown as OpenSession) ?? null;
+}
+
+// Every class the caller still owes feedback for, soonest deadline first.
+// RLS scopes attendance_sessions to the caller's own rows, so this is exactly
+// "my outstanding feedback". Backs both /feedback (the list) and the home
+// banner; the overdue count is derived from the result rather than costing a
+// second round-trip.
+export async function getFeedbackOwed(): Promise<OwedFeedback[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("attendance_sessions")
+    .select(
+      `id, event_id, clock_in_at, clock_in_status, clock_out_at, scheduled_end_at, feedback_due_at,
+       event:calendar_events(summary, start_at, end_at),
+       school:schools(name)`,
+    )
+    .is("feedback_settled_at", null)
+    .order("feedback_due_at", { ascending: true, nullsFirst: false });
+  return (data as unknown as OwedFeedback[]) ?? [];
+}
+
+// One owed item by id, for /feedback/[sessionId]. Returns null when the id
+// isn't the caller's or its feedback is already in — RLS handles the former,
+// the filter the latter, so a stale link renders "nothing to do" rather than
+// letting someone submit twice.
+export async function getOwedFeedbackById(sessionId: string): Promise<OwedFeedback | null> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("attendance_sessions")
+    .select(
+      `id, event_id, clock_in_at, clock_in_status, clock_out_at, scheduled_end_at, feedback_due_at,
+       event:calendar_events(summary, start_at, end_at),
+       school:schools(name)`,
+    )
+    .eq("id", sessionId)
+    .is("feedback_settled_at", null)
+    .maybeSingle();
+  return (data as unknown as OwedFeedback) ?? null;
 }
 
 // The soonest matched class the caller can still clock into (not yet ended,
