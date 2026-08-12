@@ -57,10 +57,10 @@ async function findUserByEmail(email: string) {
 }
 
 /** Miami wall-clock to a UTC instant. August is EDT, UTC-4. */
-function miamiToUtc(dayOffset: number, hour: number): Date {
+function miamiToUtc(dayOffset: number, hour: number, minute = 0): Date {
   const now = new Date();
   const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + dayOffset));
-  d.setUTCHours(hour + 4, 0, 0, 0);
+  d.setUTCHours(hour + 4, minute, 0, 0);
   return d;
 }
 
@@ -128,14 +128,33 @@ async function up() {
   // 3. Three shifts, not one. Testing "clock into the next class while
   //    feedback is still pending" needs a second class to exist, and that is
   //    the whole point of the 24-hour window.
+  //
+  // Times are late afternoon rather than 10am/2pm because this script exists
+  // to be run and then demonstrated immediately. Shifts earlier than "now"
+  // are still clockable — the only rule is same-day — but they clock in
+  // `late`, since the grace window is 5 minutes. A walkthrough that opens on
+  // a red LATE badge teaches the wrong thing.
+  //
+  // The keys deliberately do NOT encode the hour. They are the upsert
+  // identity, so a key like `today-10` becomes a lie the moment the time
+  // moves, and the stale row survives under the old id.
   const shifts = [
-    { key: "today-10", day: 0, hour: 10, summary: "Drumline — YMU Office" },
-    { key: "today-14", day: 0, hour: 14, summary: "Music Production — YMU Office" },
-    { key: "tomorrow-10", day: 1, hour: 10, summary: "Modern Band — YMU Office" },
+    { key: "today-a", day: 0, hour: 17, minute: 40, summary: "Drumline — YMU Office" },
+    { key: "today-b", day: 0, hour: 19, minute: 10, summary: "Music Production — YMU Office" },
+    { key: "tomorrow-a", day: 1, hour: 10, minute: 0, summary: "Modern Band — YMU Office" },
   ];
 
+  // The hour-encoded ids this script used before the keys were made stable.
+  // Left behind, they are duplicate classes at the old times that nobody can
+  // explain and every clocking screen still offers.
+  await supabase
+    .from("calendar_events")
+    .delete()
+    .eq("calendar_id", OFFICE_CALENDAR_ID)
+    .in("google_event_id", ["office-today-10", "office-today-14", "office-tomorrow-10"]);
+
   for (const shift of shifts) {
-    const start = miamiToUtc(shift.day, shift.hour);
+    const start = miamiToUtc(shift.day, shift.hour, shift.minute);
     const end = new Date(start.getTime() + 60 * 60 * 1000);
     const { error } = await supabase.from("calendar_events").upsert({
       calendar_id: OFFICE_CALENDAR_ID,
