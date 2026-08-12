@@ -10,6 +10,7 @@ const REASON_LABELS: Record<CalendarSyncIssue["reason"], string> = {
   no_matching_school: "No school matched this calendar's name",
   ambiguous_match: "Matched two schools too closely to auto-assign",
   school_already_linked: "Its best-matching school is already linked to a different calendar",
+  level_mismatch: "Name matches a school at a different level (high vs middle vs elementary)",
   sync_error: "This calendar failed to sync",
 };
 

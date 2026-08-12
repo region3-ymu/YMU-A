@@ -189,6 +189,47 @@ async function main() {
     });
   }
 
+  // 5. Pinned links where the calendar's own name disagrees with the school's.
+  //
+  // This is the check that caught the real thing on 2026-08-12: "Hialeah
+  // Senior High" was pinned to Homestead Senior High's calendar because
+  // pg_trgm rated them 0.67 — over the 0.5 threshold, with no runner-up close
+  // enough to trip the ambiguity margin. Nothing in the app surfaced it. The
+  // in-app queue only lists calendars that FAILED to match; a confident wrong
+  // match is invisible there by construction, and the consequence is a teacher
+  // sent to a geofence thirty miles from their class.
+  //
+  // Reported, never auto-corrected. Six of these are legitimate spelling
+  // variants ("Carrie P. Meek" vs "Carrie P. Meek/Westview K-8"), so this is a
+  // list for a human to read, not a repair job.
+  const calendarById = new Map(calendars.map((c) => [c.id, c.summary ?? ""]));
+  for (const s of schools ?? []) {
+    if (!s.google_calendar_id) continue;
+    const summary = calendarById.get(s.google_calendar_id);
+    if (summary === undefined) {
+      // Pinned to a calendar the service account can no longer see — deleted
+      // in Google, or un-shared. Silently stops syncing otherwise.
+      out.push({
+        kind: "pin_calendar_missing",
+        name: s.name,
+        detail: s.google_calendar_id,
+        region: s.region ?? "",
+        has_calendar: "yes",
+        has_gps: s.lat == null ? "no" : "yes",
+      });
+      continue;
+    }
+    if (normalizeSchoolName(summary) === normalizeSchoolName(s.name)) continue;
+    out.push({
+      kind: "pin_name_mismatch",
+      name: s.name,
+      detail: `calendar: ${summary}`,
+      region: s.region ?? "",
+      has_calendar: "yes",
+      has_gps: s.lat == null ? "no" : "yes",
+    });
+  }
+
   const header = "kind,name,detail,region,has_calendar,has_gps";
   const body = out
     .map((r) => [r.kind, r.name, r.detail, r.region, r.has_calendar, r.has_gps].map(csvCell).join(","))
@@ -208,7 +249,16 @@ async function main() {
   console.log("  Roster schools missing from the app             : " + count("roster_not_in_app"));
   console.log("  App schools not on the roster                   : " + count("school_not_in_roster"));
   console.log("");
+  console.log("  Pins whose calendar name disagrees              : " + count("pin_name_mismatch"));
+  console.log("  Pins to a calendar that no longer exists        : " + count("pin_calendar_missing"));
+  console.log("");
   console.log(`  Wrote ${OUT_CSV}`);
+  if (count("pin_name_mismatch") || count("pin_calendar_missing")) {
+    console.log("");
+    console.log("  Read the pin_* rows by hand. Most name mismatches are harmless");
+    console.log("  spelling variants; a wrong one sends teachers to another school's");
+    console.log("  geofence, and nothing else in the app will ever flag it.");
+  }
 }
 
 main().catch((error) => {
