@@ -836,3 +836,46 @@ and filters built on it keep working and start lying.
 
 So: new fields go at the END, retired fields stay put and go blank, and the
 header is renamed instead ("Focus pillar (retired)").
+
+### A login email is only changed on evidence, never on a file
+
+Two of YMU's five email conflicts were `michael.coooooley@` versus
+`michael.c00000ley@` (letter `o` against digit `0`) and `jamesperez711@`
+versus `jamezperez711@` (`s` against `z`). Both spellings look equally real,
+and the CSV is as likely to hold the typo as the app is.
+
+They were settled by the fact that **both teachers have already signed in**
+with the app's spelling. That outranks either file, because the cost of
+guessing wrong is not a cosmetic error: `ymu.org` has no SPF, DKIM or DMARC, so
+no provider will relay its mail, so "Forgot password?" cannot deliver. A wrong
+login email is unrecoverable without an admin editing the database.
+
+The rule this leaves behind: change a login only when something outside the
+spreadsheet confirms it — a successful sign-in, or the teacher saying so.
+
+### Jose Heredia's email was changed in place, not re-created
+
+The instruction was "create it and delete the old one". He had zero attendance
+sessions, feedback and tickets, so both routes end in the same state — but
+create-then-delete can half-succeed, leaves an orphaned `auth.users` row if the
+delete fails, and gives him a new `profiles` id for no gain. One
+`updateUserById` does the whole thing atomically.
+
+Worth generalising: create+delete is only the right shape when the old account
+must keep existing, or when the profile genuinely has to be reset. Otherwise it
+is two failure modes where one would do.
+
+### Schools are archived, never deleted, once they have history
+
+Kennedy and Oak Grove were deleted outright, which was safe only because a
+count confirmed zero calendar events, sessions, GPS checks, flags, clock-in
+attempts, tickets and feedback against each.
+
+That check is not a formality. **Every foreign key into `schools` is
+`ON DELETE SET NULL`**, so a school with history does not refuse to be deleted
+— it succeeds, and silently orphans every row that pointed at it. Attendance
+survives with a null school, which reads as "this class happened nowhere".
+
+Teachers took the other path for the same reason: the nine not on YMU's roster
+were archived via `archived_at`, which keeps their history intact and is undone
+by setting it back to null.

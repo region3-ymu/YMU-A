@@ -1,56 +1,91 @@
 # NEXT_STEPS — YMU-A
 
-## 🔴 START HERE NEXT SESSION — deploy, then two small things
+## 🟢 START HERE — everything is applied; what remains is a test pass
 
-The objective selector is **built and applied** (see the section below). What
-is left is not code:
+Every item from the previous handoff is closed. The objective selector is
+built, applied and verified against production; Lehrman is geocoded; Lentin's
+calendar is subscribed and pinned; the teacher roster is reconciled. Migration
+0032 and the web code that matches it are both live.
 
-1. **Push and deploy the web code.** Migration 0032 is already on production and
-   it is a BREAKING change, not a permissive one: `feedback_submissions` no
-   longer has `primary_focus_pillar` or `specific_topic_ids`, and
-   `submit_class_feedback()` no longer accepts them. The deployed form still
-   sends the old arguments, so **feedback submission is broken until the deploy
-   lands**. The window is nearly free — only 8 of 111 schools have future
-   classes and the 2026-27 schedule is still loading — but it is not zero.
-   `git push origin main` from your own terminal; this build environment has no
-   GitHub credentials.
-2. ~~Set Lehrman's coordinates~~ — **done, see below.**
-3. **Share Linda Lentin K-8's Google calendar** with the service account. It is
-   now the only real school with no calendar (the other is the deliberate
-   "YMU Office (testing)" row). Run
-   `scripts/apps-script/share-and-list-calendars.gs` from the calendar-owning
-   account, then `npm run sync:calendar` — or just wait for `calendar-sync-5min`.
+**What is left is one manual test pass** — the full script is under "How to
+test it" below. Everything else on this page is a record of what was done.
+
+Two things nobody owes any work on but that will keep showing up:
+
+- **`calendar_sync_issues` will re-open two entries on every sync**:
+  `Mandarin Lakes K-8` (a real calendar for a school YMU is not running) and
+  `schedule@ymu.org` (the owning account's own personal calendar, never a
+  school). Both are answered, not outstanding. They stop reappearing only if
+  the Mandarin calendar is un-shared in Google; resolving them in-app is
+  cosmetic and lasts until the next 5-minute sync.
+- **Six pins whose calendar name disagrees with the school name** are the known
+  legitimate spelling variants (e.g. "Carrie P. Meek" pinned to "Carrie P.
+  Meek/Westview K-8"). `npm run calendar:coverage` lists them every time; read
+  them, do not auto-correct them.
 
 **Still deferred, unchanged:** mentors are a separate user type with their own
 clock-in and a different form. YMU explicitly deferred it; do not model it yet.
 
+### 🔴 The one real gap: `ymu.org` cannot send email at all
+
+Confirmed by DNS on 2026-08-12: `ymu.org` has **no SPF record, no DKIM key and
+no DMARC record**. Its MX points at Google Workspace, so incoming mail is fine,
+but nothing is set up to authorise outgoing mail from anywhere.
+
+That is why Resend refuses to relay, and it is bigger than Resend: signup
+confirmation, "Forgot password?" and every notification email are all dead
+until it is fixed. It also means a teacher whose login email is wrong is
+**unrecoverable without an admin**, which is why the five email conflicts on
+this page were settled by evidence rather than by guessing.
+
+Two ways out, neither needing a paid plan:
+
+1. **Google Workspace SMTP relay** (recommended — no new vendor, no DNS
+   change). Supabase → Project Settings → Auth → SMTP: host `smtp.gmail.com`,
+   port `587`, username a real Workspace mailbox (e.g. `noreply@ymu.org`),
+   password an **App Password** (requires 2-Step Verification on that account).
+   Sends as a genuine ymu.org mailbox from Google's own IPs. ~2,000
+   recipients/day on Workspace.
+2. **Brevo** — 300 emails/day free, and it verifies a **single sender address**
+   by emailed link rather than a whole domain, so it works with no DNS access
+   at all. SendGrid is no longer an option: its permanent free tier is gone as
+   of 2026 (60-day trial, then paid). Mailjet's free tier is 6,000/month.
+
+Either way, **add SPF and DKIM to `ymu.org`** when someone has DNS access.
+Google Workspace generates the DKIM record from Admin console → Apps → Google
+Workspace → Gmail → Authenticate email; SPF is one TXT record. Without them,
+mail sent as `@ymu.org` from any provider is far more likely to land in spam.
+
 ---
 
-## 🔴 OPEN — five teachers whose login email disagrees with YMU's CSV
+## ✅ Teacher roster reconciled and CLOSED (2026-08-12)
 
-Reconciled against `Teacher_Name_Email_Match - Name-Email-Phone.csv`
-(2026-08-12, 48 names). Everything else is closed: all 48 now have an account,
-every active teacher has a phone, and the 9 who were not on the CSV are
-archived. These five are the only ones left, and they need a human answer
-because **the email IS the login** — changing it locks the teacher out of the
-old one, and "Forgot password?" still cannot deliver mail (the Resend domain
-for `ymu.org` is unverified, see further down).
+Against `Teacher_Name_Email_Match - Name-Email-Phone.csv` (48 names). All 48
+have an account, every active teacher has a phone, and YMU answered each of the
+five email conflicts:
 
-| Teacher | CSV says | App login is | Reads like |
-|---|---|---|---|
-| Michael Cooley | `michael.coooooley@` | `michael.c00000ley@` | letter `o` vs digit `0` — one is a typo, and it is not obvious which |
-| James Perez | `jamesperez711@` | `jamezperez711@` | `s` vs `z` |
-| Daniel Soto | `daniel.s.0903@outlook.com` | `sotod1403a@gmail.com` | genuinely different addresses, not a typo |
-| Jose Heredia | `jherediaymu@gmail.com` | `jhvmusica@gmail.com` | genuinely different addresses |
-| De Anthony Williams | *(blank in the CSV)* | `deanthonyw0214@gmail.com` | the CSV is the one missing data |
+| Teacher | Answer | Why it matters |
+|---|---|---|
+| Michael Cooley | **app wins**, untouched | already signed in successfully with `michael.c00000ley@` (digit zeros) |
+| James Perez | **app wins**, untouched | already signed in with `jamezperez711@` |
+| Daniel Soto | **app wins** | the gmail is correct; the CSV's outlook address is stale |
+| Jose Heredia | **CSV wins** — now `jherediaymu@gmail.com` | changed in place |
+| De Anthony Williams | app already had it | the CSV was the file missing data |
 
-Cooley and Perez are the dangerous pair: both addresses are plausible, and
-picking wrong silently locks the teacher out with no recovery path. Confirm
-with the teacher directly rather than trusting either file.
+**Cooley and Perez are settled by evidence, not preference** — both have
+already logged in with the app's spelling. That is worth more than either
+file, because the whole risk here was picking a plausible-looking address that
+turns out to be dead: "Forgot password?" still cannot deliver mail, so a wrong
+login is unrecoverable without an admin.
 
-Also flagged, not changed: **Richard Pis's phone is `352-681-9218` in the app
-and `353-681-9218` in the CSV.** Neither 352 nor 353 is a Miami area code, so
-both are probably wrong — ask him.
+**Jose Heredia was changed in place, not created-then-deleted** as literally
+asked. He has zero attendance sessions, feedback and tickets, so the two are
+identical in outcome — and an in-place update keeps the same `profiles` row,
+cannot orphan an `auth.users`, and cannot half-succeed between the two steps.
+
+**Richard Pis's phone was left at the app's `352-681-9218`** — YMU is not using
+him this year. Note that neither 352 nor 353 is a Miami area code, so if he
+ever comes back, ask him rather than trusting either file.
 
 ### Also from that reconciliation
 
@@ -151,35 +186,63 @@ manufacturing one on production would trip the auto-clockout sweep, the stuck-
 feedback detector and the notification queue. Typecheck, lint, build and 149
 unit tests pass.
 
-### How to test it, after the deploy
+### How to test it
 
-Do these in order — step 1 must pass before the rest mean anything.
+Already verified for you, so do NOT re-test these — they were run against
+production on 2026-08-12: the RPC's nine validation rules (two objectives
+accepted; zero rejected; another program's objective rejected; duplicates and
+padding collapsed; double submission rejected; the Other path; both halves at
+once dropping the objectives; Other without a description rejected; another
+teacher's session rejected), the exporter's 31-column order, and the
+XOR constraint. All test rows were deleted afterwards.
 
-1. **Deploy first.** `git push origin main`, wait for Vercel to go green.
-   Until then every submission fails, because the RPC signature changed.
-2. **Clock in** as a teacher with a class today (a Drumline or Music Production
-   class is the best case — 13 and 30 objectives respectively), then open the
-   feedback form for it.
-3. **Check the heading names the program**: "What was the objective of today's
-   Drumline class?", with "Program: Drumline" underneath it. If it names the
-   wrong program, that is a `match_patterns` problem, not a form problem.
-4. **Try to submit with nothing ticked.** Submit must stay greyed out, with
-   "Please choose at least one objective you worked on today." underneath.
-5. **Tick two or three objectives**, then submit. Confirm the form accepts it.
-6. **Tap "Not this one?"** on a fresh class. The checkboxes must disappear, two
-   text fields appear, and — this is the one worth watching — **any objectives
-   you had already ticked must be gone when you tap it again to go back.**
-7. **Submit via the escape hatch** with a made-up program name and description.
-   Both fields are required; leaving either blank must keep Submit greyed out.
-8. **Check the Google Sheet** after `sheet-sync-2min` runs (or run
-   `npm run sync:sheet`). Verify: the header row has grown two columns on the
-   right — "Other program (teacher-named)" and "Other program — what they
-   worked on" — "Objectives worked" holds comma-separated labels rather than
-   uuids, and **no existing column has shifted**. Compare against a row from
-   before this change; every column left of "Objectives worked" must still line
-   up.
-9. **Open the ticket** if you submitted one with an issue, and confirm the
+What is left is what a database cannot check — the screen. Sign in as
+`emiliomedranomusic@gmail.com` (the teacher-test account, deliberately kept
+active for exactly this).
+
+**The feedback form**
+
+1. **Clock in** to a class, then open its feedback form. Drumline or Music
+   Production are the best cases — 13 and 30 objectives.
+2. **The heading must name the program**: "What was the objective of today's
+   Drumline class?", with "Program: Drumline" below it. A wrong name here is a
+   `match_patterns` problem, not a form problem.
+3. **Submit with nothing ticked** — the button must stay greyed out and say
+   "Please choose at least one objective you worked on today."
+4. **Tick two or three, submit.** It should accept.
+5. **On a fresh class, tap "Not this one?"** The checkboxes must vanish and two
+   text fields appear. **Then tap "Use the detected program" and check the
+   objectives you had ticked are gone.** This is the single most important
+   check on the page — it is the invariant that stops one program's answers
+   being filed under another's.
+6. **Submit through the escape hatch.** Both fields are required; leaving
+   either blank must keep Submit greyed out.
+7. **Open the resulting ticket** (submit one with an issue) and confirm the
    "From their feedback" block lists the objectives.
+
+**The spreadsheet** — the part with no undo
+
+8. After `sheet-sync-2min` fires (or run `npm run sync:sheet`), open the sheet
+   and **compare a new row against one written before this change**. Every
+   column to the left of "Objectives worked" must still line up. Two new
+   columns should have appeared on the far right: "Other program
+   (teacher-named)" and "Other program — what they worked on". "Objectives
+   worked" holds comma-separated labels, never uuids. "Focus pillar (retired)"
+   is blank from now on and that is correct.
+
+**The schools and the roster**
+
+9. **Lehrman Community Day School**: open `/lists` and confirm the pin sits on
+   the campus at 727 (77th St, Miami Beach). If a teacher there cannot clock
+   in, the pin is wrong — say so rather than widening the geofence.
+10. **Linda Lentin K-8** should show a calendar. It has 0 events until YMU
+    finishes loading the 2026-27 schedule into Google; that is expected, not a
+    failure.
+11. **Kennedy, Oak Grove and Mandarin Lakes must NOT appear** anywhere in
+    Lists, Schedules or Reports.
+12. **Teachers**: `/users` should show **49 active, 9 archived**. Spot-check
+    that Lilia Hernandez and David Maden exist and that Jose Heredia's email
+    reads `jherediaymu@gmail.com`.
 
 ---
 

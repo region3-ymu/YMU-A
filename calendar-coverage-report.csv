@@ -1,9 +1,7 @@
 kind,name,detail,region,has_calendar,has_gps
-calendar_no_school,Mandarin Lakes K-8,c_b090ab8ea75e13089d3f603b72f046563adb95dd1931076ddcbfcdcad0541fab@group.calendar.google.com,,,
 calendar_no_school,schedule@ymu.org,schedule@ymu.org,,,
-school_no_calendar,John F. Kennedy MS,"1075 NE 167th St, Miami-Dade, 33162",north,no,yes
-school_no_calendar,Linda Lentin K-8,"14312 NE 2nd Ct, Miami-Dade, 33161",north,no,yes
-school_no_calendar,Oak Grove ES,"15640 NE 8th Ave, Miami, FL 33162",north,no,yes
+calendar_no_school,Mandarin Lakes K-8,c_b090ab8ea75e13089d3f603b72f046563adb95dd1931076ddcbfcdcad0541fab@group.calendar.google.com,,,
+school_no_calendar,YMU Office (testing),"1584 NW 29th St, Miami, FL 33142",central,no,yes
 roster_not_in_app,Carie P. Meek/Westview K-8,"2101 NW 127th St, North Miami, FL 33167",,,
 roster_not_in_app,Dr. Henry Mack / West Little River K-8,"2450 NW 84th Street, Miami, FL 33147",,,
 roster_not_in_app,Norland Senior High School,"1193 NW 193rd St, Miami Gardens, FL 33169",,,
@@ -13,21 +11,20 @@ roster_not_in_app,Bowman Ashe K-8,"6601 SW 152nd Ave, Miami, FL 33193",,,
 roster_not_in_app,Dr. Charles R. Drew K-8 Center,"1775 NW 60th St, Miami, FL 33142",,,
 roster_not_in_app,G. Holmes Braddack Senior High School,"3601 SW 147th Ave, Miami, FL 33185",,,
 roster_not_in_app,John Ferguson Senior High School,"15900 SW 56th St, Miami, FL 33185",,,
-school_not_in_roster,Arthur & Polly Mays Conservatory of the Arts,"11700 SW 216th St, Miami, FL 33170",south,yes,yes
-school_not_in_roster,Bowman Ashe/Doolin K-8 Academy,"6601 SW 152nd Ave, Miami-Dade, 33193",south,yes,yes
+school_not_in_roster,Arthur & Polly Mays Conservatory of the Arts,"11700 SW 216th St, Miami, FL 33170",west,yes,yes
+school_not_in_roster,Bowman Ashe/Doolin K-8 Academy,"6601 SW 152nd Ave, Miami-Dade, 33193",west,yes,yes
 school_not_in_roster,Carrie P. Meek,"2101 NW 127th St, Miami-Dade, 33167",central,yes,yes
 school_not_in_roster,Charles R. Drew K-8,"1775 NW 60th St, Miami-Dade, 33142",central,yes,yes
 school_not_in_roster,G. Holmes Braddock Senior High School,"3601 SW 147th Ave, Miami, FL 33185",west,yes,yes
 school_not_in_roster,Highland Oaks Middle School,"2375 NE 203rd St, Miami-Dade, 33180",north,yes,yes
-school_not_in_roster,John A. Ferguson Sr. High School,"15900 SW 56th St, Miami-Dade, 33185",south,yes,yes
-school_not_in_roster,John F. Kennedy MS,"1075 NE 167th St, Miami-Dade, 33162",north,no,yes
-school_not_in_roster,Linda Lentin K-8,"14312 NE 2nd Ct, Miami-Dade, 33161",north,no,yes
+school_not_in_roster,John A. Ferguson Sr. High School,"15900 SW 56th St, Miami-Dade, 33185",west,yes,yes
+school_not_in_roster,Linda Lentin K-8,"14312 NE 2nd Ct, Miami-Dade, 33161",north,yes,yes
 school_not_in_roster,Little River K-8,"2450 NW 84th St, Miami, FL 33147 (Dr. Henry W. Mack/West Little River K-8)",central,yes,yes
 school_not_in_roster,Miami Norland Senior HS,"1193 NW 193rd St, Miami Gardens, 33169",north,yes,yes
-school_not_in_roster,Oak Grove ES,"15640 NE 8th Ave, Miami, FL 33162",north,no,yes
-pin_name_mismatch,Arthur & Polly Mays Conservatory of the Arts,calendar: Arthur and Polly Mays Conservatory,south,yes,yes
-pin_name_mismatch,Bowman Ashe/Doolin K-8 Academy,calendar: Bowman Ashe K-8,south,yes,yes
+school_not_in_roster,YMU Office (testing),"1584 NW 29th St, Miami, FL 33142",central,no,yes
+pin_name_mismatch,Arthur & Polly Mays Conservatory of the Arts,calendar: Arthur and Polly Mays Conservatory,west,yes,yes
+pin_name_mismatch,Bowman Ashe/Doolin K-8 Academy,calendar: Bowman Ashe K-8,west,yes,yes
 pin_name_mismatch,Carrie P. Meek,calendar: Carrie P. Meek/Westview K-8,central,yes,yes
 pin_name_mismatch,Charles R. Drew K-8,calendar: Dr. Charles R. Drew K-8 Center,central,yes,yes
-pin_name_mismatch,John A. Ferguson Sr. High School,calendar: John Ferguson Senior High School,south,yes,yes
+pin_name_mismatch,John A. Ferguson Sr. High School,calendar: John Ferguson Senior High School,west,yes,yes
 pin_name_mismatch,Miami Norland Senior HS,calendar: Norland Senior High School,north,yes,yes
