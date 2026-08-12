@@ -61,7 +61,10 @@ export default async function ClockingPage() {
               : `${overdue.length} classes are past their 24-hour feedback deadline.`}{" "}
             Submit {overdue.length === 1 ? "it" : "them"} to clock in again.
           </p>
-          <ul className="mt-3 grid gap-2">
+          {/* grid-cols-1 (minmax(0, 1fr)), never a bare `grid`: an implicit
+              column is `auto` and refuses to shrink below its content, which
+              pushes the "Overdue by 5h" chip off the right edge on a phone. */}
+          <ul className="mt-3 grid grid-cols-1 gap-2">
             {overdue.map((item) => (
               <li key={item.id}>
                 <Link
@@ -132,7 +135,7 @@ export default async function ClockingPage() {
       )}
 
       {blocked ? null : nextClass ? (
-        <section className="grid gap-4">
+        <section className="grid grid-cols-1 gap-4">
           <div className="relative overflow-hidden rounded-2xl bg-surface-container p-5 shadow-sm">
             <div className="absolute inset-y-0 left-0 w-1.5 bg-primary" aria-hidden />
             <p className="text-xs font-semibold uppercase tracking-wide text-primary">Next class</p>

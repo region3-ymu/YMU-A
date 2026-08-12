@@ -59,7 +59,13 @@ export default async function FeedbackPage() {
           </Link>
         </div>
       ) : (
-        <ul className="grid gap-3">
+        <ul className="grid grid-cols-1 gap-3">
+          {/* grid-cols-1, not a bare `grid`: an implicit grid column is
+              `auto`, which refuses to shrink below its content's intrinsic
+              width, so the card grew past the viewport and the deadline chip
+              fell off the right edge on a phone. Tailwind's grid-cols-1 is
+              minmax(0, 1fr), which is what lets `truncate` actually
+              truncate. */}
           {owed.map((item) => (
             <li key={item.id}>
               <OwedCard item={item} />
