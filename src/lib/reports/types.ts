@@ -29,7 +29,24 @@ export type SchoolYear = {
   archived: boolean;
 };
 
-export type Granularity = "weekly" | "monthly" | "quarterly";
+// "yearly" means SCHOOL year, not calendar year — consistent with
+// "quarterly", which has always been 9-week blocks anchored to
+// school_years.start_date. A calendar year would split every school year in
+// half at Christmas, which is not a period anyone at YMU reasons about.
+export type Granularity = "daily" | "weekly" | "monthly" | "quarterly" | "yearly";
+
+export const GRANULARITY_LABELS: Record<Granularity, string> = {
+  daily: "Daily",
+  weekly: "Weekly",
+  monthly: "Monthly",
+  quarterly: "9-week quarter",
+  yearly: "School year",
+};
+
+export function isGranularity(value: string | undefined): value is Granularity {
+  return value === "daily" || value === "weekly" || value === "monthly"
+    || value === "quarterly" || value === "yearly";
+}
 
 // One aggregated row: a teacher x period bucket. attendanceRatePct is null
 // when scheduledCount is 0 (nothing to rate yet — e.g. an all-upcoming week).

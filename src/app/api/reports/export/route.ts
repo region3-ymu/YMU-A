@@ -12,9 +12,9 @@ import { buildReportSections } from "@/lib/reports/build";
 import { bucketReportRows } from "@/lib/reports/aggregate";
 import { getSchoolYears } from "@/lib/reports/queries";
 import { periodSummariesToCsv } from "@/lib/export/csv";
-import type { Granularity } from "@/lib/reports/types";
+import { isGranularity, type Granularity } from "@/lib/reports/types";
+import { resolveRange } from "@/lib/reports/range";
 
-const GRANULARITIES: readonly Granularity[] = ["weekly", "monthly", "quarterly"];
 
 export async function GET(request: Request) {
   const supabase = await createClient();
@@ -39,16 +39,18 @@ export async function GET(request: Request) {
   const profile: Profile = { ...profileRow, email: user.email };
 
   const url = new URL(request.url);
-  const granularityParam = url.searchParams.get("granularity");
-  const granularity: Granularity = GRANULARITIES.includes(granularityParam as Granularity)
-    ? (granularityParam as Granularity)
-    : "monthly";
+  const granularityParam = url.searchParams.get("granularity") ?? undefined;
+  const granularity: Granularity = isGranularity(granularityParam) ? granularityParam : "weekly";
   const teacherParam = url.searchParams.get("teacher") ?? undefined;
 
-  const [report, schoolYears] = await Promise.all([
-    buildReportSections(profile, teacherParam),
-    getSchoolYears(),
-  ]);
+  // School years first: the range is resolved against them and bounds the
+  // query, so it cannot be fetched in parallel with the report it constrains.
+  // Same order as the page, so the CSV and the screen always cover the same
+  // window — that equivalence is the whole reason both go through
+  // buildReportSections.
+  const schoolYears = await getSchoolYears();
+  const range = resolveRange(url.searchParams.get("range") ?? undefined, schoolYears);
+  const report = await buildReportSections(profile, teacherParam, range);
 
   // Bucket each section independently (mirroring report-view.tsx exactly)
   // and only THEN concatenate the resulting summaries — never flatten raw
@@ -62,7 +64,7 @@ export async function GET(request: Request) {
   );
   const csv = periodSummariesToCsv(summaries, nameById);
 
-  const filename = `attendance-report-${granularity}.csv`;
+  const filename = `attendance-report-${granularity}-${range.key.replace(/[^a-z0-9]+/gi, "-")}.csv`;
   return new Response(csv, {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
