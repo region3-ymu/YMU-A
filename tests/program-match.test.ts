@@ -6,7 +6,6 @@
 
 import { describe, expect, it } from "vitest";
 import {
-  groupTopicsByPillar,
   issueCategoryFor,
   matchProgram,
   resolveProgram,
@@ -107,21 +106,9 @@ describe("matchProgram", () => {
   });
 });
 
-describe("groupTopicsByPillar", () => {
-  it("keeps pillars in the order the query returned them", () => {
-    const grouped = groupTopicsByPillar([
-      { pillar_category: "Rudiments & Technical", topic_name: "Rudiment #3" },
-      { pillar_category: "Cadences & Repertoire", topic_name: "Cadence #1" },
-      { pillar_category: "Rudiments & Technical", topic_name: "Chromatic Scale" },
-    ]);
-    expect([...grouped.keys()]).toEqual(["Rudiments & Technical", "Cadences & Repertoire"]);
-    expect(grouped.get("Rudiments & Technical")).toHaveLength(2);
-  });
-
-  it("handles an empty list", () => {
-    expect(groupTopicsByPillar([]).size).toBe(0);
-  });
-});
+// The pillar-grouping tests that were here went with the pillars themselves in
+// migration 0032 — the form shows one flat objective list per program now.
+// What replaced them lives in tests/feedback-objectives.test.ts.
 
 describe("issueCategoryFor", () => {
   it("splits the PRD's operational and academic subcategories", () => {

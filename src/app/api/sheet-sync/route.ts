@@ -14,36 +14,12 @@
 import { createClient } from "@supabase/supabase-js";
 import { parseServiceAccount } from "@/lib/google/calendar";
 import { appendRows, ensureHeader, resolveSheetName, type SheetCell } from "@/lib/google/sheets";
+import { HEADER, toSheetRow } from "@/lib/google/feedback-sheet-columns";
 
 // Sheets is slow enough that a large backlog can outlive the default timeout.
 export const maxDuration = 60;
 
 const BATCH = 500;
-
-// Order defines the column order in the sheet. A new field goes at the END —
-// inserting one in the middle silently shifts the meaning of every column in
-// every row already written.
-const COLUMNS = [
-  "id", "submitted_at", "class_date", "class_time",
-  "teacher_name", "teacher_email", "teacher_phone",
-  "school_name", "region", "regional_manager",
-  "class_title", "program",
-  "engagement", "focus_pillar", "objectives", "open_notes", "quarter_goals_on_track",
-  "reported_issue", "issue_category", "issue_type", "issue_priority", "issue_description",
-  "ticket_number", "ticket_status", "ticket_owner", "root_cause",
-  "clock_in_status", "clock_in_at", "session_origin",
-] as const;
-
-const HEADER = [
-  "Feedback ID", "Submitted at", "Class date", "Class time",
-  "Teacher", "Teacher email", "Teacher phone",
-  "School", "Region", "Regional manager",
-  "Class title", "Program",
-  "Engagement", "Focus pillar", "Objectives worked", "Open notes", "Quarter goals on track",
-  "Reported an issue", "Issue category", "Issue type", "Urgency", "What the teacher wrote",
-  "Ticket #", "Ticket status", "Ticket owner", "Root cause",
-  "Clock-in status", "Clocked in at", "Clock-in origin",
-];
 
 /** Constant-time compare, mirroring supabase/functions/_shared/secret.ts. */
 async function secretsMatch(provided: string | null, expected: string): Promise<boolean> {
@@ -91,13 +67,7 @@ export async function POST(request: Request) {
     const pending = (data ?? []) as Record<string, unknown>[];
     if (pending.length === 0) return Response.json({ appended: 0 });
 
-    const rows: SheetCell[][] = pending.map((row) =>
-      COLUMNS.map((key) => {
-        const value = row[key];
-        if (value == null) return "";
-        return typeof value === "number" || typeof value === "boolean" ? value : String(value);
-      }),
-    );
+    const rows: SheetCell[][] = pending.map(toSheetRow);
 
     await appendRows(serviceAccount, spreadsheetId, `${sheetName}!A1`, rows);
 

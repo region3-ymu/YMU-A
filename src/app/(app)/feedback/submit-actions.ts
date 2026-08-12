@@ -6,6 +6,7 @@ import { requireRole } from "@/lib/auth/dal";
 import { createClient } from "@/lib/supabase/server";
 import { getTopicsForProgram } from "@/lib/feedback/queries";
 import { issueCategoryFor, MIN_ISSUE_DESCRIPTION } from "@/lib/feedback/program-match";
+import { buildObjectivePayload, describeObjectiveGap } from "@/lib/feedback/objectives";
 
 export type ClassFeedbackState = { error?: string } | undefined;
 
@@ -39,19 +40,39 @@ export async function submitClassFeedback(
   const programIdRaw = String(formData.get("program_id") ?? "");
   const programId = isUuid(programIdRaw) ? programIdRaw : null;
   const programName = String(formData.get("program_name") ?? "").trim() || null;
-  const pillar = String(formData.get("primary_focus_pillar") ?? "").trim() || null;
-  const openNote = String(formData.get("open_topic_note") ?? "").trim() || null;
 
-  // Only keep chips that really belong to the chosen program. The checkboxes
-  // are rendered from that program's list, but a hand-crafted POST could name
-  // any uuid, and a topic from another program would silently corrupt the
-  // curriculum aggregates this data exists to feed.
-  const submittedTopicIds = formData.getAll("topic_ids").map(String).filter(isUuid);
-  let topicIds: string[] = [];
-  if (submittedTopicIds.length > 0 && programId) {
-    const allowed = new Set((await getTopicsForProgram(programId)).map((t) => t.id));
-    topicIds = submittedTopicIds.filter((id) => allowed.has(id));
+  // Section 2. buildObjectivePayload is what guarantees the two halves are
+  // mutually exclusive (spec §5) — running it here rather than trusting the
+  // form's hidden inputs means a hand-crafted POST carrying both is normalised
+  // to one before it can reach the RPC.
+  const objectives = buildObjectivePayload({
+    isCustom: String(formData.get("is_custom_program") ?? "") === "yes",
+    objectives: formData.getAll("objectives_worked").map(String),
+    customProgramName: String(formData.get("custom_program_name") ?? ""),
+    customNotes: String(formData.get("custom_notes") ?? ""),
+  });
+
+  // Only objectives that really belong to the detected program. The checkboxes
+  // are rendered from that program's list, but a hand-crafted POST could send
+  // any string, and a foreign or invented objective would silently corrupt the
+  // curriculum aggregates this data exists to feed. Enforced again in
+  // submit_class_feedback(); this layer exists to say so readably.
+  const offered = objectives.is_custom_program ? [] : await getTopicsForProgram(programId);
+  if (!objectives.is_custom_program) {
+    const allowed = new Set(offered.map((t) => t.topic_name));
+    objectives.objectives_worked = objectives.objectives_worked.filter((o) => allowed.has(o));
   }
+
+  const gap = describeObjectiveGap(
+    {
+      isCustom: objectives.is_custom_program,
+      objectives: objectives.objectives_worked,
+      customProgramName: objectives.custom_program_name ?? "",
+      customNotes: objectives.custom_notes ?? "",
+    },
+    { offersObjectives: offered.length > 0 },
+  );
+  if (gap) return { error: gap };
 
   const hasIssue = String(formData.get("has_issue") ?? "") === "yes";
   const subcategory = String(formData.get("issue_subcategory") ?? "").trim() || null;
@@ -74,9 +95,10 @@ export async function submitClassFeedback(
     p_quarter_goals_on_track: onTrack,
     p_program_id: programId,
     p_program_name_raw: programName,
-    p_primary_focus_pillar: pillar,
-    p_specific_topic_ids: topicIds,
-    p_open_topic_note: openNote,
+    p_objectives_worked: objectives.objectives_worked,
+    p_is_custom_program: objectives.is_custom_program,
+    p_custom_program_name: objectives.custom_program_name,
+    p_custom_notes: objectives.custom_notes,
     p_has_issue: hasIssue,
     // Derived server-side from the subcategory rather than trusted from the
     // form: it decides which bucket the ticket lands in for PD reporting.

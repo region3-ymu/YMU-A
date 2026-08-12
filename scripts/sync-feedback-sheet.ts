@@ -15,35 +15,11 @@
 
 import { parseServiceAccount } from "../src/lib/google/calendar.ts";
 import { appendRows, ensureHeader, resolveSheetName, type SheetCell } from "../src/lib/google/sheets.ts";
+import { HEADER, toSheetRow } from "../src/lib/google/feedback-sheet-columns.ts";
 import { createClient } from "@supabase/supabase-js";
 
 const PREFERRED_SHEET = process.env.FEEDBACK_SHEET_NAME?.trim() || "Feedback";
 const BATCH = 500;
-
-// Order defines the column order in the sheet. Appending a new field means
-// adding it at the END — inserting in the middle would shift every existing
-// column's meaning without touching the rows already written.
-const COLUMNS = [
-  "id", "submitted_at", "class_date", "class_time",
-  "teacher_name", "teacher_email", "teacher_phone",
-  "school_name", "region", "regional_manager",
-  "class_title", "program",
-  "engagement", "focus_pillar", "objectives", "open_notes", "quarter_goals_on_track",
-  "reported_issue", "issue_category", "issue_type", "issue_priority", "issue_description",
-  "ticket_number", "ticket_status", "ticket_owner", "root_cause",
-  "clock_in_status", "clock_in_at", "session_origin",
-] as const;
-
-const HEADER = [
-  "Feedback ID", "Submitted at", "Class date", "Class time",
-  "Teacher", "Teacher email", "Teacher phone",
-  "School", "Region", "Regional manager",
-  "Class title", "Program",
-  "Engagement", "Focus pillar", "Objectives worked", "Open notes", "Quarter goals on track",
-  "Reported an issue", "Issue category", "Issue type", "Urgency", "What the teacher wrote",
-  "Ticket #", "Ticket status", "Ticket owner", "Root cause",
-  "Clock-in status", "Clocked in at", "Clock-in origin",
-];
 
 function requireEnv(key: string): string {
   const value = process.env[key]?.trim();
@@ -76,13 +52,7 @@ async function main() {
     const pending = (data ?? []) as Record<string, unknown>[];
     if (pending.length === 0) break;
 
-    const rows: SheetCell[][] = pending.map((row) =>
-      COLUMNS.map((key) => {
-        const value = row[key];
-        if (value == null) return "";
-        return typeof value === "number" || typeof value === "boolean" ? value : String(value);
-      }),
-    );
+    const rows: SheetCell[][] = pending.map(toSheetRow);
 
     await appendRows(serviceAccount, spreadsheetId, `${sheetName}!A1`, rows);
 

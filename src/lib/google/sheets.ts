@@ -114,11 +114,21 @@ export async function resolveSheetName(
 }
 
 /**
- * Writes the header row, once, only if the sheet is empty.
+ * Writes the header row when the sheet has none, and widens it when the export
+ * has grown new columns on the right.
  *
- * Checked rather than assumed: appending a header to a sheet that already has
- * data would bury a header row in the middle of the dataset, where nothing
- * downstream would notice until a chart came out wrong.
+ * Both halves are checked rather than assumed. Appending a header to a sheet
+ * that already has data would bury a header row in the middle of the dataset,
+ * where nothing downstream would notice until a chart came out wrong. And a
+ * header that stays narrower than the rows is the same failure wearing a
+ * different hat: migration 0032 added two columns at the end, and without this
+ * every row written afterwards would carry two unlabelled fields that a
+ * manager reading the sheet has no way to interpret.
+ *
+ * Widening only ever happens when the existing header is SHORTER — the columns
+ * already there keep their positions, so no historic row changes meaning. An
+ * existing header of equal or greater width is left exactly as it is, which
+ * keeps a hand-edited heading from being clobbered every two minutes by cron.
  */
 export async function ensureHeader(
   serviceAccount: GoogleServiceAccount,
@@ -127,7 +137,8 @@ export async function ensureHeader(
   header: string[],
 ): Promise<boolean> {
   const token = await getGoogleAccessToken(serviceAccount, SHEETS_SCOPE);
-  const range = `${sheetName}!A1:A1`;
+  // The whole first row, not just A1: its WIDTH is what decides below.
+  const range = `${sheetName}!1:1`;
   const response = await fetch(
     `${SHEETS_API}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}`,
     { headers: { authorization: `Bearer ${token}` } },
@@ -143,7 +154,8 @@ export async function ensureHeader(
     );
   }
   const data = (await response.json()) as { values?: unknown[][] };
-  if (data.values?.length) return false;
+  const existing = data.values?.[0] ?? [];
+  if (existing.length >= header.length) return false;
 
   await fetch(
     `${SHEETS_API}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(`${sheetName}!A1`)}`

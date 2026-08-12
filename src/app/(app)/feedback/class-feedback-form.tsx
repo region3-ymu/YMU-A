@@ -1,16 +1,21 @@
 "use client";
 
-import { useActionState, useMemo, useState } from "react";
+import { useActionState, useState } from "react";
 import { submitClassFeedback, type ClassFeedbackState } from "./submit-actions";
 import type { TopicRow } from "@/lib/feedback/queries";
 import {
   ENGAGEMENT_OPTIONS,
-  groupTopicsByPillar,
   ISSUE_SUBCATEGORIES,
   MIN_ISSUE_DESCRIPTION,
   PRIORITY_OPTIONS,
   type ProgramRow,
 } from "@/lib/feedback/program-match";
+import {
+  buildObjectivePayload,
+  describeObjectiveGap,
+  objectiveHeading,
+  type ObjectiveSelection,
+} from "@/lib/feedback/objectives";
 
 // PRD Module A: the four-section daily form, targeting under 45 seconds on a
 // phone. Teacher, school, date and class are never asked — the app already
@@ -41,25 +46,52 @@ export default function ClassFeedbackForm({
 
   const [engagement, setEngagement] = useState("");
   const [onTrack, setOnTrack] = useState<"yes" | "no" | "">("");
-  const [pillar, setPillar] = useState("");
-  const [topicIds, setTopicIds] = useState<string[]>([]);
   const [hasIssue, setHasIssue] = useState<"yes" | "no" | "">("");
   const [subcategory, setSubcategory] = useState("");
   const [description, setDescription] = useState("");
 
-  const pillars = useMemo(() => groupTopicsByPillar(topics), [topics]);
-  const hasChips = pillars.size > 0;
+  // Section 2's whole state in one object, so the two halves can only ever be
+  // replaced together — see toggleCustomProgram.
+  const [selection, setSelection] = useState<ObjectiveSelection>({
+    isCustom: false,
+    objectives: [],
+    customProgramName: "",
+    customNotes: "",
+  });
+
+  const offersObjectives = topics.length > 0;
+  const objectivePayload = buildObjectivePayload(selection);
+  const objectiveGap = describeObjectiveGap(selection, { offersObjectives });
 
   const descriptionShort = hasIssue === "yes" && description.trim().length < MIN_ISSUE_DESCRIPTION;
   const canSubmit =
     !pending &&
     engagement !== "" &&
     onTrack !== "" &&
+    objectiveGap === null &&
     hasIssue !== "" &&
     (hasIssue === "no" || (subcategory !== "" && !descriptionShort));
 
-  function toggleTopic(id: string) {
-    setTopicIds((prev) => (prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id]));
+  function toggleObjective(name: string) {
+    setSelection((prev) => ({
+      ...prev,
+      objectives: prev.objectives.includes(name)
+        ? prev.objectives.filter((o) => o !== name)
+        : [...prev.objectives, name],
+    }));
+  }
+
+  // Switching between the detected program and a hand-named one resets BOTH
+  // halves rather than hiding one of them. Spec §5: a program change must
+  // never leave the previous program's answers behind to be submitted, and
+  // objectives ticked for Drumline mean nothing under "Steel Drum Club".
+  function toggleCustomProgram() {
+    setSelection((prev) => ({
+      isCustom: !prev.isCustom,
+      objectives: [],
+      customProgramName: "",
+      customNotes: "",
+    }));
   }
 
   return (
@@ -91,62 +123,113 @@ export default function ClassFeedbackForm({
 
       <Section
         number={2}
-        title="What did you work on?"
-        hint={program ? `${program.name} — read from the class title.` : undefined}
+        title={objectiveHeading(selection.isCustom ? null : program?.name)}
+        hint="Tick every objective the class actually covered."
       >
-        {hasChips ? (
-          <div className="grid gap-3">
-            {Array.from(pillars.entries()).map(([pillarName, pillarTopics]) => (
-              <div key={pillarName}>
-                <button
-                  type="button"
-                  onClick={() => setPillar(pillar === pillarName ? "" : pillarName)}
-                  className={`w-full rounded-xl px-3 py-3 text-left text-sm font-semibold transition ${
-                    pillar === pillarName
-                      ? "bg-primary text-on-primary"
+        {/* The program is detected from the calendar title and shown, never
+            chosen (YMU 2026-08-12). Which makes saying so out loud part of the
+            control: if the detection is wrong, this line is the only place a
+            teacher can notice before the data is. */}
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-on-surface-variant">
+          <span className="material-symbols-outlined text-base" aria-hidden>event_note</span>
+          <span>
+            Program:{" "}
+            <span className="font-semibold text-on-surface">
+              {selection.isCustom ? "you're naming it below" : (program?.name ?? className)}
+            </span>
+          </span>
+          <button
+            type="button"
+            onClick={toggleCustomProgram}
+            className="font-medium text-primary underline-offset-4 hover:underline"
+          >
+            {selection.isCustom ? "Use the detected program" : "Not this one?"}
+          </button>
+        </p>
+
+        {selection.isCustom ? (
+          <div className="mt-3 grid gap-3">
+            <label className="grid gap-1 text-sm">
+              <span className="font-medium text-on-surface-variant">What program was it?</span>
+              <input
+                type="text"
+                value={selection.customProgramName}
+                onChange={(e) =>
+                  setSelection((prev) => ({ ...prev, customProgramName: e.target.value }))
+                }
+                placeholder="e.g. Steel Drum Club"
+                className="rounded-lg bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary"
+              />
+            </label>
+            <label className="grid gap-1 text-sm">
+              <span className="font-medium text-on-surface-variant">What did you work on?</span>
+              <textarea
+                rows={3}
+                value={selection.customNotes}
+                onChange={(e) => setSelection((prev) => ({ ...prev, customNotes: e.target.value }))}
+                placeholder="Describe the objective of today's class."
+                className="rounded-lg bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary"
+              />
+            </label>
+          </div>
+        ) : offersObjectives ? (
+          <div className="mt-3 grid gap-1.5">
+            {topics.map((topic) => {
+              const checked = selection.objectives.includes(topic.topic_name);
+              return (
+                <label
+                  key={topic.id}
+                  className={`flex cursor-pointer items-start gap-3 rounded-xl px-3 py-2.5 text-sm transition ${
+                    checked
+                      ? "bg-tertiary-container text-on-tertiary-container"
                       : "bg-surface-container-low text-on-surface"
                   }`}
                 >
-                  {pillarName}
-                </button>
-                {pillar === pillarName && (
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {pillarTopics.map((topic) => (
-                      <button
-                        key={topic.id}
-                        type="button"
-                        onClick={() => toggleTopic(topic.id)}
-                        className={`rounded-full px-3 py-2 text-sm transition ${
-                          topicIds.includes(topic.id)
-                            ? "bg-tertiary text-on-tertiary"
-                            : "bg-surface-container-highest text-on-surface-variant"
-                        }`}
-                      >
-                        {topic.topic_name}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggleObjective(topic.topic_name)}
+                    className="mt-0.5 size-4 shrink-0 accent-current"
+                  />
+                  <span>{topic.topic_name}</span>
+                </label>
+              );
+            })}
           </div>
         ) : (
-          <label className="grid gap-1 text-sm">
-            <span className="font-medium text-on-surface-variant">
-              What did you work on? <span className="opacity-60">(optional)</span>
-            </span>
-            <textarea
-              name="open_topic_note"
-              rows={2}
-              placeholder="Describe the piece, exercise or activity."
-              className="w-full rounded-lg bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary"
-            />
-          </label>
+          // A program whose objectives have not been loaded yet must not lock
+          // its teachers out of submitting at all.
+          <p className="mt-3 rounded-lg bg-surface-container-low p-3 text-sm text-on-surface-variant">
+            This program has no objectives loaded yet. Use “Not this one?” above to describe the
+            class in your own words.
+          </p>
         )}
-        <input type="hidden" name="primary_focus_pillar" value={pillar} />
-        {topicIds.map((id) => (
-          <input key={id} type="hidden" name="topic_ids" value={id} />
-        ))}
+
+        {/* Guidance, not an error: this is why Submit is still greyed out, and
+            a teacher should not have to press it to find out. */}
+        {objectiveGap && <p className="mt-2 text-xs text-on-surface-variant">{objectiveGap}</p>}
+
+        {/* Only the chosen half is ever mounted, so the other half is not
+            merely cleared — it is not in the POST at all. */}
+        <input
+          type="hidden"
+          name="is_custom_program"
+          value={objectivePayload.is_custom_program ? "yes" : "no"}
+        />
+        {objectivePayload.is_custom_program ? (
+          <>
+            <input
+              type="hidden"
+              name="custom_program_name"
+              value={objectivePayload.custom_program_name ?? ""}
+            />
+            <input type="hidden" name="custom_notes" value={objectivePayload.custom_notes ?? ""} />
+          </>
+        ) : (
+          objectivePayload.objectives_worked.map((name) => (
+            <input key={name} type="hidden" name="objectives_worked" value={name} />
+          ))
+        )}
       </Section>
 
       <Section

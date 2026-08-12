@@ -61,7 +61,7 @@ create,Hebrew Academy (RASG),"2400 Pine Tree Dr, Miami Beach, FL 33140",,0.308,e
 skip_exists,Andover Middle School,"121 NE 207th St, Miami Gardens, FL 33179",Andover Middle School,address,north,Same street address as an existing school.
 skip_exists,Norland Middle School,"1235 NW 192nd Terrace, Miami Gardens, FL 33169",Norland Middle School,address,north,Same street address as an existing school.
 skip_exists,Norland Senior High School,"1193 NW 193rd St, Miami Gardens, FL 33169",Miami Norland Senior HS,address,north,Same street address as an existing school.
-defer,Highland Oaks Senior High School,"2375 NE 203rd St, Miami, FL 33180",Highland Oaks Middle School,address/level-conflict,north,"PENDIENTE: MDCPS no lista un ""Highland Oaks Senior High""; probable typo del roster por Highland Oaks Middle."
+defer,Highland Oaks Senior High School,"2375 NE 203rd St, Miami, FL 33180",Highland Oaks Middle School,address/level-conflict,north,"RESUELTO 2026-08-12 (YMU): es Middle School, no Senior High. Typo del roster confirmado; Highland Oaks Middle School ya existe en la app con su calendario. Dejar en defer -- nunca se debe crear."
 create,Alonzo Mourning High School,"2601 NE 151st St, Miami, FL 33160",,0.263,north,Region del presupuesto oficial 26/27.
 skip_exists,Arcola Lake Elementary School,"1037 NW 81st St, Miami, FL 33150",Arcola Lake Elementary School,address,central,Same street address as an existing school.
 skip_exists,Arthur and Polly Mays Conservatory,"11700 SW 216th St, Goulds, FL 33170",Arthur & Polly Mays Conservatory of the Arts,address,south,Same street address as an existing school.

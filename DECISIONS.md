@@ -785,3 +785,54 @@ is one UPDATE — no migration, no deploy, no code review.
 Retired programs are deactivated rather than deleted:
 `feedback_submissions.program_id` is ON DELETE SET NULL, so dropping a row
 would silently orphan feedback already filed against it.
+
+### `objectives_worked` stores labels, not topic ids
+
+The pillar-era form stored `specific_topic_ids uuid[]`, and the sheet exporter
+resolved them back to names on every single read — so the ids bought nothing a
+snapshot of the labels does not.
+
+They also cost something. `program_topics` is staff-maintained data (see
+"Program `match_patterns` are data, not code"), so an objective can be renamed
+or deactivated at any time. With ids, that quietly rewrites history: a report
+run next term would show a class as having worked on whatever the row is called
+by then, not what the teacher actually ticked. With labels, the answer is fixed
+at the moment it was given.
+
+The trade is that the aggregates key on strings. That is why
+`submit_class_feedback()` rejects any objective that is not a live topic of the
+detected program — the labels are validated on the way in, so they cannot drift
+into near-duplicates.
+
+### The two halves of feedback Section 2 are mutually exclusive by construction
+
+A submission carries EITHER ticked objectives OR a hand-named program with a
+description — never both, never neither. That is enforced in three places
+(`buildObjectivePayload`, the server action, and the
+`feedback_objectives_xor_custom` CHECK), which is one more than looks
+necessary.
+
+The reason is that the teacher has no program picker. YMU cut it, so the
+program comes from the calendar title, and the "not this one?" escape hatch is
+the ONLY way a mis-detected class can be corrected. That makes the escape hatch
+load-bearing rather than an edge case — and a row carrying both halves would
+mean the form had let someone describe one program while ticking another's
+objectives, which is not a display bug but a corrupt curriculum record that
+looks perfectly fine in the spreadsheet.
+
+Switching between the two clears both halves rather than hiding one. Objectives
+ticked for Drumline mean nothing under "Steel Drum Club".
+
+### Retired sheet columns keep their position and return null
+
+`focus_pillar` sits at column 14 of the feedback export returning nothing at
+all, and will forever.
+
+The sheet is append-only over data that is already there. Removing a column
+does not remove it from the rows already written — it slides every column to
+its right one place left for all new rows, so a single sheet ends up with two
+incompatible layouts and no marker saying where one becomes the other. Charts
+and filters built on it keep working and start lying.
+
+So: new fields go at the END, retired fields stay put and go blank, and the
+header is renamed instead ("Focus pillar (retired)").

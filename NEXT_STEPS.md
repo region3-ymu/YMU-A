@@ -1,62 +1,143 @@
 # NEXT_STEPS — YMU-A
 
-## 🔴 START HERE NEXT SESSION — the feedback form's objective selector
+## 🔴 START HERE NEXT SESSION — deploy, then two small things
 
-Everything needed is now in place. This is the only piece of the approved spec
-(`YMU_Feedback_Form_Program_Objectives_Spec.md`, Aug 12) still unbuilt.
+The objective selector is **built and applied** (see the section below). What
+is left is not code:
 
-### The data is already loaded — do not re-seed it
+1. **Push and deploy the web code.** Migration 0032 is already on production and
+   it is a BREAKING change, not a permissive one: `feedback_submissions` no
+   longer has `primary_focus_pillar` or `specific_topic_ids`, and
+   `submit_class_feedback()` no longer accepts them. The deployed form still
+   sends the old arguments, so **feedback submission is broken until the deploy
+   lands**. The window is nearly free — only 8 of 111 schools have future
+   classes and the 2026-27 schedule is still loading — but it is not zero.
+   `git push origin main` from your own terminal; this build environment has no
+   GitHub credentials.
+2. **Set Lehrman Community Day School's coordinates by hand on `/lists`.** Its
+   row, region (east) and calendar are all correct now; only the pin is
+   missing, so nobody can clock in there. Census and Nominatim were both
+   re-tried on 2026-08-12 and neither resolves 727 Lehrman Dr — this needs a
+   human dropping a pin on a map, not another geocoder.
+3. **Share Linda Lentin K-8's Google calendar** with the service account. It is
+   now the only real school with no calendar (the other is the deliberate
+   "YMU Office (testing)" row). Run
+   `scripts/apps-script/share-and-list-calendars.gs` from the calendar-owning
+   account, then `npm run sync:calendar` — or just wait for `calendar-sync-5min`.
 
-`programs` (7 active) and `program_topics` hold the real objective lists:
+**Still deferred, unchanged:** mentors are a separate user type with their own
+clock-in and a different form. YMU explicitly deferred it; do not model it yet.
 
-| Program | Objectives |
-|---|---|
-| Drumline | 13 |
-| Modern Band | 13 |
-| Beginning Band | 13 |
-| Music Production | 30 (loaded from YMU's own list, pillar `Objectives`) |
-| Pitch & Rhythm | 7 |
-| Beginner Strings / Orchestra / Concert Band | 13 |
-| After School | 7 |
+---
 
-Music Production's rows sit under a single pillar named `Objectives`; the
-others still carry the old PRD pillar names. The build should stop reading
-`pillar_category` entirely — the spec replaces pillars with one flat list per
-program — so those names simply become inert.
+## ✅ Done 2026-08-12: the feedback form's objective selector
 
-### What to build
+Migration `0032_feedback_objectives.sql`, applied to production in three chunks
+and verified against the live catalog. Section 2 of the daily form is no longer
+"pick a pillar, then chips inside it" — it is one flat, required multi-select
+over the program's own objectives.
 
-1. **Schema.** `feedback_submissions` drops `primary_focus_pillar` and
-   `specific_topic_ids`, gains `objectives_worked text[]`,
-   `is_custom_program boolean`, `custom_program_name text`, `custom_notes text`.
-   `submit_class_feedback()` changes signature to match.
-2. **Form.** Section 2 becomes a required multi-select checkbox group over that
-   program's flat objective list, with a dynamic header
-   ("What was the objective of today's Drumline class?").
-3. **The "Other" path.** The teacher does NOT pick the program — YMU overrode
-   the spec's dropdown, so the program is derived from the calendar title and
-   shown read-only. "Other" therefore needs an escape hatch ("not this one?")
-   that reveals a free-text program name plus a free-text description, both
-   required, with the checkbox group hidden.
-4. **Payload invariants** (spec §5, and worth a unit test): `objectives_worked`
-   is never populated alongside a non-null `custom_notes`, and changing the
-   program clears any prior selections so stale data is never submitted.
-5. **The sheet exporter follows.** `feedback_for_sheet()` currently resolves
-   `specific_topic_ids` to labels; it must read `objectives_worked` instead, and
-   gain the custom-program columns. The column ORDER is load-bearing — new
-   fields go at the END, or every row already in the spreadsheet shifts meaning.
+### Three decisions that override the written spec
 
-### Also still open
+Each looks like a bug if you only read the spec, so all three are restated in
+the migration header and in `src/lib/feedback/objectives.ts`:
 
-- **Highland Oaks Senior High School** is in YMU's CSV but not in the app.
-  Deferred at the 2026-08-11 import: it shares an address with Highland Oaks
-  Middle and MDCPS lists no such senior high. Confirm before creating it.
-- **Mentors are a separate user type** — they clock in but get a different
-  form. Explicitly deferred by YMU; do not model it yet.
-- **Lehrman Community Day School has no coordinates**, so nobody can clock in
-  there. Set them by hand on `/lists`.
-- Kennedy, Lentin and Oak Grove have app rows and no Google calendar;
-  Mandarin Lakes is the reverse.
+- **The teacher does not pick the program.** The spec has a dropdown; YMU cut
+  it. The program is read from the calendar title and shown read-only — which
+  is precisely why the "Other" escape hatch has to exist.
+- **Music Production runs.** The spec omitted it by mistake. 30 objectives.
+- **Beginner Strings, Orchestra and Concert Band are one program**, not three.
+
+### What changed
+
+- `feedback_submissions` dropped `primary_focus_pillar` and
+  `specific_topic_ids`, gained `objectives_worked text[]`, `is_custom_program`,
+  `custom_program_name`, `custom_notes`.
+- **`objectives_worked` stores LABELS, not uuids.** The exporter was already
+  resolving ids back to names on every read, and a label snapshot survives an
+  objective being renamed or retired later — which an id would not.
+- `submit_class_feedback()` was **dropped and recreated**, not replaced. Its
+  parameter list changed, and `create or replace` would have left the old
+  version sitting there as an overload for the deployed client to keep calling.
+  Verified afterwards: exactly one copy of the function exists.
+- `pillar_category` is read nowhere now. The column stays on `program_topics`
+  as a loading artefact — it is how the rows arrived, and the names disagree
+  across programs anyway (Music Production's single `Objectives` versus the
+  other six's four PRD pillars). Ignoring it is what makes that inert.
+
+### The invariants are enforced three times, on purpose
+
+Spec §5 — `objectives_worked` never populated alongside a non-null
+`custom_notes`, and switching program clears the other half — lives in:
+
+1. `buildObjectivePayload()` (`src/lib/feedback/objectives.ts`), pure and
+   unit-tested in `tests/feedback-objectives.test.ts`;
+2. the server action, which re-runs it rather than trusting the form's hidden
+   inputs, so a hand-crafted POST carrying both halves is normalised to one;
+3. a `feedback_objectives_xor_custom` CHECK constraint, verified live to reject
+   a row carrying both.
+
+The form clears both halves on every toggle rather than hiding one, and only
+the chosen half is ever mounted — so the other is not merely blanked, it is
+absent from the POST.
+
+### The sheet exporter followed, and the column order held
+
+`feedback_for_sheet()` reads `objectives_worked` directly (no lookup left) and
+gained `custom_program` + `custom_notes` **at the END**. Verified live: 31
+output columns, in exactly the order the TypeScript expects.
+
+`focus_pillar` **stays at position 14 returning null forever.** Deleting it
+would slide five columns of history sideways in a spreadsheet that already
+holds data. Its header is now "Focus pillar (retired)".
+
+Two things worth knowing for the next schema change:
+
+- The route and the by-hand script kept **identical private copies** of the
+  column list. They are now one module, `src/lib/google/feedback-sheet-columns.ts`,
+  which also throws at import time if COLUMNS and HEADER fall out of step. That
+  pair would have drifted on the first change and corrupted the sheet quietly.
+- **`ensureHeader` only wrote a header into an empty sheet**, so the two new
+  columns would have been appended with no headings at all. It now also widens
+  a header that is shorter than the export — never narrower, never reordered,
+  so nothing historic moves.
+
+### Not verified in a browser
+
+Reaching `/feedback/[sessionId]` needs a teacher with an open owed session, and
+manufacturing one on production would trip the auto-clockout sweep, the stuck-
+feedback detector and the notification queue. Typecheck, lint, build and 149
+unit tests pass.
+
+### How to test it, after the deploy
+
+Do these in order — step 1 must pass before the rest mean anything.
+
+1. **Deploy first.** `git push origin main`, wait for Vercel to go green.
+   Until then every submission fails, because the RPC signature changed.
+2. **Clock in** as a teacher with a class today (a Drumline or Music Production
+   class is the best case — 13 and 30 objectives respectively), then open the
+   feedback form for it.
+3. **Check the heading names the program**: "What was the objective of today's
+   Drumline class?", with "Program: Drumline" underneath it. If it names the
+   wrong program, that is a `match_patterns` problem, not a form problem.
+4. **Try to submit with nothing ticked.** Submit must stay greyed out, with
+   "Please choose at least one objective you worked on today." underneath.
+5. **Tick two or three objectives**, then submit. Confirm the form accepts it.
+6. **Tap "Not this one?"** on a fresh class. The checkboxes must disappear, two
+   text fields appear, and — this is the one worth watching — **any objectives
+   you had already ticked must be gone when you tap it again to go back.**
+7. **Submit via the escape hatch** with a made-up program name and description.
+   Both fields are required; leaving either blank must keep Submit greyed out.
+8. **Check the Google Sheet** after `sheet-sync-2min` runs (or run
+   `npm run sync:sheet`). Verify: the header row has grown two columns on the
+   right — "Other program (teacher-named)" and "Other program — what they
+   worked on" — "Objectives worked" holds comma-separated labels rather than
+   uuids, and **no existing column has shifted**. Compare against a row from
+   before this change; every column left of "Objectives worked" must still line
+   up.
+9. **Open the ticket** if you submitted one with an issue, and confirm the
+   "From their feedback" block lists the objectives.
 
 ---
 
@@ -70,8 +151,8 @@ program — so those names simply become inert.
   form. Explicitly deferred; do not model it yet.
 - **Lehrman Community Day School still has no coordinates**, so nobody can
   clock in there. Set them by hand on `/lists`.
-- **Kennedy, Lentin and Oak Grove** have app rows and no Google calendar;
-  **Mandarin Lakes** is the reverse.
+- **Linda Lentin K-8 still has no Google calendar.** YMU confirmed the school
+  runs, so the calendar is owed rather than the row being wrong.
 
 ### ✅ Configuration is COMPLETE (verified 2026-08-12 19:58 UTC)
 
@@ -200,30 +281,40 @@ reviving it.
 
 ---
 
-## 🟡 OPEN — four schools awaiting a YMU answer (asked 2026-08-12)
+## ✅ ANSWERED 2026-08-12 — the four schools, and the two roster questions
 
-The calendar↔school reconciliation is done and verified; these four are the
-only gaps left, and each is the same question: **does this school run this
-year?** If yes, create the missing half. If no, remove it.
+YMU answered every one. Applied to production the same day.
 
-| School | Has | Missing |
+| School | Answer | What was done |
 |---|---|---|
-| John F. Kennedy MS | app row (north) | no Google calendar |
-| Linda Lentin K-8 | app row (north) | no Google calendar |
-| Oak Grove ES | app row (north) | no Google calendar |
-| Mandarin Lakes K-8 | Google calendar | no app row |
+| John F. Kennedy MS | does not run | app row **deleted** |
+| Oak Grove ES | does not run | app row **deleted** |
+| Mandarin Lakes K-8 | does not run | `calendar_sync_issues` entry resolved |
+| Linda Lentin K-8 | **runs** | row kept; its Google calendar is still owed |
 
-Two more roster questions from the 2026-08-11 import, still unanswered:
+Both deletions were checked first, not assumed: every FK into `schools` is
+`ON DELETE SET NULL`, so a dependent row would have been silently orphaned
+rather than blocking the delete. Both schools had zero calendar events,
+sessions, GPS checks, flags, clock-in attempts, tickets and feedback. Their
+full rows are in this session's transcript if either needs recreating.
 
-- **Lehrman Community Day School** has no coordinates, so it cannot be clocked
-  into at all. Neither Census nor Nominatim resolves 727 Lehrman Dr, Miami
-  Beach. Set it by hand on `/lists`.
-- **"Highland Oaks Senior High School"** was on the roster but not created: it
-  shares an address with Highland Oaks Middle School and MDCPS lists no such
-  senior high. Probably a roster typo — confirm before adding.
+Roster: **111 → 110 school rows**. Exactly one real school now has no calendar
+(Lentin) and exactly one has no coordinates (Lehrman).
 
-Also unexplained: YMU expected **105 calendars and 105 schools**. Reality is
-109 school calendars in Google and 111 school rows. Neither side is 105, so
+The two roster questions:
+
+- **Lehrman Community Day School runs**, region **east**, at 727 Lehrman Dr,
+  Miami Beach, FL 33141 — all three already correct in the app, and its
+  calendar is pinned. Only the coordinates are missing. Census and Nominatim
+  were re-tried on 2026-08-12 by address, by street and by school name; all
+  four queries returned nothing. Set the pin by hand on `/lists`.
+- **"Highland Oaks Senior High School" was a roster typo.** YMU confirmed it is
+  Highland Oaks **Middle** School, which already exists in the app with its
+  calendar and 19 events. The review CSV row stays at `action=defer` with the
+  answer recorded in its note, so `--apply` can never create it.
+
+Still unexplained: YMU expected **105 calendars and 105 schools**. Reality is
+109 school calendars in Google and 110 school rows. Neither side is 105, so
 the number came from somewhere else — worth tracing before trusting it.
 
 ---

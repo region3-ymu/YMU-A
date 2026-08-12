@@ -39,7 +39,10 @@ export type TicketRow = {
   feedback: {
     engagement_level: string;
     quarter_goals_on_track: boolean;
-    primary_focus_pillar: string | null;
+    objectives_worked: string[];
+    is_custom_program: boolean;
+    custom_program_name: string | null;
+    custom_notes: string | null;
     open_topic_note: string | null;
     submitted_at: string;
     program: { name: string } | null;
@@ -54,7 +57,8 @@ const TICKET_COLUMNS = `
   assigned_agent:profiles!tickets_assigned_agent_id_fkey(full_name),
   event:calendar_events(summary, start_at, end_at),
   feedback:feedback_submissions!tickets_feedback_id_fkey(
-    engagement_level, quarter_goals_on_track, primary_focus_pillar,
+    engagement_level, quarter_goals_on_track, objectives_worked,
+    is_custom_program, custom_program_name, custom_notes,
     open_topic_note, submitted_at, program:programs(name)
   )
 `;

@@ -103,8 +103,17 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
               label="Quarter goals"
               value={ticket.feedback.quarter_goals_on_track ? "On track" : "Falling behind"}
             />
-            {ticket.feedback.primary_focus_pillar && (
-              <Row label="Focus" value={ticket.feedback.primary_focus_pillar} />
+            {ticket.feedback.objectives_worked.length > 0 && (
+              <Row label="Objectives" value={ticket.feedback.objectives_worked.join(", ")} />
+            )}
+            {/* The calendar detected the wrong program and the teacher said
+                so. Worth surfacing to the manager: it is both context for the
+                ticket and a hint that this class's title needs a look. */}
+            {ticket.feedback.is_custom_program && ticket.feedback.custom_program_name && (
+              <Row label="Program (theirs)" value={ticket.feedback.custom_program_name} />
+            )}
+            {ticket.feedback.custom_notes && (
+              <Row label="Worked on" value={ticket.feedback.custom_notes} />
             )}
             {ticket.feedback.open_topic_note && (
               <Row label="Worked on" value={ticket.feedback.open_topic_note} />

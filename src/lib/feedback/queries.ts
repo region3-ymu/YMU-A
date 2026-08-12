@@ -9,7 +9,6 @@ import { resolveProgram, type ProgramRow } from "./program-match";
 export type TopicRow = {
   id: string;
   program_id: string;
-  pillar_category: string;
   topic_name: string;
 };
 
@@ -32,7 +31,10 @@ export async function getTopicsForProgram(programId: string | null): Promise<Top
   const supabase = await createClient();
   const { data } = await supabase
     .from("program_topics")
-    .select("id, program_id, pillar_category, topic_name")
+    // pillar_category is deliberately not selected — the form shows one flat
+    // list per program (spec, Aug 12) and the pillar names disagree across
+    // programs. sort_order is the only ordering that survives.
+    .select("id, program_id, topic_name")
     .eq("program_id", programId)
     .eq("active", true)
     .order("sort_order", { ascending: true });
@@ -54,7 +56,10 @@ export async function getFeedbackFormData(summary: string | null | undefined) {
 export type SubmittedFeedback = {
   id: string;
   engagement_level: string;
-  primary_focus_pillar: string | null;
+  objectives_worked: string[];
+  is_custom_program: boolean;
+  custom_program_name: string | null;
+  custom_notes: string | null;
   open_topic_note: string | null;
   quarter_goals_on_track: boolean;
   has_issue: boolean;
@@ -76,7 +81,8 @@ export async function getSubmittedFeedback(limit = 25): Promise<SubmittedFeedbac
   const { data } = await supabase
     .from("feedback_submissions")
     .select(
-      `id, engagement_level, primary_focus_pillar, open_topic_note,
+      `id, engagement_level, objectives_worked, is_custom_program,
+       custom_program_name, custom_notes, open_topic_note,
        quarter_goals_on_track, has_issue, submitted_at,
        program:programs(name), school:schools(name),
        event:calendar_events(summary, start_at)`,

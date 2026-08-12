@@ -126,7 +126,15 @@ function SubmittedCard({ item }: { item: SubmittedFeedback }) {
           label="Quarter goals"
           value={item.quarter_goals_on_track ? "On track" : "Falling behind"}
         />
-        {item.primary_focus_pillar && <Answer label="Focus" value={item.primary_focus_pillar} />}
+        {item.objectives_worked.length > 0 && (
+          <Answer label="Objectives" value={item.objectives_worked.join(", ")} />
+        )}
+        {item.is_custom_program && item.custom_program_name && (
+          <Answer label="Program (yours)" value={item.custom_program_name} />
+        )}
+        {item.custom_notes && <Answer label="Worked on" value={item.custom_notes} />}
+        {/* Only ever set by the pillar-era form. Still shown so a teacher can
+            look back at a class from before the objective selector. */}
         {item.open_topic_note && <Answer label="Worked on" value={item.open_topic_note} />}
       </dl>
     </details>

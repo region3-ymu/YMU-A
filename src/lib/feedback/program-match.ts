@@ -72,25 +72,14 @@ export function resolveProgram(
   );
 }
 
-export const PILLAR_NONE = "__none__";
-
-/**
- * Groups a program's chips under their pillar, preserving the order the query
- * returned them in. A Map because insertion order is guaranteed and the form
- * renders pillars in exactly that order.
- */
-export function groupTopicsByPillar<T extends { pillar_category: string }>(
-  topics: T[],
-): Map<string, T[]> {
-  const grouped = new Map<string, T[]>();
-  for (const topic of topics) {
-    const key = topic.pillar_category || PILLAR_NONE;
-    const list = grouped.get(key);
-    if (list) list.push(topic);
-    else grouped.set(key, [topic]);
-  }
-  return grouped;
-}
+// Nothing groups by pillar_category any more. The approved spec replaces the
+// PRD's pillars with one flat objective list per program, and the loaded data
+// no longer agrees on pillar names anyway — Music Production's 30 objectives
+// sit under a single pillar called "Objectives" while the other six still
+// carry the four PRD names. Reading the column would have made that
+// inconsistency visible to teachers for no benefit; ignoring it makes the
+// inconsistency inert. The column stays on program_topics as a loading
+// artefact.
 
 // PRD Section 1 — the engagement pulse (ITL Domain 4).
 export const ENGAGEMENT_OPTIONS = [
