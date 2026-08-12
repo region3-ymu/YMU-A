@@ -34,6 +34,7 @@ export const metadata: Metadata = {
   description:
     "Clock-in/clock-out attendance app for Young Musicians Unite teachers.",
   icons: {
+    icon: "/icons/icon-32.png",
     apple: "/icons/apple-touch-icon.png",
   },
   appleWebApp: {
@@ -47,7 +48,10 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#4648d4",
+  // YMU brand blue (ymu.org/branding), matching manifest.ts. This paints the
+  // browser/OS chrome around the app, so it has to agree with the manifest or
+  // the installed app and the browser tab disagree about what colour YMU is.
+  themeColor: "#3a65eb",
   width: "device-width",
   initialScale: 1,
   // The app is used at arm's length while walking to a school; keep pinch-zoom

@@ -37,6 +37,15 @@
   /* Legacy alias kept for components that still use `foreground`. */
   --foreground: var(--on-surface);
 
+  /* --------------------------------------------------------------------------
+     YMU brand (ymu.org/branding). Deliberately NOT derived from --accent: the
+     accent is a per-role colour, so a mark painted with it would turn violet
+     for a Regional Manager and rose for the CPO. A logo does not change colour
+     with who is signed in. Blue on light, brand cream on dark — both are
+     official variants, so this is the palette, not an approximation.
+     -------------------------------------------------------------------------- */
+  --brand-mark: #3a65eb;
+
   /* Primary = per-role accent (default = teacher indigo, == Stitch primary). */
   --accent: #4648d4;
   --accent-foreground: #ffffff;
@@ -79,6 +88,8 @@
 @media (prefers-color-scheme: dark) {
   :root {
     color-scheme: dark;
+
+    --brand-mark: #faf6eb;
 
     --background: #111318;
     --surface: #111318;
@@ -126,6 +137,8 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
 
+  --brand-mark: #faf6eb;
+
   --background: #111318;
   --surface: #111318;
   --surface-dim: #111318;
@@ -170,6 +183,8 @@
 
 :root[data-theme="light"] {
   color-scheme: light;
+
+  --brand-mark: #3a65eb;
 
   --background: #faf8ff;
   --surface: #faf8ff;
@@ -262,6 +277,7 @@
 
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+  --color-brand-mark: var(--brand-mark);
   --color-primary: var(--primary);
   --color-on-primary: var(--on-primary);
   --color-primary-container: var(--primary-container);

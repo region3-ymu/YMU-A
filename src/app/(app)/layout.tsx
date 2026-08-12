@@ -8,6 +8,7 @@ import BackButton from "@/components/back-button";
 import BottomNav from "@/components/bottom-nav";
 import GpsCheckSampler from "@/components/gps-check-sampler";
 import OfflineIndicator from "@/components/offline-indicator";
+import YmuMark from "@/components/ymu-mark";
 import { signOut } from "../(auth)/actions";
 
 // Shell for every signed-in page. data-role drives the per-role accent color
@@ -46,15 +47,8 @@ export default async function AppLayout({
         <div className="mx-auto flex h-16 max-w-3xl items-center justify-between gap-3 px-4">
           <div className="flex items-center gap-2">
             <BackButton />
-            <Link href="/" className="flex items-center gap-2">
-              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-on-primary shadow-sm">
-                <span className="material-symbols-outlined text-lg filled" aria-hidden>
-                  music_note
-                </span>
-              </span>
-              <span className="text-lg font-bold tracking-tight text-primary">
-                YMU-A
-              </span>
+            <Link href="/" className="flex items-center gap-2" aria-label="Home">
+              <YmuMark className="h-5 w-auto text-brand-mark" />
             </Link>
           </div>
           <div className="flex items-center gap-2.5">

@@ -1,3 +1,5 @@
+import YmuMark from "@/components/ymu-mark";
+
 export default function AuthLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
@@ -12,16 +14,16 @@ export default function AuthLayout({
       <div className="relative z-10 w-full max-w-sm">
         <div className="rounded-3xl bg-surface-container-lowest p-6 shadow-xl">
           <div className="mb-6 flex flex-col items-center text-center">
-            <span className="mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-primary text-on-primary shadow-sm">
-              <span className="material-symbols-outlined text-3xl filled" aria-hidden>
-                music_note
-              </span>
-            </span>
-            <h1 className="text-2xl font-bold tracking-tight text-on-surface">
-              YMU-A
+            {/* The real mark replaces the placeholder music-note badge. The
+                heading that used to read "YMU-A" is gone with it — the logo
+                already says who this is, and repeating it in text underneath
+                is the kind of thing nobody removes later. */}
+            <YmuMark className="mb-4 h-11 w-auto text-brand-mark" />
+            <h1 className="text-lg font-semibold tracking-tight text-on-surface">
+              Attendance
             </h1>
-            <p className="mt-1 text-sm text-on-surface-variant">
-              Young Musicians Unite — Attendance
+            <p className="mt-0.5 text-sm text-on-surface-variant">
+              Young Musicians Unite
             </p>
           </div>
           {children}

@@ -879,3 +879,53 @@ survives with a null school, which reads as "this class happened nowhere".
 Teachers took the other path for the same reason: the nine not on YMU's roster
 were archived via `archived_at`, which keeps their history intact and is undone
 by setting it back to null.
+
+### A logo is not an accent colour
+
+`--brand-mark` is its own token, deliberately not `var(--accent)`.
+
+The app gives each role its own accent — teacher indigo, Regional Manager
+violet, Operations amber, CPO rose — and `--primary` is defined as
+`var(--accent)`. Painting the YMU mark with `text-primary`, which is the
+obvious thing to reach for, means the logo turns violet for one person and rose
+for another. An organisation's mark does not change colour with who is signed
+in.
+
+The token carries brand blue `#3a65eb` on light and brand cream `#faf6eb` on
+dark, and it is declared in all four theme blocks (bare `:root`, the
+`prefers-color-scheme` media block, and both explicit `[data-theme]` blocks) —
+the app supports an explicit theme choice as well as the system one, so a
+colour defined in only some of them is correct only some of the time.
+
+### `any` and `maskable` icons are different artwork
+
+The manifest used to list the same PNG twice, once per purpose. That is a
+silent bug, not a shortcut: a launcher crops a maskable icon to its own shape,
+usually a circle, and guarantees only the middle 80%. Pointing it at YMU's
+square emblem meant Android was slicing the corners off the logo, and the
+"YOUNG MUSICIANS UNITE" line in the emblem is unreadable at 192px anyway.
+
+So `scripts/generate-icons.mjs` builds two sets: the emblem for `any`, where
+the frame is respected, and the Y-M-U letterforms alone — cream on brand blue,
+sized to sit inside the safe circle — for `maskable`. The favicon uses the
+letterform version for the same legibility reason.
+
+### RLS has to be checked against every reader, not the one that works
+
+`profiles_select` let a Regional Manager read a profile only where
+`region = current_app_region()`, but `profiles.region` is null by design for
+teachers — they work wherever the calendar sends them. So an RM could read no
+teacher profile at all, and every ticket showed "Teacher Unknown".
+
+It went unnoticed for a release because `/lists` looked fine. That page reads
+through `teacher_directory()`, a SECURITY DEFINER function that bypasses RLS
+entirely and derives the region from `calendar_events -> schools` itself
+(0021). The fix moves that rule into the policy so it applies to every reader,
+including PostgREST's embedded joins — which do not error when RLS hides a
+row, they just return null and let the UI render its fallback.
+
+Scope came from measurement, not intuition. Unwindowed, the calendar clause
+handed Central's manager 60 teachers instead of 10: a single shared date drags
+everyone in with it, and 206 "Concert" events at one Central school during
+Relay week carry 57 different teachers. The clause is therefore windowed to the
+live roster, with attendance and tickets covering everything older.
