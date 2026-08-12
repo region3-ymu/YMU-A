@@ -993,3 +993,35 @@ header with a wall of blank rows above it.
 `clearDataRows()` issues a DeleteDimension batchUpdate from row 2 to the end
 instead, so the grid actually shrinks and the next append starts at row 2. The
 header is never in range.
+
+### Resetting to zero is audited by table, not by memory
+
+The first pass at "wipe everything" deleted the eight tables anyone would think
+of and looked complete. Enumerating all 20 public tables afterwards found four
+more things, and every one of them would have shown up on a manager's screen on
+the first morning:
+
+- a `late_clock_in` flag and three notifications the cron had generated *after*
+  the wipe, from a test class that was still scheduled;
+- `app_feedback`, a manager inbox nobody had ever cleared;
+- the office test classes, whose next fixture would have produced a fresh
+  tardanza for a class nobody was going to teach;
+- `school_years.name`, still reading "Seed Test Year" — the QA fixture's name,
+  in production, on screen.
+
+Two lessons worth keeping. **Deleting is not a one-shot action while anything
+is still scheduled** — the cron runs every minute and will refill queues behind
+you, so verify after, not during. And **the tables you forget are the ones that
+were never noisy**: app_feedback and school_years had sat wrong for weeks
+precisely because they are quiet.
+
+### A real user's bug report is not disposable data
+
+Clearing app_feedback for the term reset would have deleted James Perez's
+"No clock in! At Brownsville middle from 12-1", filed hours before anyone
+worked out that his login was `jamez` and the calendar said `james`. He had
+reported the exact fault from the other end.
+
+It was marked resolved instead. A count of zero is worth less than the record
+of a real fault reported by the person it happened to — and the two are not in
+conflict, since resolved rows leave the inbox either way.
