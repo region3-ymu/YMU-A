@@ -1,5 +1,57 @@
 # NEXT_STEPS — YMU-A
 
+## ✅ Phase 5 complete 2026-08-12: SLA engine, agent metrics, root-cause report
+
+Migration `0031` closes the last of the PRD's ticketing scope. Applied to
+production and verified against real rows.
+
+**The clocks run and pause.** `ticket_sla` is a `security_invoker` view that
+computes FRT, TTR, Effective Resolution Time and an on_track/warning/breached
+verdict in SQL — PRD 4.3 requires an agent and an Admin to see identical
+numbers for the same ticket, and two implementations drift the moment one is
+edited. Targets: Urgent 4h, High 24h, Normal 72h; warning starts at 75%.
+
+**Pausing needed a second column.** `sla_paused_minutes` existed but nothing
+incremented it, and it alone can only report a pause AFTER it ends — so a
+ticket sitting in Pending_Teacher right now would report zero and look
+neglected. `sla_paused_since` fixes that. Verified: a 5h-old Urgent ticket
+reads `breached`; after 3h of pause the same ticket reads `on_track`
+(300 − 180 = 120 minutes against a 240-minute target).
+
+**A teacher's reply resumes the clock automatically.** A trigger on
+ticket_messages moves Pending_Teacher back to In_Progress and banks the pause.
+Without it the pause would keep accruing overnight and quietly flatter the
+agent's numbers.
+
+**The 24-hour sweep escalates rather than nags.** `detect_unanswered_tickets()`
+notifies the assignee AND the Academic Manager, once per ticket — the queue's
+own uniqueness only covers the three reminder types, so the `not exists` guard
+is what stops an hourly re-nag. Verified: second pass returns 0.
+
+Scheduled as **`ticket-sla-15min`, calling the function directly as SQL**, not
+over HTTP. It only writes notification_queue rows, so pg_cron can invoke it
+without an Edge Function, a shared secret, or anything for YMU to configure.
+
+**New surfaces:** `/tickets` gains an Overdue tab with a count badge and SLA
+badges on each card (the stripe follows the SLA once late, not the priority —
+a Normal ticket three days past target matters more than an Urgent one raised
+ten minutes ago). `/tickets/insights` carries PRD 4.4 and 4.5: the manager's
+own queue, 7/30/90-day response and resolution averages, SLA compliance,
+weekly volume, and the root-cause counts that should shape Summer PD.
+
+### Cron state — all six jobs live
+
+`check-closeout-1min`, `late-detect-1min`, `notify-dispatch-1min`,
+`calendar-sync-5min`, `auto-clockout-5min`, `ticket-sla-15min`.
+auto-clockout was confirmed end-to-end: a real POST returned
+`{"clocked_out":1}`.
+
+`stuck-session-detect` remains undeployed and unscheduled — it predates 0026
+and its meaning changed there; decide whether it is still wanted before
+reviving it.
+
+---
+
 ## 🟡 OPEN — four schools awaiting a YMU answer (asked 2026-08-12)
 
 The calendar↔school reconciliation is done and verified; these four are the

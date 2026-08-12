@@ -47,3 +47,41 @@ export const ROOT_CAUSES = [
   { value: "Classroom_Mgmt_Safety", label: "Classroom management & safety" },
   { value: "Payroll_Administrative", label: "Payroll & administrative" },
 ] as const;
+
+export type SlaState = "on_track" | "warning" | "breached" | "met" | "missed";
+
+export const SLA_LABELS: Record<SlaState, string> = {
+  on_track: "On track",
+  warning: "Due soon",
+  breached: "Overdue",
+  met: "Met SLA",
+  missed: "Missed SLA",
+};
+
+// PRD 4.3's targets, restated for display only. The breach decision itself is
+// made in SQL (ticket_ttr_target_hours) so an agent and an Admin can never see
+// different verdicts on the same ticket.
+export const TTR_TARGET_HOURS: Record<string, number> = {
+  Urgent: 4,
+  High: 24,
+  Normal: 72,
+};
+
+/**
+ * Minutes as something a person reads at a glance: "3h", "2d 4h", "45m".
+ * Coarse on purpose — a support queue is not a stopwatch, and false precision
+ * invites arguments about a number nobody should be optimising to the minute.
+ */
+export function formatDuration(minutes: number | null | undefined): string {
+  if (minutes == null || !Number.isFinite(minutes)) return "—";
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${Math.round(minutes)}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    const rem = Math.round(minutes % 60);
+    return rem === 0 ? `${hours}h` : `${hours}h ${rem}m`;
+  }
+  const days = Math.floor(hours / 24);
+  const remHours = hours % 24;
+  return remHours === 0 ? `${days}d` : `${days}d ${remHours}h`;
+}

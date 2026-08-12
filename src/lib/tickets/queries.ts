@@ -93,3 +93,78 @@ export async function getAssignableAgents(): Promise<{ id: string; full_name: st
     .order("full_name");
   return (data as { id: string; full_name: string; role: string; region: string | null }[]) ?? [];
 }
+
+export type TicketSla = {
+  id: string;
+  sla_state: import("./status").SlaState;
+  unanswered_overdue: boolean;
+  awaiting_response_minutes: number | null;
+  open_active_minutes: number | null;
+  frt_minutes: number | null;
+  effective_ttr_minutes: number | null;
+  paused_minutes: number;
+  ttr_target_hours: number;
+};
+
+/**
+ * SLA figures keyed by ticket id. Fetched alongside the ticket list rather
+ * than joined into it because ticket_sla is a view over the same rows — the
+ * two queries are scoped identically by RLS, and keeping them separate leaves
+ * the list query readable.
+ */
+export async function getTicketSlaMap(): Promise<Map<string, TicketSla>> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("ticket_sla")
+    .select(
+      "id, sla_state, unanswered_overdue, awaiting_response_minutes, open_active_minutes, frt_minutes, effective_ttr_minutes, paused_minutes, ttr_target_hours",
+    );
+  return new Map(((data as unknown as TicketSla[]) ?? []).map((s) => [s.id, s]));
+}
+
+export type AgentMetrics = {
+  open_total: number;
+  open_urgent: number;
+  open_warning: number;
+  open_breached: number;
+  unanswered: number;
+  resolved_in_period: number;
+  avg_frt_minutes: number | null;
+  avg_effective_ttr_minutes: number | null;
+  sla_compliance_pct: number | null;
+  reopened_in_period: number;
+  reopen_rate_pct: number | null;
+};
+
+export async function getAgentMetrics(days = 30): Promise<AgentMetrics | null> {
+  const supabase = await createClient();
+  const { data } = await supabase.rpc("agent_ticket_metrics", { p_days: days });
+  // The function returns a single row; PostgREST hands it back as an array.
+  return ((data as AgentMetrics[]) ?? [])[0] ?? null;
+}
+
+export type WorkloadWeek = { week_start: string; opened: number; resolved: number };
+
+export async function getWorkloadTrend(weeks = 8): Promise<WorkloadWeek[]> {
+  const supabase = await createClient();
+  const { data } = await supabase.rpc("agent_workload_trend", { p_weeks: weeks });
+  return (data as WorkloadWeek[]) ?? [];
+}
+
+export type RootCauseRow = {
+  root_cause_category: string;
+  category_type: string;
+  tickets: number;
+  avg_effective_ttr_minutes: number | null;
+  schools_affected: number;
+  teachers_affected: number;
+};
+
+export async function getRootCauseReport(from?: string, to?: string): Promise<RootCauseRow[]> {
+  const supabase = await createClient();
+  const { data } = await supabase.rpc("root_cause_report", {
+    p_from: from ?? null,
+    p_to: to ?? null,
+  });
+  return (data as RootCauseRow[]) ?? [];
+}

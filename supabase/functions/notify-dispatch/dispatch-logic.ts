@@ -215,6 +215,20 @@ export function notificationCopy(row: Pick<QueueRow, "type" | "payload">): {
         body: managerBody(`${teacher(payload)}'s ${category(payload)} issue is now yours`, payload),
         url: ticketUrl(payload),
       };
+    case "ticket_sla_breach":
+      return {
+        title: str(payload.escalated)
+          ? managerTitle("Escalated — no reply in 24h", payload)
+          : managerTitle("No reply in 24h", payload),
+        body: managerBody(`${ticketRef(payload)} from ${teacher(payload)} has had no reply`, payload),
+        url: ticketUrl(payload),
+      };
+    case "ticket_teacher_replied":
+      return {
+        title: managerTitle("Teacher replied", payload),
+        body: managerBody(`${teacher(payload)} answered ${ticketRef(payload).toLowerCase()}`, payload),
+        url: ticketUrl(payload),
+      };
     case "ticket_needs_you":
       return {
         title: "Your ticket needs a reply",

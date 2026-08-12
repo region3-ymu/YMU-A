@@ -85,6 +85,11 @@ Deno.serve(async (request) => {
     return json({ error: enqueueError.message }, 500);
   }
 
+  // NOTE: the 24-hour unanswered sweep is NOT here. detect_unanswered_tickets
+  // only writes rows to notification_queue, so pg_cron calls it directly as
+  // SQL (job ticket-sla-15min) — no HTTP hop, no shared secret, no Edge
+  // Function to redeploy. This function still delivers what that sweep queues.
+
   // Atomically CLAIM a batch instead of a plain select. A run that exceeds the
   // 1-minute cron cadence would otherwise overlap the next run, both reading
   // the same still-'pending' rows and sending each push/email twice.
