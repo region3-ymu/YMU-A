@@ -696,3 +696,92 @@ calendar to its `calendarList` — a service account has no inbox and no UI to
 accept a share. Discovery reads `calendarList`, so a shared-but-unsubscribed
 calendar is invisible to the sync. That is why 45 calendars were missing, and
 why `scripts/apps-script/share-and-list-calendars.gs` does both halves.
+
+## Implementation-level decisions (2026-08-12 late — sheet mirror, GPS cadence, clock-out)
+
+### The Google Sheet is a mirror, never a source of truth
+
+One-way and additive. YMU runs studies and dashboards off feedback and should
+not export a CSV first, but the spreadsheet is a readable copy — nothing reads
+back from it, and losing it loses nothing.
+
+Tracked with `sheet_synced_at` on the row rather than a queue table. The rows
+already exist and are already ordered, so a queue would be a second thing to
+keep in step for no gain: "what is not in the sheet yet" is exactly
+`sheet_synced_at is null`.
+
+### The stamp happens AFTER Google confirms, accepting duplicates over loss
+
+A crash mid-run leaves rows pending and the next run picks them up. The one
+case this cannot prevent is the append succeeding and the process dying before
+the stamp, which writes those rows twice. Chosen deliberately: a duplicate row
+is visible and fixable in a spreadsheet, whereas stamping first would drop
+feedback silently and nobody would ever know which.
+
+### `feedback_for_sheet()` flattens and labels in SQL
+
+The exporter is a dumb pipe with no joins and no formatting decisions, so the
+manual script and the cron route cannot drift. It resolves topic uuids to
+labels (a uuid is not something anyone filters a spreadsheet on) and renders
+dates and times in Miami rather than UTC.
+
+### The mirror is a Next route, not a Supabase Edge Function
+
+Every other cron job is an Edge Function, so this is a deliberate exception.
+Signing a service-account JWT and talking to Google already exists in
+`src/lib/google`; an Edge Function would have meant either a fragile
+cross-boundary import of a large module or a second copy of the crypto.
+pg_cron calls it over HTTPS exactly as it calls the Edge Functions — the
+scheduling story is unchanged, it just points at Vercel.
+
+### `getGoogleAccessToken`'s cache is keyed by scope
+
+A cached Calendar token handed to a Sheets call fails with
+ACCESS_TOKEN_SCOPE_INSUFFICIENT, which is a baffling error for a caller that
+did ask for the right scope.
+
+### The sheet tab is resolved, not assumed
+
+A new spreadsheet's only tab is "Sheet1". Writing to a tab that does not exist
+fails with a 400 about range parsing that never mentions tab names, so the
+exporter asks which tabs exist and uses the configured one only if it is there.
+YMU can rename the tab without touching config.
+
+### GPS re-checks: +15/30/45, not +5/10/15/20/25
+
+Five samples in the first 25 minutes told us almost nothing the first one
+didn't — a teacher present at minute 5 is present at minute 10 — and YMU
+classes run 60 to 80 minutes, so three checks across 45 minutes cover the class
+instead of clustering at its start. Two fewer location reads per class.
+
+Existing `gps_checks` rows keep their `due_at`: rewriting them would move
+deadlines that have already passed and flip settled checks back to pending.
+
+### Clock-in is same-day only, enforced in `clock_in()`
+
+A teacher with classes today and tomorrow could clock into tomorrow's class
+today, inventing attendance for a class that had not happened. Enforced in the
+function rather than by hiding the card, because the offline queue and any
+stale client call it directly. The comparison is in America/New_York — an
+8:30 PM Miami class is 00:30 UTC the next day, and a UTC comparison would hide
+a teacher's own evening class from them.
+
+### The Clock out button was removed
+
+Since 0021 `hours_worked` has been the SCHEDULED duration, so clocking out
+never affected pay or reporting. It only marked "still in class", which
+`clock_in()`'s implicit close and the cron sweep already handle. The button
+asked teachers to remember a step that changed nothing. `clock_out()` stays in
+the database for a future admin correction tool; nothing in the app calls it.
+
+### Program `match_patterns` are data, not code
+
+YMU's mapping has already changed three times in one day (Marching Band moved
+to After School; Guitar and jazz-with-a-rhythm-section fold into Modern Band;
+Beginner Strings, Orchestra and Concert Band merged into one). A class-code
+legend is still to come. Keeping the patterns in a table means each correction
+is one UPDATE — no migration, no deploy, no code review.
+
+Retired programs are deactivated rather than deleted:
+`feedback_submissions.program_id` is ON DELETE SET NULL, so dropping a row
+would silently orphan feedback already filed against it.

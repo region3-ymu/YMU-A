@@ -25,16 +25,24 @@ const BATCH = 500;
 // every row already written.
 const COLUMNS = [
   "id", "submitted_at", "class_date", "class_time",
-  "teacher_name", "teacher_email", "school_name", "region", "class_title", "program",
-  "engagement", "focus_pillar", "objectives", "open_notes",
-  "quarter_goals_on_track", "reported_issue", "ticket_number", "clock_in_status",
+  "teacher_name", "teacher_email", "teacher_phone",
+  "school_name", "region", "regional_manager",
+  "class_title", "program",
+  "engagement", "focus_pillar", "objectives", "open_notes", "quarter_goals_on_track",
+  "reported_issue", "issue_category", "issue_type", "issue_priority", "issue_description",
+  "ticket_number", "ticket_status", "ticket_owner", "root_cause",
+  "clock_in_status", "clock_in_at", "session_origin",
 ] as const;
 
 const HEADER = [
   "Feedback ID", "Submitted at", "Class date", "Class time",
-  "Teacher", "Teacher email", "School", "Region", "Class title", "Program",
-  "Engagement", "Focus pillar", "Objectives worked", "Open notes",
-  "Quarter goals on track", "Reported an issue", "Ticket #", "Clock-in status",
+  "Teacher", "Teacher email", "Teacher phone",
+  "School", "Region", "Regional manager",
+  "Class title", "Program",
+  "Engagement", "Focus pillar", "Objectives worked", "Open notes", "Quarter goals on track",
+  "Reported an issue", "Issue category", "Issue type", "Urgency", "What the teacher wrote",
+  "Ticket #", "Ticket status", "Ticket owner", "Root cause",
+  "Clock-in status", "Clocked in at", "Clock-in origin",
 ];
 
 /** Constant-time compare, mirroring supabase/functions/_shared/secret.ts. */

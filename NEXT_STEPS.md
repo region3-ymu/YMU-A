@@ -1,5 +1,117 @@
 # NEXT_STEPS — YMU-A
 
+## 🔴 NEXT SESSION — the feedback form's objective selector
+
+YMU sent `YMU_Feedback_Form_Program_Objectives_Spec.md` (Aug 12), which
+replaces PRD Section 2.2's three-category pillar/chip model with a flat list of
+objectives per program. **Approved, not yet built.**
+
+What changes:
+
+- `PROGRAM_TOPICS`' pillar grouping goes away. Each program gets one flat
+  objective list, rendered as a required multi-select checkbox group.
+- A new **"Other"** path: free-text program name plus a free-text description,
+  for one-off offerings.
+- `FEEDBACK_SUBMISSIONS` loses `primary_focus_pillar` and `specific_topic_ids`,
+  gains `objectives_worked text[]`, `is_custom_program boolean`,
+  `custom_program_name text`, `custom_notes text`.
+- Switching program must clear any prior selections, and the payload must never
+  carry `objectives_worked` alongside `custom_notes`.
+
+Three decisions YMU already gave, which the spec itself does not reflect:
+
+1. **The teacher does NOT pick the program.** The spec shows a dropdown; YMU
+   overrode that — it is derived from the calendar title and shown read-only.
+   The "Other" path still needs a way in, so the form needs an escape hatch
+   ("not this one?") rather than a picker.
+2. **Music Production is missing from the spec's program list** — omitted by
+   mistake, it stays. It has 1,337 classes.
+3. **Beginner Strings, Orchestra and Concert Band are ONE program**, already
+   merged as `Beginner Strings / Orchestra / Concert Band`.
+
+Still missing before this can be built: **objective lists for Music Production
+and for the merged strings program.** The spec has neither. YMU is sending a
+document with the full class-code legend (e.g. "Music Technology" = Music
+Production), which should also settle those.
+
+---
+
+## 🟡 OPEN — waiting on YMU
+
+- **The class-code legend + an updated CSV** of schools, regions, teachers,
+  emails and phones. Regions have changed for some schools. Program
+  `match_patterns` are DATA, not code — a legend arrives as one UPDATE, no
+  migration and no deploy.
+- **Mentors are a separate user type**, with their own clock-in and a different
+  form. Explicitly deferred; do not model it yet.
+- **Lehrman Community Day School still has no coordinates**, so nobody can
+  clock in there. Set them by hand on `/lists`.
+- **Kennedy, Lentin and Oak Grove** have app rows and no Google calendar;
+  **Mandarin Lakes** is the reverse.
+
+### Owed configuration (Vercel env is done; Supabase side is not)
+
+`SHEET_SYNC_SECRET` and `FEEDBACK_SHEET_ID` are set in Vercel. Once it
+redeploys, schedule the mirror:
+
+```sql
+select vault.create_secret('<SHEET_SYNC_SECRET value>', 'sheet_sync_secret');
+select cron.schedule('sheet-sync-2min', '*/2 * * * *', $$
+  select net.http_post(
+    url := 'https://ymu-a-navy.vercel.app/api/sheet-sync',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'x-sheet-sync-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'sheet_sync_secret')
+    ),
+    body := '{}'::jsonb
+  );
+$$);
+```
+
+Until then `npm run sync:sheet` brings the sheet up to date on demand.
+
+---
+
+## ✅ Done 2026-08-12 (late session)
+
+**The Google Sheet mirror is live and verified** — 7 rows written to
+"YMU — Feedback Results 2026-27". Two things stood in the way and neither was
+the code: the Sheets API was switched off on the Cloud project, and the tab was
+called "Sheet1" rather than the configured "Feedback" (a 400 that talks about
+range parsing and never mentions tab names). The exporter now asks the
+spreadsheet which tabs exist, so the tab can be renamed freely.
+
+The sheet carries **every answer**, not a summary: teacher name/email/phone,
+school, region, the accountable Regional Manager, class title and time,
+program, engagement, objectives (resolved to labels, not uuids), open notes,
+quarter-goal answer, whether an issue was raised, its category/type/urgency,
+**what the teacher actually wrote**, ticket number/status/owner/root cause, and
+clock-in status/time/origin.
+
+Two ways to run it: `npm run sync:sheet` by hand, or `POST /api/sheet-sync`
+with the shared-secret header, which is what pg_cron will call. It is a Next
+route rather than an Edge Function so the Google JWT code is reused rather than
+duplicated.
+
+**GPS re-checks moved to +15/30/45** (from +5/10/15/20/25). Five samples in the
+first 25 minutes told us nothing the first didn't; YMU classes run 60-80
+minutes, so three checks across 45 cover the class instead of clustering at its
+start.
+
+**Clock-in is same-day only.** A teacher with classes today and tomorrow could
+clock into tomorrow's today. Fixed in `clock_in()` itself, not just the UI —
+the offline queue reaches that function directly.
+
+**The Clock out button is gone.** Since 0021 `hours_worked` has been the
+scheduled duration, so clocking out never affected pay or reporting; it only
+marked "still in class", which `clock_in()` and the cron sweep already handle.
+
+**Verified still working after all of the above:** offline clock-in (queued
+with the real tap time, replayed on reconnect, idempotent on retry, geofence
+re-validated server-side) and the GPS re-check chain.
+
+---
+
 ## ✅ Phase 5 complete 2026-08-12: SLA engine, agent metrics, root-cause report
 
 Migration `0031` closes the last of the PRD's ticketing scope. Applied to

@@ -12,13 +12,26 @@ steps still owed.
 ## What YMU-A is
 
 A PWA for Young Musicians Unite to run teacher scheduling, GPS-verified
-clock-in/out, class feedback, and attendance reporting across ~72 schools.
+clock-in/out, class feedback, and attendance reporting across 111 schools.
 Roles: teacher, regional manager (RM), operations manager (OM), CPO. Next.js
 16 (Turbopack) + Supabase (Postgres/Auth/RLS/Edge Functions/pg_cron) + Google
-Calendar (source of schedules) + a Zoho-hosted feedback form. No native app —
+Calendar (source of schedules) + a native feedback form and ticketing system
+(Zoho Forms and Zoho Desk are both retired). No native app —
 installed as a PWA (Serwist service worker).
 
 ## Current deployment state
+
+**Feedback mirrors to a Google Sheet.** `feedback_for_sheet()` +
+`/api/sheet-sync` (or `npm run sync:sheet`) append every unmirrored submission
+to "YMU — Feedback Results 2026-27", carrying every answer plus school, region,
+accountable Regional Manager and ticket outcome. Needs `FEEDBACK_SHEET_ID` and
+`SHEET_SYNC_SECRET`; the sheet must be shared with the calendar service account
+as an **Editor** and the **Google Sheets API must be enabled** on the Cloud
+project (it was not, and the 403 says so explicitly now).
+
+**Feedback is native.** Zoho Forms and Zoho Desk are both replaced —
+`/feedback` for teachers, `/tickets` for managers. The Zoho code paths remain
+in the tree but nothing routes to them.
 
 - Live at `https://ymu-a-navy.vercel.app` (Vercel).
 - Hosted Supabase project: `vgyogyojxlvhiwujidhy`.
@@ -32,9 +45,8 @@ installed as a PWA (Serwist service worker).
   matching code is about to deploy, not before.
 - Work lands on the **`development`** branch and is merged to `main` to
   deploy (2026-08-12 onwards).
-- **Migration `0026` is committed but NOT applied**, on purpose. It and the UI
-  must land together — see NEXT_STEPS.md for the deploy order and why the
-  reverse breaks.
+- **Migrations are applied through `0034`.** 0025-0034 were applied via the
+  Supabase MCP and verified against the live database.
 - **Migrations `0002`–`0018` are all applied and confirmed on the hosted
   project** — `0017`/`0018` (this phase) were applied by the user and
   verified directly against the live database (new columns/RPCs queried
@@ -45,8 +57,11 @@ installed as a PWA (Serwist service worker).
 - Google Calendar sync, GPS checks, notifications (Web Push + email backup),
   and reporting are all live and running on `pg_cron` (calendar-sync every 5
   min, check-closeout/late-detect/notify-dispatch every minute).
-- **Zoho's feedback webhook is still not configured on Zoho's own side** — the
-  single biggest open item. See "What's not done" below.
+- Six pg_cron jobs live: `check-closeout-1min`, `late-detect-1min`,
+  `notify-dispatch-1min`, `calendar-sync-5min`, `auto-clockout-5min`,
+  `ticket-sla-15min`. A seventh (`sheet-sync-2min`) is owed — see NEXT_STEPS.
+- Roles are teacher, regional_manager, **academic_manager** (added 0029),
+  operations_manager, cpo.
 
 ## Architecture at a glance
 
@@ -64,24 +79,36 @@ installed as a PWA (Serwist service worker).
   (synced from Google Calendar, teacher_ids array + fuzzy/manual school match).
   No native "create a class" UI — schedules come exclusively from Google
   Calendar.
-- **Attendance**: `attendance_sessions` — an *open* session (`clock_out_at
-  is null`) IS the blocking "submit feedback" obligation, not a separate
-  demand table. `clock_in()` re-validates the geofence server-side always.
-  `gps_checks` (5 post-clock-in samples) + `flags` (manager escalations:
-  `gps_out_of_fence`, `late_clock_in`, and now `feedback_stuck`).
-- **Feedback**: lives on **Zoho**, not in the app. A fixed Zoho form URL is
-  embedded via iframe; Zoho's own webhook (`POST /api/zoho-feedback`) is what
-  actually closes a session, via the service-role-only `close_session_from_zoho()`
-  RPC. The app never renders its own feedback form fields.
+- **Attendance**: `attendance_sessions`. Since 0026 the old "an open session
+  IS the obligation" rule is gone: `clock_out_at is null` means only "still in
+  class", `feedback_settled_at is null` means feedback is owed, and clock-in is
+  blocked only once `feedback_due_at` (class end + 24h) has passed. `clock_in()`
+  re-validates the geofence server-side always, and since 0032 rejects a class
+  that is not on today's Miami date. `gps_checks` (3 samples at +15/30/45) +
+  `flags` (`gps_out_of_fence`, `late_clock_in`, `feedback_stuck`,
+  `ticket_unassigned`).
+- **Feedback**: native, in the app (0030). `/feedback` lists what a teacher
+  owes and what they have already submitted; `submit_class_feedback()` writes
+  the submission, discharges the 24-hour obligation and — when an issue is
+  flagged or quarter goals are behind — opens a ticket in the same transaction.
+  The Zoho iframe and its webhook remain in the tree but nothing routes to them.
+  Submissions mirror to a Google Sheet (see above).
 - **Notifications**: `notification_queue` (generic type+payload+status),
   drained by `notify-dispatch` (Web Push primary, Resend email backup, capped
   retries).
-- **Offline**: Dexie-backed queue for clock-ins/GPS samples only (not
-  feedback — Zoho's webhook is the only thing that can close a session),
-  replayed through `POST /api/sync` using the same RPCs as the online path.
+- **Offline**: Dexie-backed queue for clock-ins/GPS samples, replayed through
+  `POST /api/sync` via `attempt_clock_in()` — the same gate as online, evaluated
+  at the time the teacher actually tapped, and idempotent on the client key.
+  Verified working 2026-08-12.
 - **Reports**: one view (`attendance_period_rows`) + one RPC
-  (`report_teacher_roster`), all weekly/monthly/quarterly bucketing done in
-  TypeScript (`src/lib/reports/aggregate.ts`) over raw rows, not in SQL.
+  (`report_teacher_roster`); daily/weekly/monthly/quarterly/school-year
+  bucketing done in TypeScript (`src/lib/reports/aggregate.ts`) over raw rows,
+  with the time window resolved server-side (`src/lib/reports/range.ts`) so it
+  bounds the query rather than filtering after the fact.
+- **Tickets**: `tickets` + `ticket_messages`, replacing Zoho Desk. Every ticket
+  routes to the school region's RM (never cross-region, whatever the PRD says),
+  falling back to the Academic Manager then CPO. SLA figures come from the
+  `ticket_sla` view so an agent and an Admin always see the same number.
 - **Conventions to preserve**: one `lib/<feature>/` directory per feature area;
   server actions return `{error?, success?}` via `useActionState`, errors
   rendered as `<p role="alert" className="text-error">` (Material 3 token —
