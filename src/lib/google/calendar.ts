@@ -65,7 +65,7 @@ export class GoogleCalendarError extends Error {
   }
 }
 
-type AccessToken = { value: string; expiresAt: number };
+type AccessToken = { value: string; expiresAt: number; scope: string };
 
 // calendar.readonly covers reading events/calendars/calendarList, but
 // calendarList.insert (subscribeToCalendar) is a write against the
@@ -120,7 +120,10 @@ function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   return buffer;
 }
 
-async function signJwt(serviceAccount: GoogleServiceAccount): Promise<string> {
+async function signJwt(
+  serviceAccount: GoogleServiceAccount,
+  scope: string = CALENDAR_SCOPE,
+): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   const encoder = new TextEncoder();
   const header = base64UrlEncode(
@@ -130,7 +133,7 @@ async function signJwt(serviceAccount: GoogleServiceAccount): Promise<string> {
     encoder.encode(
       JSON.stringify({
         iss: serviceAccount.client_email,
-        scope: CALENDAR_SCOPE,
+        scope,
         aud: serviceAccount.token_uri ?? GOOGLE_TOKEN_AUDIENCE,
         iat: now,
         exp: now + 60 * 60,
@@ -220,15 +223,25 @@ export function parseServiceAccount(base64Json: string): GoogleServiceAccount {
 
 export async function getGoogleAccessToken(
   serviceAccount: GoogleServiceAccount,
+  scope: string = CALENDAR_SCOPE,
 ): Promise<string> {
   // Reuse a token until it is within five minutes of expiry. The edge runtime
   // may be reused for several cron invocations, but correctness never relies
   // on that reuse.
-  if (cachedAccessToken && cachedAccessToken.expiresAt > Date.now() + 5 * 60_000) {
+  //
+  // Keyed by scope: a Sheets token cannot stand in for a Calendar one, and
+  // handing the cached Calendar token to a Sheets call fails with
+  // ACCESS_TOKEN_SCOPE_INSUFFICIENT — a confusing error for a caller that did
+  // ask for the right scope.
+  if (
+    cachedAccessToken
+    && cachedAccessToken.scope === scope
+    && cachedAccessToken.expiresAt > Date.now() + 5 * 60_000
+  ) {
     return cachedAccessToken.value;
   }
 
-  const assertion = await signJwt(serviceAccount);
+  const assertion = await signJwt(serviceAccount, scope);
   const response = await fetch(serviceAccount.token_uri ?? GOOGLE_TOKEN_AUDIENCE, {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
@@ -256,6 +269,7 @@ export async function getGoogleAccessToken(
   cachedAccessToken = {
     value: token.access_token,
     expiresAt: Date.now() + (token.expires_in ?? 3600) * 1000,
+    scope,
   };
   return cachedAccessToken.value;
 }

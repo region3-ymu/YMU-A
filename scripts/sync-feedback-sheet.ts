@@ -1,0 +1,113 @@
+// Mirrors feedback submissions into the YMU Google Sheet.
+//
+//   node --env-file=.env.local scripts/sync-feedback-sheet.ts
+//
+// Appends every row that has not been mirrored yet, then stamps them. Safe to
+// run repeatedly and safe to interrupt: the stamp happens only after Google
+// confirms the append, so a crash mid-run leaves rows pending and the next run
+// picks them up. The one failure it cannot prevent is a duplicate — if the
+// append succeeds and the process dies before stamping, those rows go in
+// twice. Rare, visible, and far better than the alternative of stamping first
+// and silently losing them.
+//
+// Set FEEDBACK_SHEET_ID in .env.local. The sheet must be shared with the
+// service account as an EDITOR (reader cannot append).
+
+import { parseServiceAccount } from "../src/lib/google/calendar.ts";
+import { appendRows, ensureHeader, type SheetCell } from "../src/lib/google/sheets.ts";
+import { createClient } from "@supabase/supabase-js";
+
+const SHEET_NAME = process.env.FEEDBACK_SHEET_NAME?.trim() || "Feedback";
+const BATCH = 500;
+
+// Order defines the column order in the sheet. Appending a new field means
+// adding it at the END — inserting in the middle would shift every existing
+// column's meaning without touching the rows already written.
+const COLUMNS = [
+  "id",
+  "submitted_at",
+  "class_date",
+  "class_time",
+  "teacher_name",
+  "teacher_email",
+  "school_name",
+  "region",
+  "class_title",
+  "program",
+  "engagement",
+  "focus_pillar",
+  "objectives",
+  "open_notes",
+  "quarter_goals_on_track",
+  "reported_issue",
+  "ticket_number",
+  "clock_in_status",
+] as const;
+
+const HEADER = [
+  "Feedback ID", "Submitted at", "Class date", "Class time",
+  "Teacher", "Teacher email", "School", "Region", "Class title", "Program",
+  "Engagement", "Focus pillar", "Objectives worked", "Open notes",
+  "Quarter goals on track", "Reported an issue", "Ticket #", "Clock-in status",
+];
+
+function requireEnv(key: string): string {
+  const value = process.env[key]?.trim();
+  if (!value) {
+    console.error(`Missing ${key}. Set it in .env.local before running.`);
+    process.exit(1);
+  }
+  return value;
+}
+
+async function main() {
+  const spreadsheetId = requireEnv("FEEDBACK_SHEET_ID");
+  const serviceAccount = parseServiceAccount(requireEnv("GOOGLE_SERVICE_ACCOUNT_KEY_BASE64"));
+  const supabase = createClient(
+    requireEnv("NEXT_PUBLIC_SUPABASE_URL"),
+    requireEnv("SUPABASE_SERVICE_ROLE_KEY"),
+    { auth: { autoRefreshToken: false, persistSession: false } },
+  );
+
+  const wroteHeader = await ensureHeader(serviceAccount, spreadsheetId, SHEET_NAME, HEADER);
+  if (wroteHeader) console.log(`  wrote the header row to "${SHEET_NAME}"`);
+
+  let total = 0;
+  for (;;) {
+    const { data, error } = await supabase.rpc("feedback_for_sheet", { p_limit: BATCH });
+    if (error) throw new Error(`Reading pending feedback failed: ${error.message}`);
+    const pending = (data ?? []) as Record<string, unknown>[];
+    if (pending.length === 0) break;
+
+    const rows: SheetCell[][] = pending.map((row) =>
+      COLUMNS.map((key) => {
+        const value = row[key];
+        if (value == null) return "";
+        return typeof value === "number" || typeof value === "boolean" ? value : String(value);
+      }),
+    );
+
+    await appendRows(serviceAccount, spreadsheetId, `${SHEET_NAME}!A1`, rows);
+
+    // Stamp only after Google confirmed the write.
+    const ids = pending.map((r) => String(r.id));
+    const { error: markError } = await supabase.rpc("mark_feedback_sheet_synced", { p_ids: ids });
+    if (markError) {
+      throw new Error(
+        `Rows were appended but could NOT be marked synced (${markError.message}). `
+        + `Re-running will duplicate them — mark them by hand first.`,
+      );
+    }
+
+    total += rows.length;
+    console.log(`  appended ${rows.length} row(s)`);
+    if (pending.length < BATCH) break;
+  }
+
+  console.log(total === 0 ? "  nothing pending — the sheet is up to date." : `\nDone. ${total} row(s) mirrored.`);
+}
+
+main().catch((error) => {
+  console.error(error instanceof Error ? error.message : error);
+  process.exit(1);
+});
