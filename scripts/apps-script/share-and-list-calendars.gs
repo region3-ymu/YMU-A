@@ -39,7 +39,7 @@ function shareAndListCalendars() {
   var calendars = CalendarApp.getAllOwnedCalendars();
   var entries = [];
   var granted = 0;
-  var alreadyHad = 0;
+  var skipped = 0;
   var failed = 0;
 
   for (var i = 0; i < calendars.length; i++) {
@@ -47,8 +47,21 @@ function shareAndListCalendars() {
     var id = calendar.getId();
     var name = calendar.getName();
 
+    // The account's own primary calendar is not a school. Left in, it reaches
+    // the sync as an unmatchable calendar and parks a pointless row in the
+    // calendar_sync_issues queue for someone to dismiss by hand.
+    if (id === Session.getEffectiveUser().getEmail()) {
+      skipped++;
+      continue;
+    }
+
     // 'reader' is deliberate — the sync only ever reads events. Never grant
     // writer/owner to an automated account that does not need it.
+    //
+    // Acl.insert is an upsert: re-inserting an identical rule succeeds rather
+    // than raising, so `granted` counts calendars processed, not newly changed
+    // ones. The catch is for real failures (a calendar the account can no
+    // longer administer), which is why one is not fatal to the rest of the run.
     try {
       Calendar.Acl.insert(
         { role: 'reader', scope: { type: 'user', value: SERVICE_ACCOUNT_EMAIL } },
@@ -56,14 +69,8 @@ function shareAndListCalendars() {
       );
       granted++;
     } catch (e) {
-      // A duplicate ACL rule is the expected outcome on a re-run, not an error.
-      var message = String(e);
-      if (message.indexOf('duplicate') !== -1 || message.indexOf('409') !== -1) {
-        alreadyHad++;
-      } else {
-        failed++;
-        Logger.log('FAILED to share "' + name + '" (' + id + '): ' + message);
-      }
+      failed++;
+      Logger.log('FAILED to share "' + name + '" (' + id + '): ' + String(e));
     }
 
     entries.push({ id: id, name: name });
@@ -73,11 +80,11 @@ function shareAndListCalendars() {
 
   Logger.log('');
   Logger.log('Calendars owned by this account : ' + calendars.length);
-  Logger.log('Newly shared with the service AC: ' + granted);
-  Logger.log('Already shared                  : ' + alreadyHad);
+  Logger.log('Shared with the service account : ' + granted);
+  Logger.log('Skipped (own primary calendar)  : ' + skipped);
   Logger.log('Failed to share                 : ' + failed);
   Logger.log('');
-  Logger.log('Wrote ' + OUTPUT_FILENAME + ' to this account\'s Drive.');
+  Logger.log('Wrote ' + OUTPUT_FILENAME + ' (' + entries.length + ' calendars) to this account\'s Drive.');
   Logger.log('');
   Logger.log('NOTE: this only covers calendars this account OWNS. A calendar');
   Logger.log('owned by someone else must be run from that owner\'s account, or');
@@ -87,6 +94,10 @@ function shareAndListCalendars() {
 /**
  * Overwrites the file if it already exists, so repeated runs leave one file
  * rather than a pile of same-named copies (Drive allows duplicate names).
+ *
+ * HELPER — do not select this in the Run dropdown. Apps Script passes no
+ * arguments to a directly-run function, so `filename` arrives undefined and
+ * getFilesByName throws "Invalid argument: name". Run shareAndListCalendars.
  */
 function writeJsonToDrive(filename, data) {
   var json = JSON.stringify(data, null, 2);
