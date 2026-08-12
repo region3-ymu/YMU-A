@@ -130,7 +130,14 @@ begin
   -- Trim, drop blanks, de-duplicate. A double-tap on the same checkbox must
   -- not make one objective count twice in the curriculum aggregates this
   -- whole section exists to feed.
-  select coalesce(array_agg(distinct o), '{}')
+  --
+  -- btrim is applied to the AGGREGATED value, not just to the filter. Trimming
+  -- only in the where clause drops blanks but keeps padding on everything
+  -- else, so "  Warm-ups  " survives as a distinct string and then fails the
+  -- program-topic check below with a message naming an objective that visibly
+  -- exists. The TypeScript layer trims too, which is exactly why this was
+  -- invisible from the form and only showed up calling the RPC directly.
+  select coalesce(array_agg(distinct btrim(o)), '{}')
     into v_objectives
     from unnest(coalesce(p_objectives_worked, '{}')) as o
    where nullif(btrim(o), '') is not null;

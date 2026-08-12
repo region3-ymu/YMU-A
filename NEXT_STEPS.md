@@ -14,11 +14,7 @@ is left is not code:
    classes and the 2026-27 schedule is still loading — but it is not zero.
    `git push origin main` from your own terminal; this build environment has no
    GitHub credentials.
-2. **Set Lehrman Community Day School's coordinates by hand on `/lists`.** Its
-   row, region (east) and calendar are all correct now; only the pin is
-   missing, so nobody can clock in there. Census and Nominatim were both
-   re-tried on 2026-08-12 and neither resolves 727 Lehrman Dr — this needs a
-   human dropping a pin on a map, not another geocoder.
+2. ~~Set Lehrman's coordinates~~ — **done, see below.**
 3. **Share Linda Lentin K-8's Google calendar** with the service account. It is
    now the only real school with no calendar (the other is the deliberate
    "YMU Office (testing)" row). Run
@@ -303,15 +299,39 @@ Roster: **111 → 110 school rows**. Exactly one real school now has no calendar
 
 The two roster questions:
 
-- **Lehrman Community Day School runs**, region **east**, at 727 Lehrman Dr,
-  Miami Beach, FL 33141 — all three already correct in the app, and its
-  calendar is pinned. Only the coordinates are missing. Census and Nominatim
-  were re-tried on 2026-08-12 by address, by street and by school name; all
-  four queries returned nothing. Set the pin by hand on `/lists`.
+- **Lehrman Community Day School runs**, region **east** — and it is now
+  geocoded: `25.8623336, -80.126036`, 200 m geofence, `geocode_source =
+  osm_name_match`. See the section below for why every address geocoder failed
+  on it.
 - **"Highland Oaks Senior High School" was a roster typo.** YMU confirmed it is
   Highland Oaks **Middle** School, which already exists in the app with its
   calendar and 19 events. The review CSV row stays at `action=defer` with the
   answer recorded in its note, so `--apply` can never create it.
+
+### Why Lehrman defeated every address geocoder (solved 2026-08-12)
+
+Census and Nominatim were both tried on "727 Lehrman Dr, Miami Beach, FL
+33141", on the street alone, and on the school name — six queries, all empty.
+The address is not the problem the way it looked.
+
+**Lehrman Dr is the campus's private drive and does not exist as a routable
+street** in OSM or the Census TIGER data. But the school itself is in OSM — as
+`Lehnman Community Day School`, with an `n` where the `r` belongs, which is why
+every name search missed it too. Photon's fuzzier matching found it where
+Nominatim's did not.
+
+Confirmed rather than assumed, because a wrong geofence silently locks a whole
+school's teachers out of clocking in — the same failure mode as the
+Hialeah/Homestead mis-pin. Reverse-geocoding the point returns **house number
+727** and **postcode 33141**, both matching the roster address exactly, on
+77th Street. A second independent hit ("Lehrman Day School-Early Childhood
+Center") sits **44 m away**, well inside the 200 m geofence. The third OSM hit,
+"Lehrman Day School of Temple Emanu-el", is in 33139 on Washington Ave — a
+different South Beach campus, correctly rejected.
+
+Worth remembering for the next unresolvable address: try the **place name in
+Photon** before concluding an address does not exist. A private drive with a
+misspelt POI beats both national geocoders.
 
 Still unexplained: YMU expected **105 calendars and 105 schools**. Reality is
 109 school calendars in Google and 110 school rows. Neither side is 105, so
