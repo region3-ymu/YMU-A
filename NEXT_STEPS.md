@@ -1,26 +1,38 @@
 # NEXT_STEPS — YMU-A
 
-## 🔴 TWO EMAILS ARE COSTING 376 CLASSES (2026-08-12)
+## 🟡 ONE THING LEFT, AND IT IS YMU'S TO DO — Daniel Soto's 16 invites
 
 A teacher is attached to a class by matching the Google Calendar invite's
-attendee email against their app login, exactly, case-insensitively. Two do not
-match, and those classes have no teacher — meaning nobody can clock into them.
+attendee email against their app login, exactly and case-insensitively. Every
+mismatch is now resolved except one, and it is on the calendar side:
 
-| Calendar says | App has | Classes | Where |
-|---|---|---|---|
-| `jamesperez711@gmail.com` (**s**) | `jamezperez711@gmail.com` (**z**) | **360** | Madison Middle, Brownsville Middle |
-| `daniel.s.0903@outlook.com` | `sotod1403a@gmail.com` | 16 | West Homestead K-8 |
+**Daniel Soto's 16 classes at West Homestead K-8 are invited to
+`daniel.s.0903@outlook.com`.** YMU confirmed the app's `sotod1403a@gmail.com`
+is his real address, so the invites are the thing that is wrong. YMU is
+deleting and re-uploading those events with the correct address. Nothing to
+change in the app — and nothing else in the whole 2026-27 calendar is
+unmatched.
 
-**James Perez is almost certainly the app's typo.** Two independent sources —
-YMU's own name/email/phone CSV and the Google Calendar invites — both say `s`.
-The `z` came from `scripts/onboard-real-users.ts`, where it is hardcoded. He
-has signed in with the `z` address, but that proves nothing: the account was
-created with `email_confirm` and the password handed over verbally, so no mail
-ever had to arrive. Fixing it means changing his login, so it needs YMU's word.
+**After they are re-uploaded**, run this so the existing rows pick him up —
+a plain sync is NOT enough, see the incremental-sync note below:
 
-**Daniel Soto is the opposite case.** YMU confirmed the app's gmail is correct,
-so here it is the CALENDAR that is wrong — his 16 invites at West Homestead
-need re-inviting to `sotod1403a@gmail.com`. Nothing to change in the app.
+```sql
+select public.relink_event_teachers();
+```
+
+### ✅ James Perez, fixed 2026-08-12 — 360 classes recovered
+
+The app carried `jamezperez711@gmail.com`; YMU's CSV and the calendar invites
+both said `jamesperez711@gmail.com`. The `z` was a typo hardcoded in
+`scripts/onboard-real-users.ts`, which is now corrected there too — left alone
+it would have CREATED A DUPLICATE ACCOUNT on the next run, because that script
+looks accounts up by email.
+
+His 360 classes at Madison Middle and Brownsville Middle had no teacher, so
+nobody could clock into any of them. Login changed in place, re-linked, done.
+
+**He must be told his login changed**, and it cannot be self-served: `ymu.org`
+still has no SPF/DKIM/DMARC, so "Forgot password?" delivers nothing.
 
 ## 🟢 START HERE — everything is applied; what remains is a test pass
 
@@ -31,6 +43,33 @@ calendar is subscribed and pinned; the teacher roster is reconciled. Migration
 
 **What is left is one manual test pass** — the full script is under "How to
 test it" below. Everything else on this page is a record of what was done.
+
+### The 2026-27 schedule as it stands (13 Aug 2026 – 7 Jun 2027)
+
+| | |
+|---|---|
+| Classes | **6,182** — 6,166 with a teacher, 16 without (Soto, above) |
+| Schools with classes | 35 of 109 |
+| Teachers with classes | 29 of 49 active |
+
+Both gaps are real data, not sync failures. Every one of the 74 schools without
+classes **already has its Google calendar pinned and syncing** — the calendars
+are simply empty for 2026-27.
+
+- **No elementary school has any classes.** 0 of 39. YMU confirms this is
+  expected.
+- **West is barely scheduled at all**: 22 of its 23 schools have no 2026-27
+  classes, and 21 of those have never had a single event in any year. It is the
+  region that most deserves a second look.
+- 27 schools have history from earlier years but nothing yet for 2026-27, which
+  is what "still being loaded into Google" looks like from here.
+- **20 teachers have an account and no class.** Expected while the schedule is
+  still being loaded, but worth re-checking once YMU says it is complete —
+  after that, an account with no classes is either someone who left or an
+  invite that names the wrong address.
+
+Re-run these two whenever you want the current picture: `npm run
+calendar:coverage`, then `select public.relink_event_teachers();`.
 
 Two things nobody owes any work on but that will keep showing up:
 
