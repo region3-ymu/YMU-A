@@ -962,3 +962,34 @@ Both are Google Workspace. So the cheapest fix for the dead
 signup/reset-password path may be to send as the OLD domain rather than to add
 DNS records to the new one — worth checking before anyone starts editing
 ymu.org's DNS.
+
+### An incremental sync will not revisit what it already stored
+
+The calendar sync resolves attendee emails to app accounts at the moment it
+writes an event, and it syncs incrementally — Google returns only what changed
+since the last token. Each half is right. Together they hide a whole class of
+bug: creating a teacher's account, or fixing their login email, does not attach
+them to classes already in the database. Google considers those events
+unchanged, never returns them, and the linkage is never recomputed.
+
+Found on 2026-08-12, when 450 classes belonging to two people whose accounts
+were fixed that same day stayed teacher-less through a full sync run. The
+symptom is silent and severe: the teacher has no class to clock into, and
+nothing anywhere reports it.
+
+`relink_event_teachers()` (0035) recomputes the linkage from the attendee list
+already stored on every row, which is both faster and less destructive than
+discarding 111 sync tokens to force a full re-read. Run it after creating a
+teacher or correcting an email — a re-sync alone is not enough, which is the
+part that is not obvious.
+
+### Clearing a sheet means deleting rows, not blanking cells
+
+`values:clear` empties the cells and leaves the rows behind. A sheet cleared
+that way still reports its full row count, so the next `appendRows` — which
+writes after the last row, not the last value — lands a thousand rows below the
+header with a wall of blank rows above it.
+
+`clearDataRows()` issues a DeleteDimension batchUpdate from row 2 to the end
+instead, so the grid actually shrinks and the next append starts at row 2. The
+header is never in range.

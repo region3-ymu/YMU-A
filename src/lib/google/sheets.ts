@@ -168,3 +168,70 @@ export async function ensureHeader(
   );
   return true;
 }
+
+/**
+ * Deletes every data row, keeping the header.
+ *
+ * `values:clear` blanks the cells but leaves the rows in place, so a sheet
+ * cleared that way still reports thousands of empty rows and `appendRows`
+ * lands beneath all of them. This uses a DeleteDimension batchUpdate instead,
+ * which removes the rows themselves, so the next append starts at row 2.
+ *
+ * Returns how many data rows were removed. Never touches row 1.
+ */
+export async function clearDataRows(
+  serviceAccount: GoogleServiceAccount,
+  spreadsheetId: string,
+  sheetName: string,
+): Promise<number> {
+  const token = await getGoogleAccessToken(serviceAccount, SHEETS_SCOPE);
+
+  // The row count and the numeric sheetId, which batchUpdate needs and the
+  // human-readable tab name cannot provide.
+  const metaResponse = await fetch(
+    `${SHEETS_API}/${encodeURIComponent(spreadsheetId)}`
+    + `?fields=sheets(properties(sheetId,title,gridProperties/rowCount))`,
+    { headers: { authorization: `Bearer ${token}` } },
+  );
+  if (!metaResponse.ok) {
+    const body = await metaResponse.text().catch(() => "");
+    throw new GoogleCalendarError(
+      metaResponse.status === 403
+        ? describe403(body, serviceAccount.client_email)
+        : `Could not read the spreadsheet (${metaResponse.status}).`,
+      metaResponse.status,
+      body,
+    );
+  }
+  const meta = (await metaResponse.json()) as {
+    sheets?: { properties?: { sheetId?: number; title?: string; gridProperties?: { rowCount?: number } } }[];
+  };
+  const tab = (meta.sheets ?? []).find((s) => s.properties?.title === sheetName)?.properties;
+  if (!tab || tab.sheetId == null) throw new Error(`No tab named "${sheetName}" in that spreadsheet.`);
+
+  const rowCount = tab.gridProperties?.rowCount ?? 0;
+  if (rowCount <= 1) return 0;
+
+  const response = await fetch(
+    `${SHEETS_API}/${encodeURIComponent(spreadsheetId)}:batchUpdate`,
+    {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({
+        requests: [
+          {
+            deleteDimension: {
+              // startIndex 1 is the second row, zero-based — the header survives.
+              range: { sheetId: tab.sheetId, dimension: "ROWS", startIndex: 1, endIndex: rowCount },
+            },
+          },
+        ],
+      }),
+    },
+  );
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(`Could not clear the sheet (${response.status}): ${body}`);
+  }
+  return rowCount - 1;
+}

@@ -1,5 +1,27 @@
 # NEXT_STEPS — YMU-A
 
+## 🔴 TWO EMAILS ARE COSTING 376 CLASSES (2026-08-12)
+
+A teacher is attached to a class by matching the Google Calendar invite's
+attendee email against their app login, exactly, case-insensitively. Two do not
+match, and those classes have no teacher — meaning nobody can clock into them.
+
+| Calendar says | App has | Classes | Where |
+|---|---|---|---|
+| `jamesperez711@gmail.com` (**s**) | `jamezperez711@gmail.com` (**z**) | **360** | Madison Middle, Brownsville Middle |
+| `daniel.s.0903@outlook.com` | `sotod1403a@gmail.com` | 16 | West Homestead K-8 |
+
+**James Perez is almost certainly the app's typo.** Two independent sources —
+YMU's own name/email/phone CSV and the Google Calendar invites — both say `s`.
+The `z` came from `scripts/onboard-real-users.ts`, where it is hardcoded. He
+has signed in with the `z` address, but that proves nothing: the account was
+created with `email_confirm` and the password handed over verbally, so no mail
+ever had to arrive. Fixing it means changing his login, so it needs YMU's word.
+
+**Daniel Soto is the opposite case.** YMU confirmed the app's gmail is correct,
+so here it is the CALENDAR that is wrong — his 16 invites at West Homestead
+need re-inviting to `sotod1403a@gmail.com`. Nothing to change in the app.
+
 ## 🟢 START HERE — everything is applied; what remains is a test pass
 
 Every item from the previous handoff is closed. The objective selector is
