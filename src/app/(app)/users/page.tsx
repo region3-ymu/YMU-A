@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { requireRole } from "@/lib/auth/dal";
 import {
   REGION_LABELS,
-  ROLE_LABELS,
+  displayRole,
   type AppRole,
   type Region,
 } from "@/lib/auth/roles";
@@ -27,7 +27,7 @@ export default async function UsersPage() {
   const supabase = await createClient();
   const { data: rows, error } = await supabase
     .from("profiles")
-    .select("id, full_name, phone, role, region, archived_at")
+    .select("id, full_name, phone, role, job_title, region, archived_at")
     .order("full_name");
 
   // Mirrors promote_user()'s rules so the UI doesn't offer doomed submits:
@@ -79,7 +79,7 @@ export default async function UsersPage() {
                   )}
                 </p>
                 <p className="text-xs text-on-surface-variant">
-                  {ROLE_LABELS[row.role as AppRole]}
+                  {displayRole({ role: row.role as AppRole, job_title: row.job_title })}
                   {row.region
                     ? ` — ${REGION_LABELS[row.region as Region]}`
                     : ""}

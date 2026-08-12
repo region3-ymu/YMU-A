@@ -929,3 +929,36 @@ handed Central's manager 60 teachers instead of 10: a single shared date drags
 everyone in with it, and 206 "Concert" events at one Central school during
 Relay week carry 57 different teachers. The clause is therefore windowed to the
 live roster, with attendance and tickets covering everything older.
+
+### Job title and role are different columns
+
+YMU's Academic Manager is Juan Pelaez, and YMU wants the app to say "Academic
+Manager" beside his name while he keeps CPO permissions. The obvious move is to
+put him on the `academic_manager` role and widen that role until it matches
+`cpo`. That is the wrong lever, and quietly destructive.
+
+`role` is the permission grant. Every RLS policy branches on it, MANAGER_ROLES
+gates three routes with it, and — the part that would actually break —
+`ticket_owner_for_school()` uses `academic_manager` as its SECOND tier, the
+catch for a region with no Regional Manager. East and West have no RM and hold
+40 schools between them. Making the role a synonym for CPO would have
+re-routed 40 schools' worth of tickets as a side effect of relabelling one
+person, and nothing would have reported it.
+
+So `profiles.job_title` carries what someone is called, `role` carries what
+they can do, and `displayRole()` prefers the title when it is set. It also
+generalises in the direction reality moves: an organisation grows job titles
+faster than permission levels, and the next one is an UPDATE rather than a
+migration.
+
+### ymu.org cannot send mail; youngmusiciansunite.org can
+
+Checked while reconciling manager accounts. `ymu.org` has **no SPF, no DKIM and
+no DMARC** — its MX points at Google Workspace, so it receives fine, but
+nothing authorises outbound mail. `youngmusiciansunite.org`, the older domain,
+already publishes `v=spf1 include:_spf.google.com include:servers.mcsv.net`.
+
+Both are Google Workspace. So the cheapest fix for the dead
+signup/reset-password path may be to send as the OLD domain rather than to add
+DNS records to the new one — worth checking before anyone starts editing
+ymu.org's DNS.

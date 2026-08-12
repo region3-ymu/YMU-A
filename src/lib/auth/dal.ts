@@ -13,6 +13,9 @@ export type Profile = {
   full_name: string;
   phone: string | null;
   role: AppRole;
+  // What to show instead of the role label, when the two differ. See
+  // displayRole() in roles.ts — permissions still come from `role` alone.
+  job_title: string | null;
   region: Region | null;
   subjects: string[];
   emergency_contact: string | null;
@@ -37,7 +40,7 @@ export const getProfile = cache(async (): Promise<Profile | null> => {
   const { data: profile } = await supabase
     .from("profiles")
     .select(
-      "id, full_name, phone, role, region, subjects, emergency_contact, archived_at, is_app_admin",
+      "id, full_name, phone, role, job_title, region, subjects, emergency_contact, archived_at, is_app_admin",
     )
     .eq("id", user.id)
     .single();

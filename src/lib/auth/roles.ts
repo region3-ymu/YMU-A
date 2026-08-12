@@ -66,6 +66,26 @@ export const ROLE_LABELS: Record<AppRole, string> = {
   cpo: "CPO",
 };
 
+/**
+ * What to call someone on screen.
+ *
+ * `profiles.job_title` wins when it is set, because an organisation has more
+ * job titles than it has permission levels — YMU's Academic Manager holds CPO
+ * permissions (2026-08-12), and the only alternative was to make the
+ * `academic_manager` role a synonym for `cpo`. That role is
+ * `ticket_owner_for_school()`'s second tier, so doing it that way would have
+ * silently re-routed every ticket from the 40 East and West schools that have
+ * no Regional Manager.
+ *
+ * Display only. Nothing branches on the title; everything branches on `role`.
+ */
+export function displayRole(person: {
+  role: AppRole;
+  job_title?: string | null;
+}): string {
+  return person.job_title?.trim() || ROLE_LABELS[person.role];
+}
+
 export const REGION_LABELS: Record<Region, string> = {
   central: "Central",
   east: "East",

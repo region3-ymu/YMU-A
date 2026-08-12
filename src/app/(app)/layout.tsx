@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { requireProfile } from "@/lib/auth/dal";
-import { HOME_NAV_ITEM, navForRole, ROLE_LABELS } from "@/lib/auth/roles";
+import { displayRole, HOME_NAV_ITEM, navForRole } from "@/lib/auth/roles";
 import { getActionableTicketCount } from "@/lib/tickets/queries";
 import { getFeedbackOwed } from "@/lib/attendance/queries";
 import AppFeedbackButton from "@/components/app-feedback-button";
@@ -54,7 +54,7 @@ export default async function AppLayout({
           <div className="flex items-center gap-2.5">
             <OfflineIndicator />
             <span className="rounded-full bg-primary-container px-2.5 py-0.5 text-xs font-semibold text-on-primary-container">
-              {ROLE_LABELS[profile.role]}
+              {displayRole(profile)}
             </span>
             <span className="hidden text-sm text-on-surface-variant sm:inline">
               {profile.full_name}
