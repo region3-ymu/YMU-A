@@ -28,7 +28,7 @@ export default function BottomNav({ items }: { items: NavItem[] }) {
                 }`}
               >
                 <span
-                  className={`flex h-8 w-14 items-center justify-center rounded-full transition-colors ${
+                  className={`relative flex h-8 w-14 items-center justify-center rounded-full transition-colors ${
                     active ? "bg-primary-container text-on-primary-container" : ""
                   }`}
                 >
@@ -38,6 +38,14 @@ export default function BottomNav({ items }: { items: NavItem[] }) {
                   >
                     {item.icon}
                   </span>
+                  {/* Count of things waiting. Sits on the icon rather than
+                      beside the label so it reads at a glance without the tab
+                      widths shifting when the number changes. */}
+                  {item.badge != null && item.badge > 0 && (
+                    <span className="absolute -right-0.5 -top-0.5 min-w-5 rounded-full bg-error px-1 text-center text-[10px] font-bold leading-5 text-on-error">
+                      {item.badge > 99 ? "99+" : item.badge}
+                    </span>
+                  )}
                 </span>
                 <span className="text-[11px] font-medium leading-none">
                   {item.label}

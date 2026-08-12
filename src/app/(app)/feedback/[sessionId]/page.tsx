@@ -50,7 +50,7 @@ export default async function FeedbackSessionPage({
   }
 
   const summary = classTitle(owed.event?.summary);
-  const { programs, guessed, topics } = await getFeedbackFormData(owed.event?.summary);
+  const { program, topics } = await getFeedbackFormData(owed.event?.summary);
   const urgency = dueUrgency(owed.feedback_due_at);
 
   return (
@@ -75,9 +75,8 @@ export default async function FeedbackSessionPage({
         sessionId={owed.id}
         className={summary}
         schoolName={owed.school?.name ?? null}
-        programs={programs}
-        guessedProgram={guessed}
-        initialTopics={topics}
+        program={program}
+        topics={topics}
       />
 
       {urgency !== "overdue" && (

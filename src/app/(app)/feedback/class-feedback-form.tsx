@@ -24,23 +24,21 @@ export default function ClassFeedbackForm({
   sessionId,
   className,
   schoolName,
-  programs,
-  guessedProgram,
-  initialTopics,
+  program,
+  topics,
 }: {
   sessionId: string;
   className: string;
   schoolName: string | null;
-  programs: ProgramRow[];
-  guessedProgram: ProgramRow | null;
-  initialTopics: TopicRow[];
+  /** Resolved from the calendar title — shown, never chosen (YMU 2026-08-12). */
+  program: ProgramRow | null;
+  topics: TopicRow[];
 }) {
   const [state, action, pending] = useActionState<ClassFeedbackState, FormData>(
     submitClassFeedback,
     undefined,
   );
 
-  const [programId, setProgramId] = useState(guessedProgram?.id ?? "");
   const [engagement, setEngagement] = useState("");
   const [onTrack, setOnTrack] = useState<"yes" | "no" | "">("");
   const [pillar, setPillar] = useState("");
@@ -49,17 +47,7 @@ export default function ClassFeedbackForm({
   const [subcategory, setSubcategory] = useState("");
   const [description, setDescription] = useState("");
 
-  const program = programs.find((p) => p.id === programId) ?? null;
-  // Chips only arrive pre-loaded for the guessed program. Correcting the guess
-  // is rare (99% of titles match), so it costs a reload rather than shipping
-  // every program's chips to every phone on every class.
-  //
-  // The conditional lives INSIDE the memo: computed outside it produces a new
-  // array identity on every render, which defeats the memo entirely.
-  const pillars = useMemo(
-    () => groupTopicsByPillar(programId === guessedProgram?.id ? initialTopics : []),
-    [programId, guessedProgram?.id, initialTopics],
-  );
+  const pillars = useMemo(() => groupTopicsByPillar(topics), [topics]);
   const hasChips = pillars.size > 0;
 
   const descriptionShort = hasIssue === "yes" && description.trim().length < MIN_ISSUE_DESCRIPTION;
@@ -77,7 +65,7 @@ export default function ClassFeedbackForm({
   return (
     <form action={action} className="grid gap-6">
       <input type="hidden" name="session_id" value={sessionId} />
-      <input type="hidden" name="program_id" value={programId} />
+      <input type="hidden" name="program_id" value={program?.id ?? ""} />
       <input type="hidden" name="program_name" value={program?.name ?? className} />
       <input type="hidden" name="quarter_goals_on_track" value={onTrack} />
       <input type="hidden" name="has_issue" value={hasIssue} />
@@ -104,38 +92,16 @@ export default function ClassFeedbackForm({
       <Section
         number={2}
         title="What did you work on?"
-        hint={
-          guessedProgram
-            ? `We read “${className}” as ${guessedProgram.name}. Change it if that's wrong.`
-            : "We couldn't tell the program from the class title — pick it below."
-        }
+        hint={program ? `${program.name} — read from the class title.` : undefined}
       >
-        <label className="grid gap-1 text-sm">
-          <span className="font-medium text-on-surface-variant">Program</span>
-          <select
-            value={programId}
-            onChange={(e) => {
-              setProgramId(e.target.value);
-              setPillar("");
-              setTopicIds([]);
-            }}
-            className="rounded-lg bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary"
-          >
-            <option value="">Not listed / other</option>
-            {programs.map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
-        </label>
-
         {hasChips ? (
-          <div className="mt-3 grid gap-3">
+          <div className="grid gap-3">
             {Array.from(pillars.entries()).map(([pillarName, pillarTopics]) => (
               <div key={pillarName}>
                 <button
                   type="button"
                   onClick={() => setPillar(pillar === pillarName ? "" : pillarName)}
-                  className={`w-full rounded-xl px-3 py-2 text-left text-sm font-semibold transition ${
+                  className={`w-full rounded-xl px-3 py-3 text-left text-sm font-semibold transition ${
                     pillar === pillarName
                       ? "bg-primary text-on-primary"
                       : "bg-surface-container-low text-on-surface"
@@ -150,7 +116,7 @@ export default function ClassFeedbackForm({
                         key={topic.id}
                         type="button"
                         onClick={() => toggleTopic(topic.id)}
-                        className={`rounded-full px-3 py-1.5 text-sm transition ${
+                        className={`rounded-full px-3 py-2 text-sm transition ${
                           topicIds.includes(topic.id)
                             ? "bg-tertiary text-on-tertiary"
                             : "bg-surface-container-highest text-on-surface-variant"
@@ -165,7 +131,7 @@ export default function ClassFeedbackForm({
             ))}
           </div>
         ) : (
-          <label className="mt-3 grid gap-1 text-sm">
+          <label className="grid gap-1 text-sm">
             <span className="font-medium text-on-surface-variant">
               What did you work on? <span className="opacity-60">(optional)</span>
             </span>
@@ -173,7 +139,7 @@ export default function ClassFeedbackForm({
               name="open_topic_note"
               rows={2}
               placeholder="Describe the piece, exercise or activity."
-              className="rounded-lg bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary"
+              className="w-full rounded-lg bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary"
             />
           </label>
         )}

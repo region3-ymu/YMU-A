@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { requireProfile } from "@/lib/auth/dal";
 import { HOME_NAV_ITEM, navForRole, ROLE_LABELS } from "@/lib/auth/roles";
+import { getActionableTicketCount } from "@/lib/tickets/queries";
+import { getFeedbackOwed } from "@/lib/attendance/queries";
 import AppFeedbackButton from "@/components/app-feedback-button";
 import BackButton from "@/components/back-button";
 import BottomNav from "@/components/bottom-nav";
@@ -18,7 +20,22 @@ export default async function AppLayout({
 
   // Bottom nav = Home hub + the role's top destinations, capped so the bar
   // stays thumb-friendly on mobile. The full menu always lives on Home.
-  const navItems = [HOME_NAV_ITEM, ...navForRole(profile.role, profile.is_app_admin).slice(0, 4)];
+  // Badge counts. Both reads are RLS-scoped, so a teacher counts their own
+  // owed feedback and a Regional Manager counts their region's queue — no role
+  // branching needed here.
+  const [ticketCount, owed] = await Promise.all([
+    getActionableTicketCount(),
+    profile.role === "teacher" ? getFeedbackOwed() : Promise.resolve([]),
+  ]);
+
+  const navItems = [HOME_NAV_ITEM, ...navForRole(profile.role, profile.is_app_admin).slice(0, 4)].map(
+    (item) =>
+      item.href === "/tickets"
+        ? { ...item, badge: ticketCount }
+        : item.href === "/feedback"
+          ? { ...item, badge: owed.length }
+          : item,
+  );
 
   return (
     <div

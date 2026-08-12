@@ -30,16 +30,33 @@ export type TicketRow = {
   first_response_at: string | null;
   assigned_agent_id: string | null;
   teacher: { full_name: string; phone: string | null } | null;
-  school: { name: string } | null;
+  school: { name: string; address: string | null } | null;
   assigned_agent: { full_name: string } | null;
+  // The class the ticket came out of, and what the teacher reported about it.
+  // A manager reading a ticket needs the whole picture in one place; before
+  // this they had the description and nothing else.
+  event: { summary: string | null; start_at: string | null; end_at: string | null } | null;
+  feedback: {
+    engagement_level: string;
+    quarter_goals_on_track: boolean;
+    primary_focus_pillar: string | null;
+    open_topic_note: string | null;
+    submitted_at: string;
+    program: { name: string } | null;
+  } | null;
 };
 
 const TICKET_COLUMNS = `
   id, ticket_number, category_type, issue_subcategory, priority_level, description,
   status, root_cause_category, region, created_at, first_response_at, assigned_agent_id,
   teacher:profiles!tickets_teacher_id_fkey(full_name, phone),
-  school:schools(name),
-  assigned_agent:profiles!tickets_assigned_agent_id_fkey(full_name)
+  school:schools(name, address),
+  assigned_agent:profiles!tickets_assigned_agent_id_fkey(full_name),
+  event:calendar_events(summary, start_at, end_at),
+  feedback:feedback_submissions!tickets_feedback_id_fkey(
+    engagement_level, quarter_goals_on_track, primary_focus_pillar,
+    open_topic_note, submitted_at, program:programs(name)
+  )
 `;
 
 export async function getTickets(opts: { onlyOpen?: boolean } = {}): Promise<TicketRow[]> {
@@ -167,4 +184,20 @@ export async function getRootCauseReport(from?: string, to?: string): Promise<Ro
     p_to: to ?? null,
   });
   return (data as RootCauseRow[]) ?? [];
+}
+
+/**
+ * How many tickets are waiting on the caller, for the nav badge.
+ *
+ * A head-only count, so the badge costs a row count rather than the rows: it
+ * renders on every page in the layout, and pulling full ticket bodies there
+ * would tax every navigation for a number.
+ */
+export async function getActionableTicketCount(): Promise<number> {
+  const supabase = await createClient();
+  const { count } = await supabase
+    .from("tickets")
+    .select("id", { count: "exact", head: true })
+    .in("status", OPEN_STATUSES);
+  return count ?? 0;
 }

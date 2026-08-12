@@ -76,7 +76,14 @@ export const REGION_LABELS: Record<Region, string> = {
 
 // `icon` is a Material Symbols ligature name (see the Stitch design). Used by
 // the Home menu grid and the bottom navigation bar.
-export type NavItem = { href: string; label: string; note: string; icon: string };
+export type NavItem = {
+  href: string;
+  label: string;
+  note: string;
+  icon: string;
+  /** Rendered as a badge on the tile and the bottom bar. Omitted when zero. */
+  badge?: number;
+};
 
 // operations_manager/cpo by role, OR profiles.is_app_admin regardless of role
 // (currently only region3@ymu.org — see migration 0024) — the app_feedback
@@ -96,6 +103,12 @@ export function navForRole(role: AppRole, isAppAdmin: boolean = false): NavItem[
       label: "Clocking",
       note: "Next class & clock-in",
       icon: "schedule",
+    });
+    items.push({
+      href: "/feedback",
+      label: "Feedbacks",
+      note: "Pending & past submissions",
+      icon: "rate_review",
     });
   } else if (role === "academic_manager") {
     // No Dashboard or Lists tile: those routes are still scoped to

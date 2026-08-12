@@ -5,7 +5,7 @@ import { requireProfile } from "@/lib/auth/dal";
 import { isManagerRole, seesAllTickets, ROLE_LABELS, type AppRole } from "@/lib/auth/roles";
 import { getAssignableAgents, getTicket, getTicketMessages } from "@/lib/tickets/queries";
 import { STATUS_LABELS } from "@/lib/tickets/status";
-import { formatDateTime } from "@/lib/format/datetime";
+import { formatDateTime, formatTimeRange, formatWeekdayLong } from "@/lib/format/datetime";
 import { ReassignControl, ReplyBox, StatusControl } from "./ticket-controls";
 
 export const metadata: Metadata = { title: "Ticket" };
@@ -40,30 +40,82 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
           #{ticket.ticket_number} · {ticket.category_type} · {ticket.priority_level}
         </p>
         <h1 className="mt-1 text-lg font-semibold text-on-surface">{ticket.description}</h1>
-        <dl className="mt-3 grid gap-1 text-sm text-on-surface-variant">
+        {ticket.issue_subcategory && (
+          <p className="mt-1 text-sm text-on-surface-variant">
+            Reported as: {ISSUE_LABELS[ticket.issue_subcategory] ?? ticket.issue_subcategory}
+          </p>
+        )}
+      </header>
+
+      {/* Everything a manager needs before picking up the phone, in one place.
+          Previously this showed the description and little else, so answering
+          a ticket meant going and looking the class up. */}
+      <section className="rounded-2xl bg-surface-container p-5 shadow-sm">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-on-surface-variant">
+          Details
+        </h2>
+        <dl className="mt-2 grid gap-2 text-sm">
           <Row label="Status" value={STATUS_LABELS[ticket.status]} />
-          <Row label="Raised by" value={ticket.teacher?.full_name ?? "Unknown"} />
+          <Row label="Teacher" value={ticket.teacher?.full_name ?? "Unknown"} />
           {/* Contact details go to the people working the ticket only — the
               same rule migration 0027 follows for manager notifications. */}
           {isAgent && ticket.teacher?.phone && (
-            <div className="flex gap-2">
-              <dt className="w-24 shrink-0 font-medium">Phone</dt>
-              <dd>
-                <a href={`tel:${ticket.teacher.phone}`} className="text-primary hover:underline">
+            <div className="grid grid-cols-[7rem_1fr] gap-2">
+              <dt className="font-medium text-on-surface-variant">Phone</dt>
+              <dd className="min-w-0 break-words">
+                <a href={`tel:${ticket.teacher.phone}`} className="font-semibold text-primary hover:underline">
                   {ticket.teacher.phone}
                 </a>
               </dd>
             </div>
           )}
           <Row label="School" value={ticket.school?.name ?? "Not matched"} />
+          {ticket.school?.address && <Row label="Address" value={ticket.school.address} />}
           <Row label="Region" value={ticket.region ?? "—"} />
+          <Row label="Class" value={ticket.event?.summary?.trim() || "—"} />
+          {ticket.feedback?.program?.name && (
+            <Row label="Program" value={ticket.feedback.program.name} />
+          )}
+          {ticket.event?.start_at && (
+            <>
+              <Row label="Day" value={formatWeekdayLong(ticket.event.start_at)} />
+              <Row label="Time" value={formatTimeRange(ticket.event.start_at, ticket.event.end_at)} />
+            </>
+          )}
           <Row label="Owner" value={ticket.assigned_agent?.full_name ?? "Unassigned"} />
           <Row label="Opened" value={formatDateTime(ticket.created_at)} />
+          {ticket.first_response_at && (
+            <Row label="First reply" value={formatDateTime(ticket.first_response_at)} />
+          )}
         </dl>
-      </header>
+      </section>
+
+      {/* What the teacher said about the class itself. The ticket description
+          is only the problem; this is the context around it. */}
+      {ticket.feedback && (
+        <section className="rounded-2xl bg-surface-container p-5 shadow-sm">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-on-surface-variant">
+            From their feedback
+          </h2>
+          <dl className="mt-2 grid gap-2 text-sm">
+            <Row label="Engagement" value={ENGAGEMENT_LABELS[ticket.feedback.engagement_level] ?? ticket.feedback.engagement_level} />
+            <Row
+              label="Quarter goals"
+              value={ticket.feedback.quarter_goals_on_track ? "On track" : "Falling behind"}
+            />
+            {ticket.feedback.primary_focus_pillar && (
+              <Row label="Focus" value={ticket.feedback.primary_focus_pillar} />
+            )}
+            {ticket.feedback.open_topic_note && (
+              <Row label="Worked on" value={ticket.feedback.open_topic_note} />
+            )}
+            <Row label="Submitted" value={formatDateTime(ticket.feedback.submitted_at)} />
+          </dl>
+        </section>
+      )}
 
       {isAgent && (
-        <div className="grid gap-4 rounded-2xl bg-surface-container p-5 shadow-sm sm:grid-cols-2">
+        <div className="grid min-w-0 gap-5 rounded-2xl bg-surface-container p-4 shadow-sm sm:grid-cols-2">
           <StatusControl
             ticketId={ticket.id}
             current={ticket.status}
@@ -121,11 +173,30 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   );
 }
 
+const ISSUE_LABELS: Record<string, string> = {
+  attendance: "Attendance / missing students",
+  behavior: "Student behavior & management",
+  instruments: "Damaged / missing instruments",
+  facilities: "Tech, connectivity or facilities",
+  cancelled: "Class cancelled on site",
+  repertoire: "Repertoire difficulty / sheet music",
+  coaching: "Pedagogical support & coaching",
+  technique: "Technique / literacy barriers",
+};
+
+const ENGAGEMENT_LABELS: Record<string, string> = {
+  High: "High engagement & strong output",
+  Solid: "Solid / on target",
+  Low: "Low engagement / struggling",
+};
+
+// A fixed label column with a wrapping value column. The old flex row let a
+// long school address push the whole card past the screen edge on a phone.
 function Row({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex gap-2">
-      <dt className="w-24 shrink-0 font-medium">{label}</dt>
-      <dd className="text-on-surface">{value}</dd>
+    <div className="grid grid-cols-[7rem_1fr] gap-2">
+      <dt className="font-medium text-on-surface-variant">{label}</dt>
+      <dd className="min-w-0 break-words text-on-surface">{value}</dd>
     </div>
   );
 }

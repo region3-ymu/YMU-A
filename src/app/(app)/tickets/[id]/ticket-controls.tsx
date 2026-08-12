@@ -14,7 +14,7 @@ export function ReplyBox({ ticketId, canWriteNote }: { ticketId: string; canWrit
   const [internal, setInternal] = useState(false);
 
   return (
-    <form action={action} className="grid gap-2">
+    <form action={action} className="grid min-w-0 gap-2">
       <input type="hidden" name="ticket_id" value={ticketId} />
       <input type="hidden" name="is_internal_note" value={internal ? "yes" : "no"} />
       <textarea
@@ -22,7 +22,7 @@ export function ReplyBox({ ticketId, canWriteNote }: { ticketId: string; canWrit
         rows={3}
         required
         placeholder={internal ? "Internal note — the teacher never sees this." : "Reply to the teacher…"}
-        className="rounded-lg bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary"
+        className="w-full min-w-0 rounded-lg bg-surface-container-low px-3 py-3 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary"
       />
       <div className="flex items-center justify-between gap-3">
         {canWriteNote ? (
@@ -73,7 +73,7 @@ export function StatusControl({
   const needsRootCause = status === "Resolved" && !currentRootCause;
 
   return (
-    <form action={action} className="grid gap-2">
+    <form action={action} className="grid min-w-0 gap-2">
       <input type="hidden" name="ticket_id" value={ticketId} />
       <label className="grid gap-1 text-sm">
         <span className="font-medium text-on-surface-variant">Status</span>
@@ -81,7 +81,7 @@ export function StatusControl({
           name="status"
           value={status}
           onChange={(e) => setStatus(e.target.value as TicketStatus)}
-          className="rounded-lg bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary"
+          className="w-full min-w-0 rounded-lg bg-surface-container-low px-3 py-3 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary"
         >
           {TICKET_STATUSES.map((s) => (
             <option key={s} value={s}>{STATUS_LABELS[s]}</option>
@@ -96,7 +96,7 @@ export function StatusControl({
             name="root_cause_category"
             required
             defaultValue=""
-            className="rounded-lg bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary"
+            className="w-full min-w-0 rounded-lg bg-surface-container-low px-3 py-3 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary"
           >
             <option value="" disabled>Choose…</option>
             {ROOT_CAUSES.map((r) => (
@@ -133,7 +133,7 @@ export function ReassignControl({
   const [agentId, setAgentId] = useState(currentAgentId ?? "");
 
   return (
-    <form action={action} className="grid gap-2">
+    <form action={action} className="grid min-w-0 gap-2">
       <input type="hidden" name="ticket_id" value={ticketId} />
       <label className="grid gap-1 text-sm">
         <span className="font-medium text-on-surface-variant">Owner</span>
@@ -141,7 +141,7 @@ export function ReassignControl({
           name="agent_id"
           value={agentId}
           onChange={(e) => setAgentId(e.target.value)}
-          className="rounded-lg bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary"
+          className="w-full min-w-0 rounded-lg bg-surface-container-low px-3 py-3 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary"
         >
           <option value="" disabled>Choose…</option>
           {agents.map((a) => (
@@ -155,7 +155,7 @@ export function ReassignControl({
       <input
         name="note"
         placeholder="Why are you handing it over? (optional)"
-        className="rounded-lg bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary"
+        className="w-full min-w-0 rounded-lg bg-surface-container-low px-3 py-3 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary"
       />
       <button
         type="submit"

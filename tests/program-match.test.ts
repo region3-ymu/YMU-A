@@ -5,25 +5,25 @@
 // being program names, so the test data has to be the actual data.
 
 import { describe, expect, it } from "vitest";
-import { groupTopicsByPillar, issueCategoryFor, matchProgram, type ProgramRow } from "../src/lib/feedback/program-match";
+import {
+  groupTopicsByPillar,
+  issueCategoryFor,
+  matchProgram,
+  resolveProgram,
+  type ProgramRow,
+} from "../src/lib/feedback/program-match";
 
 // Mirrors the seed in migration 0030, in sort_order — which IS the matching
 // precedence.
+// The six programs YMU actually runs (confirmed 2026-08-12), in sort_order —
+// which IS the matching precedence.
 const PROGRAMS: ProgramRow[] = [
-  { id: "marching", name: "Marching Band", category: "Ensemble", sort_order: 10, match_patterns: ["marching band"] },
-  { id: "concert", name: "Concert Band", category: "Ensemble", sort_order: 20, match_patterns: ["concert band"] },
-  { id: "beginning", name: "Beginning Band", category: "Ensemble", sort_order: 30, match_patterns: ["beginning band", "beginner band", "winds"] },
-  { id: "modern", name: "Modern Band", category: "Ensemble", sort_order: 40, match_patterns: ["modern band", "mod band"] },
-  { id: "jazz", name: "Jazz Band", category: "Ensemble", sort_order: 45, match_patterns: ["jazz band", "jazz"] },
-  { id: "rock", name: "Rock Ensemble", category: "Ensemble", sort_order: 50, match_patterns: ["rock ensemble"] },
-  { id: "fusion", name: "Fusion Ensemble", category: "Ensemble", sort_order: 55, match_patterns: ["fusion"] },
-  { id: "drumline", name: "Drumline", category: "Ensemble", sort_order: 60, match_patterns: ["drumline", "drum line", "drumlin", "drimline"] },
-  { id: "orchestra", name: "Orchestra", category: "Ensemble", sort_order: 70, match_patterns: ["orchestra", "strings"] },
-  { id: "guitar", name: "Guitar", category: "Ensemble", sort_order: 80, match_patterns: ["guitar"] },
-  { id: "production", name: "Music Production", category: "Production", sort_order: 90, match_patterns: ["music production", "production", "daw", "beatmaking"] },
-  { id: "pitch", name: "Pitch & Rhythm", category: "NonFixed", sort_order: 100, match_patterns: ["pitch & rhythm", "pitch and rhythm", "p+r", "p + r"] },
-  { id: "afterschool", name: "After School", category: "NonFixed", sort_order: 110, match_patterns: ["after school", "afterschool", "tutoring"] },
-  { id: "asd", name: "ASD / Special", category: "NonFixed", sort_order: 120, match_patterns: ["asd", "special"] },
+  { id: "drumline", name: "Drumline", category: "Ensemble", sort_order: 10, match_patterns: ["drumline", "drum line", "drumlin", "drimline"] },
+  { id: "modern", name: "Modern Band", category: "Ensemble", sort_order: 20, match_patterns: ["modern band", "mod band", "guitar", "jazz band", "jazz rhythm", "rhythm section"] },
+  { id: "beginning", name: "Beginning Band", category: "Ensemble", sort_order: 30, match_patterns: ["beginning band", "beginner band", "winds", "concert band", "marching band"] },
+  { id: "production", name: "Music Production", category: "Production", sort_order: 40, match_patterns: ["music production", "production", "daw", "beatmaking"] },
+  { id: "pitch", name: "Pitch & Rhythm", category: "NonFixed", sort_order: 50, match_patterns: ["pitch & rhythm", "pitch and rhythm", "p+r", "p + r"] },
+  { id: "afterschool", name: "After School", category: "NonFixed", sort_order: 900, match_patterns: ["after school", "afterschool", "tutoring", "rock ensemble", "jazz ensemble", "fusion", "orchestra", "strings", "ensemble", "asd", "special"] },
 ];
 
 describe("matchProgram", () => {
@@ -32,6 +32,22 @@ describe("matchProgram", () => {
     expect(matchProgram("Music Production", PROGRAMS)?.id).toBe("production");
     expect(matchProgram("Beginning Band", PROGRAMS)?.id).toBe("beginning");
     expect(matchProgram("Modern Band", PROGRAMS)?.id).toBe("modern");
+  });
+
+  // YMU's own mapping, not an inference: guitar and jazz-with-a-rhythm-section
+  // are taught as Modern Band, and every other ensemble is After School.
+  it("folds guitar and jazz rhythm into Modern Band", () => {
+    expect(matchProgram("Guitar", PROGRAMS)?.id).toBe("modern");
+    expect(matchProgram("Guitar class - Edison", PROGRAMS)?.id).toBe("modern");
+    expect(matchProgram("Jazz Band", PROGRAMS)?.id).toBe("modern");
+    expect(matchProgram("Jazz rhythm section", PROGRAMS)?.id).toBe("modern");
+  });
+
+  it("folds the other ensembles into After School", () => {
+    expect(matchProgram("Rock Ensemble", PROGRAMS)?.id).toBe("afterschool");
+    expect(matchProgram("Jazz Ensemble", PROGRAMS)?.id).toBe("afterschool");
+    expect(matchProgram("Fusion Ensemble", PROGRAMS)?.id).toBe("afterschool");
+    expect(matchProgram("Orchestra", PROGRAMS)?.id).toBe("afterschool");
   });
 
   it("ignores the school-name suffix staff append", () => {
@@ -44,14 +60,15 @@ describe("matchProgram", () => {
   // "band"; resolving them by whichever row is scanned first would be wrong
   // for three of the four.
   it("prefers the more specific band variant", () => {
-    expect(matchProgram("Marching Band", PROGRAMS)?.id).toBe("marching");
-    expect(matchProgram("Concert Band", PROGRAMS)?.id).toBe("concert");
-    expect(matchProgram("Jazz Band", PROGRAMS)?.id).toBe("jazz");
-    expect(matchProgram("After School - Marching Band", PROGRAMS)?.id).toBe("marching");
+    // Every one of these contains "band"; Modern Band is scanned before
+    // Beginning Band, so "jazz band" must not be swallowed by a looser rule.
+    expect(matchProgram("Jazz Band", PROGRAMS)?.id).toBe("modern");
+    expect(matchProgram("Marching Band", PROGRAMS)?.id).toBe("beginning");
+    expect(matchProgram("Concert Band", PROGRAMS)?.id).toBe("beginning");
   });
 
   it("is case-insensitive, because staff titles are not consistent", () => {
-    expect(matchProgram("Jazz BAnd", PROGRAMS)?.id).toBe("jazz");
+    expect(matchProgram("Jazz BAnd", PROGRAMS)?.id).toBe("modern");
     expect(matchProgram("DRUMLINE", PROGRAMS)?.id).toBe("drumline");
   });
 
@@ -110,5 +127,25 @@ describe("issueCategoryFor", () => {
   it("defaults an unknown subcategory to Operational", () => {
     expect(issueCategoryFor("something-else")).toBe("Operational");
     expect(issueCategoryFor(null)).toBe("Operational");
+  });
+});
+
+describe("resolveProgram", () => {
+  // The teacher is no longer asked which program it was, so there is nobody to
+  // resolve a null — an unmatched title has to land somewhere, and After
+  // School is the catch-all YMU nominated.
+  it("falls back to After School when nothing matches", () => {
+    expect(resolveProgram("Walkthrough - Morningside K-8", PROGRAMS)?.id).toBe("afterschool");
+    expect(resolveProgram("Evaluations", PROGRAMS)?.id).toBe("afterschool");
+    expect(resolveProgram(null, PROGRAMS)?.id).toBe("afterschool");
+  });
+
+  it("still prefers a real match over the fallback", () => {
+    expect(resolveProgram("Drumline - Carol City Middle", PROGRAMS)?.id).toBe("drumline");
+  });
+
+  // Guards the one case where there is no fallback to reach for.
+  it("returns null when After School itself is missing", () => {
+    expect(resolveProgram("anything", PROGRAMS.filter((p) => p.id !== "afterschool"))).toBeNull();
   });
 });

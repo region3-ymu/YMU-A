@@ -4,7 +4,7 @@
 // 0030) — the form is useless otherwise — so there is no role branching here.
 
 import { createClient } from "@/lib/supabase/server";
-import { matchProgram, type ProgramRow } from "./program-match";
+import { resolveProgram, type ProgramRow } from "./program-match";
 
 export type TopicRow = {
   id: string;
@@ -40,13 +40,48 @@ export async function getTopicsForProgram(programId: string | null): Promise<Top
 }
 
 /**
- * Everything the form needs for one class: the full program list (so the
- * teacher can correct a wrong guess without a round trip), the guess itself,
- * and the chips for that guess.
+ * Everything the form needs for one class. The program is resolved here and
+ * never asked: the teacher sees which one it landed on, but does not pick it.
+ * The full list is no longer returned — there is nothing left to pick from.
  */
 export async function getFeedbackFormData(summary: string | null | undefined) {
   const programs = await getPrograms();
-  const guessed = matchProgram(summary, programs);
-  const topics = await getTopicsForProgram(guessed?.id ?? null);
-  return { programs, guessed, topics };
+  const program = resolveProgram(summary, programs);
+  const topics = await getTopicsForProgram(program?.id ?? null);
+  return { program, topics };
+}
+
+export type SubmittedFeedback = {
+  id: string;
+  engagement_level: string;
+  primary_focus_pillar: string | null;
+  open_topic_note: string | null;
+  quarter_goals_on_track: boolean;
+  has_issue: boolean;
+  submitted_at: string;
+  program: { name: string } | null;
+  school: { name: string } | null;
+  event: { summary: string | null; start_at: string | null } | null;
+};
+
+/**
+ * What the caller has already submitted, newest first.
+ *
+ * RLS scopes feedback_submissions to "mine, or my region if I'm a manager", so
+ * this is a teacher's own history without any filter here. Capped: the point
+ * is "what did I say about that class", not an archive to page through.
+ */
+export async function getSubmittedFeedback(limit = 25): Promise<SubmittedFeedback[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("feedback_submissions")
+    .select(
+      `id, engagement_level, primary_focus_pillar, open_topic_note,
+       quarter_goals_on_track, has_issue, submitted_at,
+       program:programs(name), school:schools(name),
+       event:calendar_events(summary, start_at)`,
+    )
+    .order("submitted_at", { ascending: false })
+    .limit(limit);
+  return (data as unknown as SubmittedFeedback[]) ?? [];
 }

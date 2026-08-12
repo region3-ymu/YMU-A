@@ -108,12 +108,25 @@ export async function getOwedFeedbackById(sessionId: string): Promise<OwedFeedba
   return (data as unknown as OwedFeedback) ?? null;
 }
 
-// The soonest matched class the caller can still clock into (not yet ended,
-// not cancelled, matched to a school, AND not already attended). null when
-// there's nothing upcoming.
+// The soonest matched class the caller can still clock into TODAY (not yet
+// ended, not cancelled, matched to a school, and not already attended). null
+// when there is nothing left today.
+//
+// Same-day is the point. A teacher with classes today and tomorrow could
+// previously clock into TOMORROW's class today, which invents attendance for a
+// class that has not happened. clock_in() rejects it outright now (migration
+// 0032); this stops the app from offering it in the first place.
+//
+// "Today" is the Miami calendar day, not UTC: an 8:30 PM Miami class is 00:30
+// UTC the NEXT day, and a UTC comparison would hide a teacher's own evening
+// class from them. Tomorrow's class appears on its own at Miami midnight.
 export async function getNextClass(): Promise<NextClass | null> {
   const supabase = await createClient();
   const nowIso = new Date().toISOString();
+  const todayMiami = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(new Date());
 
   // Classes the caller has ALREADY clocked into (open OR closed) must not be
   // re-offered. Without this, a teacher who clocked in and submitted feedback
@@ -147,5 +160,12 @@ export async function getNextClass(): Promise<NextClass | null> {
     .order("start_at", { ascending: true })
     .limit(50);
   const candidates = (data as unknown as NextClass[] | null) ?? [];
-  return candidates.find((event) => !attended.has(event.id)) ?? null;
+  const isToday = (startAt: string | null) =>
+    startAt != null
+    && new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/New_York",
+      year: "numeric", month: "2-digit", day: "2-digit",
+    }).format(new Date(startAt)) === todayMiami;
+
+  return candidates.find((event) => !attended.has(event.id) && isToday(event.start_at)) ?? null;
 }

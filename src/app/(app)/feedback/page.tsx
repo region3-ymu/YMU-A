@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { requireRole } from "@/lib/auth/dal";
 import { getFeedbackOwed, type OwedFeedback } from "@/lib/attendance/queries";
+import { getSubmittedFeedback, type SubmittedFeedback } from "@/lib/feedback/queries";
 import { describeDue, dueUrgency } from "@/lib/attendance/feedback-due";
 import { formatDate, formatTimeRange } from "@/lib/format/datetime";
 
@@ -18,7 +19,7 @@ function classTitle(summary: string | null | undefined) {
 // to see the whole list and its deadlines.
 export default async function FeedbackPage() {
   await requireRole("teacher");
-  const owed = await getFeedbackOwed();
+  const [owed, submitted] = await Promise.all([getFeedbackOwed(), getSubmittedFeedback()]);
   const overdueCount = owed.filter((o) => dueUrgency(o.feedback_due_at) === "overdue").length;
 
   return (
@@ -73,7 +74,71 @@ export default async function FeedbackPage() {
           ))}
         </ul>
       )}
+
+      {/* What they already said. Requested so a teacher can look back at their
+          own answers — before this the form was write-only, and once submitted
+          the answers were visible to managers but not to their author. */}
+      {submitted.length > 0 && (
+        <section className="mt-2">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-on-surface-variant">
+            Already submitted
+          </h2>
+          <ul className="mt-2 grid grid-cols-1 gap-2">
+            {submitted.map((item) => (
+              <li key={item.id}>
+                <SubmittedCard item={item} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </main>
+  );
+}
+
+const ENGAGEMENT_LABELS: Record<string, string> = {
+  High: "High engagement",
+  Solid: "Solid / on target",
+  Low: "Low engagement",
+};
+
+// Collapsed by default: the list is a reference, not a feed. A teacher opens
+// the one class they are trying to remember, not all twenty-five.
+function SubmittedCard({ item }: { item: SubmittedFeedback }) {
+  return (
+    <details className="rounded-2xl bg-surface-container p-4 shadow-sm">
+      <summary className="cursor-pointer list-none">
+        <span className="block truncate font-medium text-on-surface">
+          {item.event?.summary?.trim() || "Untitled class"}
+        </span>
+        <span className="mt-0.5 block truncate text-xs text-on-surface-variant">
+          {item.school?.name ?? "—"} · {formatDate(item.submitted_at)}
+          {item.has_issue ? " · reported an issue" : ""}
+        </span>
+      </summary>
+      <dl className="mt-3 grid gap-1.5 text-sm">
+        {item.program?.name && <Answer label="Program" value={item.program.name} />}
+        <Answer
+          label="Engagement"
+          value={ENGAGEMENT_LABELS[item.engagement_level] ?? item.engagement_level}
+        />
+        <Answer
+          label="Quarter goals"
+          value={item.quarter_goals_on_track ? "On track" : "Falling behind"}
+        />
+        {item.primary_focus_pillar && <Answer label="Focus" value={item.primary_focus_pillar} />}
+        {item.open_topic_note && <Answer label="Worked on" value={item.open_topic_note} />}
+      </dl>
+    </details>
+  );
+}
+
+function Answer({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="grid grid-cols-[7rem_1fr] gap-2">
+      <dt className="font-medium text-on-surface-variant">{label}</dt>
+      <dd className="min-w-0 break-words text-on-surface">{value}</dd>
+    </div>
   );
 }
 

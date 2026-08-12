@@ -128,35 +128,68 @@ export default async function Home() {
       )}
 
       {!clockInLocked && pendingOwed.length > 0 && (
-        <Link
-          href="/feedback"
-          className="block rounded-2xl bg-warning-container p-4 text-on-warning-container shadow-sm transition-transform active:scale-[0.99]"
-        >
+        // Red and loud even though the deadline has NOT passed yet. The
+        // warning-coloured version was too easy to scroll past, and by the
+        // time it turns into the locked state the teacher has already lost
+        // the ability to clock in — which is the outcome this exists to
+        // prevent, not announce.
+        <div className="rounded-2xl bg-error-container p-5 text-on-error-container shadow-sm">
           <div className="flex items-start gap-3">
-            <span className="material-symbols-outlined mt-0.5 shrink-0" aria-hidden>
-              edit_note
+            <span className="material-symbols-outlined mt-0.5 shrink-0 text-3xl text-error" aria-hidden>
+              assignment_late
             </span>
-            <div className="flex-1">
-              <p className="font-bold">
-                Feedback owed for {pendingOwed.length} {pendingOwed.length === 1 ? "class" : "classes"}
+            <div className="min-w-0 flex-1">
+              <p className="text-xl font-bold leading-tight">
+                Feedback owed for {pendingOwed.length}{" "}
+                {pendingOwed.length === 1 ? "class" : "classes"}
               </p>
-              <p className="mt-0.5 text-sm opacity-90">
-                Earliest {describeDue(pendingOwed[0].feedback_due_at).toLowerCase()}. You can keep
-                clocking in until then.
+              <p className="mt-1 text-sm opacity-90">
+                Earliest {describeDue(pendingOwed[0].feedback_due_at).toLowerCase()}. After that you
+                can&apos;t clock in anywhere.
               </p>
             </div>
           </div>
-        </Link>
+          <ul className="mt-3 grid gap-2">
+            {/* Straight into the form for a specific class — one tap from
+                here to writing, instead of landing on a list first. */}
+            {pendingOwed.slice(0, 3).map((item) => (
+              <li key={item.id}>
+                <Link
+                  href={`/feedback/${item.id}`}
+                  className="flex items-center justify-between gap-3 rounded-xl bg-surface-container p-3 text-on-surface shadow-sm transition active:scale-[0.99]"
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium">
+                      {item.event?.summary?.trim() || "Untitled class"}
+                    </span>
+                    <span className="block truncate text-xs text-on-surface-variant">
+                      {item.school?.name ?? "Unmatched school"} ·{" "}
+                      {describeDue(item.feedback_due_at)}
+                    </span>
+                  </span>
+                  <span className="shrink-0 rounded-full bg-error px-4 py-2 text-sm font-bold text-on-error">
+                    Submit now
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+          {pendingOwed.length > 3 && (
+            <Link href="/feedback" className="mt-2 inline-block text-sm font-semibold underline">
+              See all {pendingOwed.length}
+            </Link>
+          )}
+        </div>
       )}
 
       {/* Gradient "Next up" hero (Base44) — the teacher's soonest clockable
           class. Hidden only when clock-in is genuinely locked; feedback merely
           pending no longer hides it, which is the whole point of the window. */}
       {isTeacher && !clockInLocked && nextClass && (
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary to-[#7c3aed] p-5 text-white shadow-lg">
-          <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-white/10" aria-hidden />
-          <p className="text-xs font-semibold uppercase tracking-wide text-white/80">Next up</p>
-          <h2 className="mt-1 text-2xl font-bold">{classTitle(nextClass.summary)}</h2>
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary to-[#7c3aed] p-4 text-white shadow-md">
+          <div className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-white/10" aria-hidden />
+          <p className="text-xs font-semibold uppercase tracking-wide text-white/80">Next up today</p>
+          <h2 className="mt-0.5 text-lg font-bold">{classTitle(nextClass.summary)}</h2>
           {nextClass.school && (
             <p className="mt-1 flex items-center gap-1 text-sm text-white/90">
               <span className="material-symbols-outlined text-base" aria-hidden>location_on</span>

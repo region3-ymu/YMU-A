@@ -21,6 +21,12 @@ export type ProgramRow = {
   sort_order: number;
 };
 
+// YMU runs exactly six programs (confirmed 2026-08-12). Guitar and jazz with a
+// rhythm section are Modern Band; every other ensemble — Rock, Jazz, Fusion,
+// Orchestra — is After School, which doubles as the catch-all when a title
+// matches nothing at all.
+export const FALLBACK_PROGRAM_NAME = "After School";
+
 /**
  * The first program whose pattern appears in the title, in sort_order.
  *
@@ -43,6 +49,27 @@ export function matchProgram(
     }
   }
   return null;
+}
+
+/**
+ * The program for a class, always. The teacher is no longer asked (YMU
+ * 2026-08-12): asking cost a tap on every single class to confirm something
+ * the title already said 99% of the time.
+ *
+ * Falling back to After School rather than returning null is what makes that
+ * possible — with no picker there is no way for a teacher to resolve a null,
+ * so an unmatched title has to land somewhere, and After School is the
+ * catch-all YMU nominated.
+ */
+export function resolveProgram(
+  summary: string | null | undefined,
+  programs: ProgramRow[],
+): ProgramRow | null {
+  return (
+    matchProgram(summary, programs)
+    ?? programs.find((p) => p.name === FALLBACK_PROGRAM_NAME)
+    ?? null
+  );
 }
 
 export const PILLAR_NONE = "__none__";
