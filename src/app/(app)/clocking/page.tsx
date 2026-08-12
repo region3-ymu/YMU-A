@@ -5,7 +5,6 @@ import { getFeedbackOwed, getNextClass, getOpenSession } from "@/lib/attendance/
 import { describeDue, dueUrgency } from "@/lib/attendance/feedback-due";
 import { formatTime, formatTimeRange, formatWeekdayLong } from "@/lib/format/datetime";
 import ClockingClient from "./clocking-client";
-import ClockOutButton from "./clock-out-button";
 
 export const metadata: Metadata = { title: "Clocking" };
 
@@ -90,12 +89,17 @@ export default async function ClockingPage() {
       )}
 
       {openSession && (
-        <section className="relative overflow-hidden rounded-2xl bg-surface-container p-5 shadow-sm">
+        // No Clock out button. Since 0021 hours_worked is the SCHEDULED
+        // duration, so clocking out never affected pay or reporting — it only
+        // marked "still in class", which clock_in() and the cron sweep now
+        // handle on their own. The button asked teachers to remember a step
+        // that changed nothing (YMU 2026-08-12).
+        <section className="relative overflow-hidden rounded-2xl bg-surface-container p-4 shadow-sm">
           <div className="absolute inset-y-0 left-0 w-1.5 bg-tertiary" aria-hidden />
           <p className="text-xs font-semibold uppercase tracking-wide text-tertiary">
             Clocked in
           </p>
-          <h2 className="mt-1 text-lg font-semibold text-on-surface">
+          <h2 className="mt-0.5 font-semibold text-on-surface">
             {classTitle(openSession.event?.summary)}
           </h2>
           {openSession.school?.name && (
@@ -105,11 +109,9 @@ export default async function ClockingPage() {
             </p>
           )}
           <p className="mt-0.5 text-sm text-on-surface-variant">
-            Since {formatTime(openSession.clock_in_at)}
+            Since {formatTime(openSession.clock_in_at)} · you&apos;re all set, just submit the
+            feedback when the class ends.
           </p>
-          <div className="mt-4">
-            <ClockOutButton sessionId={openSession.id} />
-          </div>
         </section>
       )}
 

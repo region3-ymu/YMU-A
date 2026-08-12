@@ -67,12 +67,11 @@ export default async function Home() {
   const onTimePct =
     week && week.scheduledCount > 0 ? Math.round((week.onTimeCount / week.scheduledCount) * 100) : null;
 
-  // The Clocking tile reflects which action is actually available right now.
-  // With a session open the useful action really is clocking out; only when
-  // feedback is overdue is clocking in actually blocked.
+  // The Clocking tile just reflects state now — there is no clock-out step to
+  // point at (YMU 2026-08-12).
   const nav = navForRole(profile.role, profile.is_app_admin).map((item) =>
     item.href === "/clocking" && openSession
-      ? { ...item, label: "Clock out", note: "End your current class" }
+      ? { ...item, label: "Clocking", note: "You're clocked in" }
       : item,
   );
 

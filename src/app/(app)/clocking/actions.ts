@@ -62,26 +62,7 @@ export async function clockIn(
   redirect("/");
 }
 
-export type ClockOutState = { error?: string } | undefined;
-
-// Ends the class. Since 0026 this is a real, separate action: it does not ask
-// for feedback and does not settle the feedback obligation, which stays owed
-// until its own deadline.
-export async function clockOut(
-  _previous: ClockOutState,
-  formData: FormData,
-): Promise<ClockOutState> {
-  await requireRole("teacher");
-
-  const sessionIdRaw = String(formData.get("session_id") ?? "");
-  const sessionId = isUuid(sessionIdRaw) ? sessionIdRaw : null;
-
-  const supabase = await createClient();
-  const { error } = await supabase.rpc("clock_out", { p_session_id: sessionId });
-  if (error) return { error: error.message };
-
-  revalidatePath("/clocking");
-  revalidatePath("/feedback");
-  revalidatePath("/");
-  redirect("/");
-}
+// clockOut() was removed with the button (YMU 2026-08-12). The clock_out()
+// RPC still exists in the database for a future admin correction tool; nothing
+// in the app calls it, and the cron sweep plus clock_in()'s implicit close
+// cover every case the button used to.
