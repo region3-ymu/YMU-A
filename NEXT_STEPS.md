@@ -26,6 +26,52 @@ clock-in and a different form. YMU explicitly deferred it; do not model it yet.
 
 ---
 
+## 🔴 OPEN — five teachers whose login email disagrees with YMU's CSV
+
+Reconciled against `Teacher_Name_Email_Match - Name-Email-Phone.csv`
+(2026-08-12, 48 names). Everything else is closed: all 48 now have an account,
+every active teacher has a phone, and the 9 who were not on the CSV are
+archived. These five are the only ones left, and they need a human answer
+because **the email IS the login** — changing it locks the teacher out of the
+old one, and "Forgot password?" still cannot deliver mail (the Resend domain
+for `ymu.org` is unverified, see further down).
+
+| Teacher | CSV says | App login is | Reads like |
+|---|---|---|---|
+| Michael Cooley | `michael.coooooley@` | `michael.c00000ley@` | letter `o` vs digit `0` — one is a typo, and it is not obvious which |
+| James Perez | `jamesperez711@` | `jamezperez711@` | `s` vs `z` |
+| Daniel Soto | `daniel.s.0903@outlook.com` | `sotod1403a@gmail.com` | genuinely different addresses, not a typo |
+| Jose Heredia | `jherediaymu@gmail.com` | `jhvmusica@gmail.com` | genuinely different addresses |
+| De Anthony Williams | *(blank in the CSV)* | `deanthonyw0214@gmail.com` | the CSV is the one missing data |
+
+Cooley and Perez are the dangerous pair: both addresses are plausible, and
+picking wrong silently locks the teacher out with no recovery path. Confirm
+with the teacher directly rather than trusting either file.
+
+Also flagged, not changed: **Richard Pis's phone is `352-681-9218` in the app
+and `353-681-9218` in the CSV.** Neither 352 nor 353 is a Miami area code, so
+both are probably wrong — ask him.
+
+### Also from that reconciliation
+
+- **Created:** David Maden (`banddave@aol.com`) and Lilia Hernandez
+  (`lhvega1988@gmail.com`), both `teacher`, password `ymu12345`, phones from
+  the CSV.
+- **25 missing phone numbers filled in** from the CSV. Zero active teachers
+  are now without one.
+- **9 archived** (not deleted — `archived_at`, so history survives and it is
+  reversible): Achilles Acevedo, Adrian Gonzalez, Alain Williams, Candice
+  Morgan, Joshua Leal, Reinier Reyes, Rodrigo Tavara, Samuel Collazos, Watson
+  Joseph Chandler.
+- **`Emilio Medrano (teacher test)` was deliberately NOT archived** even though
+  it is not on the CSV. It is the account the teacher-side flow gets tested
+  with, and it is needed to test the objective selector. Archive it once
+  testing is done.
+
+Teacher totals now: **49 active, 9 archived.**
+
+---
+
 ## ✅ Done 2026-08-12: the feedback form's objective selector
 
 Migration `0032_feedback_objectives.sql`, applied to production in three chunks
