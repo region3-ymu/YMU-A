@@ -201,9 +201,22 @@ async function down() {
   // reference sessions. Delete inward-out rather than relying on cascade,
   // which is SET NULL on several of these and would orphan rows instead.
   if (school) {
+    // Tickets and feedback_submissions first. tickets.school_id and
+    // .session_id are both ON DELETE SET NULL, so deleting the school or its
+    // sessions would leave orphaned tickets behind rather than removing them —
+    // and an orphan with no school is invisible to every region-scoped inbox.
+    const { data: tickets } = await supabase.from("tickets").select("id").eq("school_id", school.id);
+    const ticketIds = (tickets ?? []).map((t) => t.id);
+    if (ticketIds.length) {
+      await supabase.from("ticket_messages").delete().in("ticket_id", ticketIds);
+      await supabase.from("tickets").delete().in("id", ticketIds);
+    }
+    console.log(`  deleted ${ticketIds.length} ticket(s)`);
+
     const { data: sessions } = await supabase.from("attendance_sessions").select("id").eq("school_id", school.id);
     const sessionIds = (sessions ?? []).map((s) => s.id);
     if (sessionIds.length) {
+      await supabase.from("feedback_submissions").delete().in("session_id", sessionIds);
       await supabase.from("gps_checks").delete().in("session_id", sessionIds);
       await supabase.from("flags").delete().in("session_id", sessionIds);
       await supabase.from("clock_in_attempts").delete().in("session_id", sessionIds);

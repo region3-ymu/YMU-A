@@ -3,8 +3,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireRole } from "@/lib/auth/dal";
 import { getOwedFeedbackById } from "@/lib/attendance/queries";
-import { getFeedbackConfig } from "@/lib/attendance/relay-feedback";
-import FeedbackForm from "../feedback-form";
+import { getFeedbackFormData } from "@/lib/feedback/queries";
+import { describeDue, dueUrgency } from "@/lib/attendance/feedback-due";
+import { formatDate, formatTimeRange } from "@/lib/format/datetime";
+import ClassFeedbackForm from "../class-feedback-form";
 
 export const metadata: Metadata = { title: "Feedback" };
 
@@ -12,25 +14,22 @@ function classTitle(summary: string | null | undefined) {
   return summary?.trim() || "Untitled class";
 }
 
-// The form for one specific owed class. /feedback is the list; this is an
-// item. Note that ROUTE_ROLES matches by prefix (rolesAllowedForPath in
-// lib/auth/roles.ts), so "/feedback" already covers this route — no change
-// needed there. requireRole below is the authoritative check either way.
+// The native four-section form (PRD Module A), which replaces the Zoho embed
+// and the PD-week relay form. ROUTE_ROLES matches by prefix, so "/feedback"
+// already covers this route; requireRole below is the authoritative check.
 export default async function FeedbackSessionPage({
   params,
 }: {
   params: Promise<{ sessionId: string }>;
 }) {
   const { sessionId } = await params;
-  const profile = await requireRole("teacher");
+  await requireRole("teacher");
   const owed = await getOwedFeedbackById(sessionId);
 
   // Either the id isn't the caller's (RLS returned nothing) or its feedback is
-  // already in. Both are "there's nothing to do here", and neither should leak
-  // which one it was.
+  // already in. Both are "nothing to do here", and neither should leak which.
   if (!owed) {
-    const looksLikeId = /^[0-9a-f-]{36}$/i.test(sessionId);
-    if (!looksLikeId) notFound();
+    if (!/^[0-9a-f-]{36}$/i.test(sessionId)) notFound();
     return (
       <main className="mx-auto flex w-full max-w-xl flex-1 flex-col gap-4 p-6">
         <div className="rounded-2xl bg-surface-container p-5 shadow-sm">
@@ -50,21 +49,47 @@ export default async function FeedbackSessionPage({
     );
   }
 
+  const summary = classTitle(owed.event?.summary);
+  const { programs, guessed, topics } = await getFeedbackFormData(owed.event?.summary);
+  const urgency = dueUrgency(owed.feedback_due_at);
+
   return (
     <main className="mx-auto flex w-full max-w-xl flex-1 flex-col gap-4 p-6">
-      <FeedbackForm
-        session={{
-          id: owed.id,
-          className: classTitle(owed.event?.summary),
-          schoolName: owed.school?.name ?? null,
-          teacherName: profile.full_name,
-          teacherId: profile.id,
-          clockInAt: owed.clock_in_at,
-          status: owed.clock_in_status,
-        }}
-        feedbackConfig={getFeedbackConfig()}
-        dueAt={owed.feedback_due_at}
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight text-on-surface">{summary}</h1>
+        <p className="text-sm text-on-surface-variant">
+          {formatDate(owed.clock_in_at)}
+          {owed.event?.start_at ? ` · ${formatTimeRange(owed.event.start_at, owed.event.end_at)}` : ""}
+          {owed.school?.name ? ` · ${owed.school.name}` : ""}
+        </p>
+        <p
+          className={`mt-1 text-sm font-medium ${
+            urgency === "overdue" ? "text-error" : urgency === "soon" ? "text-warning" : "text-on-surface-variant"
+          }`}
+        >
+          {describeDue(owed.feedback_due_at)}
+        </p>
+      </div>
+
+      <ClassFeedbackForm
+        sessionId={owed.id}
+        className={summary}
+        schoolName={owed.school?.name ?? null}
+        programs={programs}
+        guessedProgram={guessed}
+        initialTopics={topics}
       />
+
+      {urgency !== "overdue" && (
+        <p className="text-center">
+          <Link
+            href="/feedback"
+            className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+          >
+            Do this later
+          </Link>
+        </p>
+      )}
     </main>
   );
 }
