@@ -64,11 +64,21 @@ export async function buildReportSections(
         canPickTeacher: true,
       };
     }
-    const rows = await getReportRows(window);
+    // Combined totals AND one section per teacher, the same shape the OM/CPO
+    // master report uses. It used to return only the combined section, so a
+    // Regional Manager choosing "all teachers" saw region-wide numbers with no
+    // way to tell whose they were — the one thing that view is for.
+    const [rows, roster] = await Promise.all([getReportRows(window), getReportRoster(false)]);
+    const withRows = roster.filter((t) => rows.some((r) => r.teacher_id === t.id));
     return {
       title: "Region attendance report — all teachers",
       sections: [
         { teacherId: "all", teacherName: "All teachers in my region", rows, combineTeachers: true },
+        ...withRows.map((t) => ({
+          teacherId: t.id,
+          teacherName: t.full_name,
+          rows: rows.filter((r) => r.teacher_id === t.id),
+        })),
       ],
       canPickTeacher: true,
     };
