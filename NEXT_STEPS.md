@@ -1,38 +1,62 @@
 # NEXT_STEPS — YMU-A
 
-## 🔴 NEXT SESSION — the feedback form's objective selector
+## 🔴 START HERE NEXT SESSION — the feedback form's objective selector
 
-YMU sent `YMU_Feedback_Form_Program_Objectives_Spec.md` (Aug 12), which
-replaces PRD Section 2.2's three-category pillar/chip model with a flat list of
-objectives per program. **Approved, not yet built.**
+Everything needed is now in place. This is the only piece of the approved spec
+(`YMU_Feedback_Form_Program_Objectives_Spec.md`, Aug 12) still unbuilt.
 
-What changes:
+### The data is already loaded — do not re-seed it
 
-- `PROGRAM_TOPICS`' pillar grouping goes away. Each program gets one flat
-  objective list, rendered as a required multi-select checkbox group.
-- A new **"Other"** path: free-text program name plus a free-text description,
-  for one-off offerings.
-- `FEEDBACK_SUBMISSIONS` loses `primary_focus_pillar` and `specific_topic_ids`,
-  gains `objectives_worked text[]`, `is_custom_program boolean`,
-  `custom_program_name text`, `custom_notes text`.
-- Switching program must clear any prior selections, and the payload must never
-  carry `objectives_worked` alongside `custom_notes`.
+`programs` (7 active) and `program_topics` hold the real objective lists:
 
-Three decisions YMU already gave, which the spec itself does not reflect:
+| Program | Objectives |
+|---|---|
+| Drumline | 13 |
+| Modern Band | 13 |
+| Beginning Band | 13 |
+| Music Production | 30 (loaded from YMU's own list, pillar `Objectives`) |
+| Pitch & Rhythm | 7 |
+| Beginner Strings / Orchestra / Concert Band | 13 |
+| After School | 7 |
 
-1. **The teacher does NOT pick the program.** The spec shows a dropdown; YMU
-   overrode that — it is derived from the calendar title and shown read-only.
-   The "Other" path still needs a way in, so the form needs an escape hatch
-   ("not this one?") rather than a picker.
-2. **Music Production is missing from the spec's program list** — omitted by
-   mistake, it stays. It has 1,337 classes.
-3. **Beginner Strings, Orchestra and Concert Band are ONE program**, already
-   merged as `Beginner Strings / Orchestra / Concert Band`.
+Music Production's rows sit under a single pillar named `Objectives`; the
+others still carry the old PRD pillar names. The build should stop reading
+`pillar_category` entirely — the spec replaces pillars with one flat list per
+program — so those names simply become inert.
 
-Still missing before this can be built: **objective lists for Music Production
-and for the merged strings program.** The spec has neither. YMU is sending a
-document with the full class-code legend (e.g. "Music Technology" = Music
-Production), which should also settle those.
+### What to build
+
+1. **Schema.** `feedback_submissions` drops `primary_focus_pillar` and
+   `specific_topic_ids`, gains `objectives_worked text[]`,
+   `is_custom_program boolean`, `custom_program_name text`, `custom_notes text`.
+   `submit_class_feedback()` changes signature to match.
+2. **Form.** Section 2 becomes a required multi-select checkbox group over that
+   program's flat objective list, with a dynamic header
+   ("What was the objective of today's Drumline class?").
+3. **The "Other" path.** The teacher does NOT pick the program — YMU overrode
+   the spec's dropdown, so the program is derived from the calendar title and
+   shown read-only. "Other" therefore needs an escape hatch ("not this one?")
+   that reveals a free-text program name plus a free-text description, both
+   required, with the checkbox group hidden.
+4. **Payload invariants** (spec §5, and worth a unit test): `objectives_worked`
+   is never populated alongside a non-null `custom_notes`, and changing the
+   program clears any prior selections so stale data is never submitted.
+5. **The sheet exporter follows.** `feedback_for_sheet()` currently resolves
+   `specific_topic_ids` to labels; it must read `objectives_worked` instead, and
+   gain the custom-program columns. The column ORDER is load-bearing — new
+   fields go at the END, or every row already in the spreadsheet shifts meaning.
+
+### Also still open
+
+- **Highland Oaks Senior High School** is in YMU's CSV but not in the app.
+  Deferred at the 2026-08-11 import: it shares an address with Highland Oaks
+  Middle and MDCPS lists no such senior high. Confirm before creating it.
+- **Mentors are a separate user type** — they clock in but get a different
+  form. Explicitly deferred by YMU; do not model it yet.
+- **Lehrman Community Day School has no coordinates**, so nobody can clock in
+  there. Set them by hand on `/lists`.
+- Kennedy, Lentin and Oak Grove have app rows and no Google calendar;
+  Mandarin Lakes is the reverse.
 
 ---
 
@@ -49,7 +73,17 @@ Production), which should also settle those.
 - **Kennedy, Lentin and Oak Grove** have app rows and no Google calendar;
   **Mandarin Lakes** is the reverse.
 
-### Owed configuration (Vercel env is done; Supabase side is not)
+### ✅ Configuration is COMPLETE (verified 2026-08-12 19:58 UTC)
+
+All seven pg_cron jobs are live and returning HTTP 200: `check-closeout-1min`,
+`late-detect-1min`, `notify-dispatch-1min`, `calendar-sync-5min`,
+`auto-clockout-5min`, `ticket-sla-15min`, `sheet-sync-2min`. Verified through
+`net._http_response`, not `cron.job_run_details` — pg_net is asynchronous, so
+"succeeded" there only means the request was queued.
+
+Nothing further is owed on Vercel, Supabase or the Google Cloud console.
+
+<details><summary>Original setup steps, kept for reference</summary>
 
 `SHEET_SYNC_SECRET` and `FEEDBACK_SHEET_ID` are set in Vercel. Once it
 redeploys, schedule the mirror:
@@ -68,7 +102,9 @@ select cron.schedule('sheet-sync-2min', '*/2 * * * *', $$
 $$);
 ```
 
-Until then `npm run sync:sheet` brings the sheet up to date on demand.
+</details>
+
+`npm run sync:sheet` still works for an on-demand catch-up.
 
 ---
 
