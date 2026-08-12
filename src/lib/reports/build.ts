@@ -12,6 +12,7 @@
 
 import type { Profile } from "@/lib/auth/dal";
 import { getReportRoster, getReportRows } from "./queries";
+import type { ReportRange } from "./range";
 import type { ReportRow } from "./types";
 
 export type ReportSectionData = {
@@ -32,12 +33,19 @@ export type ReportBundle = {
   canPickTeacher: boolean;
 };
 
+// `range` bounds every query below. It is threaded through rather than
+// applied after the fact because the point is to stop fetching rows the
+// report will never show — an OM's un-bounded read is every class of every
+// teacher for the whole year.
 export async function buildReportSections(
   profile: Profile,
   teacherId?: string,
+  range?: ReportRange,
 ): Promise<ReportBundle> {
+  const window = { from: range?.from, to: range?.to };
+
   if (profile.role === "teacher") {
-    const rows = await getReportRows({ teacherId: profile.id });
+    const rows = await getReportRows({ teacherId: profile.id, ...window });
     return {
       title: `${profile.full_name} — attendance report`,
       sections: [{ teacherId: profile.id, teacherName: profile.full_name, rows }],
@@ -49,14 +57,14 @@ export async function buildReportSections(
     if (teacherId) {
       const roster = await getReportRoster(false);
       const teacher = roster.find((t) => t.id === teacherId);
-      const rows = await getReportRows({ teacherId });
+      const rows = await getReportRows({ teacherId, ...window });
       return {
         title: `${teacher?.full_name ?? "Teacher"} — attendance report`,
         sections: [{ teacherId, teacherName: teacher?.full_name ?? "Teacher", rows }],
         canPickTeacher: true,
       };
     }
-    const rows = await getReportRows({});
+    const rows = await getReportRows(window);
     return {
       title: "Region attendance report — all teachers",
       sections: [
@@ -67,7 +75,7 @@ export async function buildReportSections(
   }
 
   // operations_manager / cpo — the master report.
-  const [roster, allRows] = await Promise.all([getReportRoster(true), getReportRows({})]);
+  const [roster, allRows] = await Promise.all([getReportRoster(true), getReportRows(window)]);
   const active = roster.filter((t) => !t.archived_at);
   const archived = roster.filter((t) => t.archived_at);
 

@@ -469,9 +469,33 @@ export type DiscoveredCalendarDecision =
   | { action: "auto_match"; schoolId: string; score: number }
   | {
       action: "flag_issue";
-      reason: "no_matching_school" | "ambiguous_match" | "school_already_linked";
+      reason: "no_matching_school" | "ambiguous_match" | "school_already_linked" | "level_mismatch";
       candidates: CalendarMatchCandidate[];
     };
+
+export type SchoolLevel = "HS" | "MS" | "K8" | "ES";
+
+// The one token in a school name that can never be a spelling variant. Miami-
+// Dade names schools in families -- Homestead Senior High and Homestead Middle
+// School, Norland Senior High and Norland Middle School -- so trigram
+// similarity rates "Hialeah Senior High" against "Homestead Senior High" at
+// 0.67, comfortably over the 0.5 threshold and with no near-tie to trip the
+// ambiguity margin. It did exactly that in production on 2026-08-12: Hialeah
+// Senior High was pinned to Homestead Senior High's calendar, which would have
+// sent Hialeah's teachers to a geofence 30 miles away.
+//
+// Order matters. K-8 is checked before the words it contains ("K-8 Center"
+// would otherwise never be reached), and "Senior High" before "High" so a
+// name carrying both reads as one level, not two.
+export function schoolLevel(name: string | null | undefined): SchoolLevel | null {
+  if (!name) return null;
+  const n = name.toLowerCase();
+  if (/\bk[\s-]?8\b/.test(n)) return "K8";
+  if (/\b(senior\s+high|high\s+school|\bhs\b)/.test(n)) return "HS";
+  if (/\b(middle|\bms\b)/.test(n)) return "MS";
+  if (/\b(elementary|\bes\b)/.test(n)) return "ES";
+  return null;
+}
 
 // Pure and synchronous so it's unit-testable against synthetic
 // calendars/schools with no Google or Supabase involved -- also where
@@ -489,6 +513,7 @@ export function classifyDiscoveredCalendar(
   pinnedCalendarIds: ReadonlySet<string>,
   candidates: CalendarMatchCandidate[],
   pinnedSchoolIds: ReadonlySet<string> = new Set(),
+  calendarSummary?: string,
 ): DiscoveredCalendarDecision {
   if (pinnedCalendarIds.has(calendarId)) return { action: "already_pinned" };
 
@@ -501,6 +526,14 @@ export function classifyDiscoveredCalendar(
   }
   if (pinnedSchoolIds.has(top.school_id)) {
     return { action: "flag_issue", reason: "school_already_linked", candidates };
+  }
+  // Only fires when BOTH names declare a level. One side saying nothing is
+  // common and harmless ("Mast Academy", "Beacon College Prep"), and treating
+  // silence as a mismatch would flood the queue with matches that are fine.
+  const calendarLevel = schoolLevel(calendarSummary);
+  const schoolLevelValue = schoolLevel(top.school_name);
+  if (calendarLevel && schoolLevelValue && calendarLevel !== schoolLevelValue) {
+    return { action: "flag_issue", reason: "level_mismatch", candidates };
   }
   return { action: "auto_match", schoolId: top.school_id, score: top.score };
 }
@@ -596,7 +629,13 @@ export async function syncAllCalendars(
       if (pinnedCalendarIds.has(calendar.id)) continue;
 
       const candidates = await matchSchoolCalendar(supabase, calendar.summary);
-      const decision = classifyDiscoveredCalendar(calendar.id, pinnedCalendarIds, candidates, pinnedSchoolIds);
+      const decision = classifyDiscoveredCalendar(
+        calendar.id,
+        pinnedCalendarIds,
+        candidates,
+        pinnedSchoolIds,
+        calendar.summary,
+      );
 
       if (decision.action === "already_pinned") continue;
 

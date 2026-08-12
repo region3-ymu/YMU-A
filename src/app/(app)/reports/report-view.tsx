@@ -2,17 +2,27 @@
 
 // Renders whatever section list build.ts produced (one section for a
 // teacher's self-report, one for a Regional Manager's single-teacher/
-// region view, or several for the OM/CPO master report) with a
-// weekly/monthly/quarterly picker. Bucketing is pure client-side math
-// (lib/reports/aggregate.ts) over rows already fetched server-side, so
-// switching granularity needs no round trip. CSV goes through the real
-// server export route; PDF renders client-side from the same summarized
-// data already on screen.
+// region view, or several for the OM/CPO master report).
+//
+// Two controls, answering two different questions:
+//
+//   Group by  -> client state. Bucketing is pure math (lib/reports/aggregate)
+//                over rows already in the browser, so switching is instant.
+//   Range     -> a URL param. It bounds the server query, so changing it has
+//                to round-trip; there is no way to widen a window client-side
+//                from rows that were never fetched.
+//
+// CSV goes through the real server export route; PDF renders client-side from
+// the same summarized data already on screen.
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { bucketReportRows } from "@/lib/reports/aggregate";
 import type { ReportSectionData } from "@/lib/reports/build";
-import type { Granularity, SchoolYear } from "@/lib/reports/types";
+import type { ReportRange } from "@/lib/reports/range";
+import { GRANULARITY_LABELS, type Granularity, type SchoolYear } from "@/lib/reports/types";
+
+const GRANULARITY_ORDER: Granularity[] = ["daily", "weekly", "monthly", "quarterly", "yearly"];
 
 export default function ReportView({
   title,
@@ -21,6 +31,8 @@ export default function ReportView({
   schoolYears,
   exportFilenameBase,
   teacherParam,
+  range,
+  rangeOptions,
 }: {
   title: string;
   sections: ReportSectionData[];
@@ -28,9 +40,23 @@ export default function ReportView({
   schoolYears: SchoolYear[];
   exportFilenameBase: string;
   teacherParam?: string;
+  range: ReportRange;
+  rangeOptions: { key: string; label: string }[];
 }) {
-  const [granularity, setGranularity] = useState<Granularity>("monthly");
+  // Weekly is the default the user asked for. It was "monthly", which made a
+  // single class look like noise in a 30-row bucket.
+  const [granularity, setGranularity] = useState<Granularity>("weekly");
   const [pdfPending, setPdfPending] = useState(false);
+  const router = useRouter();
+  const pathname = usePathname();
+  const [rangePending, startRangeTransition] = useTransition();
+
+  function changeRange(key: string) {
+    const params = new URLSearchParams();
+    params.set("range", key);
+    if (teacherParam) params.set("teacher", teacherParam);
+    startRangeTransition(() => router.push(`${pathname}?${params.toString()}`));
+  }
 
   const summarized = useMemo(
     () =>
@@ -51,7 +77,7 @@ export default function ReportView({
       const { downloadReportPdf } = await import("@/lib/export/pdf");
       await downloadReportPdf({
         title,
-        subtitle: `Generated ${new Date().toLocaleDateString()} · grouped ${granularity}`,
+        subtitle: `${range.label} · grouped ${granularity}`,
         sections: summarized.map((s) => ({ teacherName: s.teacherName, rows: s.summaries })),
         filename: `${exportFilenameBase}-${granularity}.pdf`,
       });
@@ -60,7 +86,7 @@ export default function ReportView({
     }
   }
 
-  const csvHref = `/api/reports/export?granularity=${granularity}${
+  const csvHref = `/api/reports/export?granularity=${granularity}&range=${encodeURIComponent(range.key)}${
     teacherParam ? `&teacher=${encodeURIComponent(teacherParam)}` : ""
   }`;
 
@@ -76,9 +102,24 @@ export default function ReportView({
           onChange={(e) => setGranularity(e.target.value as Granularity)}
           className="rounded-full bg-surface-container-low px-4 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary"
         >
-          <option value="weekly">Weekly</option>
-          <option value="monthly">Monthly</option>
-          <option value="quarterly">9-week quarter</option>
+          {GRANULARITY_ORDER.map((g) => (
+            <option key={g} value={g}>{GRANULARITY_LABELS[g]}</option>
+          ))}
+        </select>
+
+        <label htmlFor="range" className="text-sm font-medium text-on-surface-variant">
+          Showing
+        </label>
+        <select
+          id="range"
+          value={range.key}
+          disabled={rangePending}
+          onChange={(e) => changeRange(e.target.value)}
+          className="rounded-full bg-surface-container-low px-4 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary disabled:opacity-60"
+        >
+          {rangeOptions.map((o) => (
+            <option key={o.key} value={o.key}>{o.label}</option>
+          ))}
         </select>
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <a

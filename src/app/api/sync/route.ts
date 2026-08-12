@@ -77,7 +77,13 @@ export async function POST(request: Request) {
           results.push({ client_key: item.client_key, status: "rejected", error: "Invalid clock-in payload." });
           continue;
         }
-        const { error } = await supabase.rpc("clock_in", {
+        // attempt_clock_in so a replay that the 24-hour gate rejects is still
+        // recorded in clock_in_attempts (with origin 'offline' and the
+        // client's own backdated timestamp), rather than vanishing into a
+        // rolled-back transaction. The gate itself is evaluated at the
+        // recorded clock-in time, so an honest offline queue is not punished
+        // for syncing late — see clock_in()'s comment in migration 0026.
+        const { data, error } = await supabase.rpc("attempt_clock_in", {
           p_event_id: eventId,
           p_lat: lat,
           p_lng: lng,
@@ -86,11 +92,18 @@ export async function POST(request: Request) {
           p_origin: "offline",
           p_clock_in_at: isIsoDate(payload.clock_in_at) ? payload.clock_in_at : null,
         });
-        results.push(
-          error
-            ? { client_key: item.client_key, status: "rejected", error: error.message }
-            : { client_key: item.client_key, status: "accepted" },
-        );
+        const result = data as { ok: boolean; error_message: string | null } | null;
+        if (error) {
+          results.push({ client_key: item.client_key, status: "rejected", error: error.message });
+        } else if (!result?.ok) {
+          results.push({
+            client_key: item.client_key,
+            status: "rejected",
+            error: result?.error_message ?? "Clock-in was rejected.",
+          });
+        } else {
+          results.push({ client_key: item.client_key, status: "accepted" });
+        }
       } else if (item.kind === "gps_check") {
         const sessionKey = payload.session_client_key;
         const dueOffset = finite(payload.due_offset_min);

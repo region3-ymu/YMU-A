@@ -584,3 +584,115 @@ clear cookies/site data for the app's domain, or open the app in a private/incog
 | School-year ↔ schedule/attendance linkage | Pure date-range derivation (Phase 9), no stored FK, no manual "active year" flag |
 
 See `/Users/pepskq/.claude/plans/in-the-file-directory-cozy-sparrow.md` for the full risk register and phase-by-phase plan these decisions feed into.
+
+## Implementation-level decisions (2026-08-12 — 24-hour feedback window, migration `0026`)
+
+### `feedback_settled_at` is a generated column, not a canonical one plus a backfill
+
+Three writers already stamp three different "the obligation is discharged"
+columns: Zoho's `feedback_submitted_at`, the relay form's
+`relay_feedback_submitted_at`, and a manager's `admin_closed_at` waiver.
+Generating `coalesce()` over all three reads the existing rows correctly on day
+one with zero UPDATE, and a future fourth provider cannot silently forget to
+write it — the failure shows up at the `ALTER` that adds it to the coalesce,
+not in production.
+
+### This supersedes Phase 4's "the open session IS the Demand"
+
+Recorded there and reaffirmed since. It was a good decision while feedback was
+the only thing that ended a class; it stopped being one the moment teachers
+had back-to-back classes. `clock_out_at` now means only "still in class".
+
+### The 24h clock starts at the class's scheduled END, snapshotted at clock-in
+
+Not at clock-in time, and not read live from `calendar_events`. Snapshotted as
+`scheduled_end_at` for the same reason `scheduled_start_at` was in 0008: a
+calendar re-sync mutates `end_at` freely, and a teacher's deadline must not
+move with it. A class with no scheduled end gets a NULL deadline and never
+blocks — an all-day event or an admin-created row must not brick clock-in.
+
+### Every overdue item blocks, and all must be cleared
+
+"Only the oldest blocks" produces a rolling wall: clear one, tap Clock in,
+blocked by the next. Worse than the behaviour it replaces.
+
+### The gate is evaluated at the recorded clock-in time, not `now()`
+
+So an offline replay is judged by the state of the world when the teacher
+actually tapped the button. A teacher who clocked in at 09:00 while compliant
+and syncs at 14:00, after a deadline lapsed, is not retroactively rejected.
+Same principle 0017 applied to on_time/late; the existing 24h clamp on
+backdating bounds how far back it can reach.
+
+### `clock_in()` closes any still-open session in the same transaction as the insert
+
+This is what makes back-to-back classes work at all: a teacher clocking into
+the 14:00 class at 13:56 still has the 13:00 class open, and the partial unique
+index `attendance_one_open_session_per_teacher` would reject the insert with a
+raw 23505. Doing it inside the same transaction makes that collision
+structurally impossible rather than merely unlikely.
+
+### The feedback RPCs' idempotency guards moved to their own columns — in the same migration
+
+Load-bearing, not cleanup. Both RPCs early-returned on `clock_out_at IS NOT
+NULL`, treating it as a retried delivery. Once automatic clock-out exists,
+`clock_out_at` is routinely non-null when a *genuine first-time* submission
+arrives, and the old guard would swallow it and return success — the teacher's
+feedback lost, no error anywhere. Shipping auto clock-out one deploy earlier
+than this change destroys data silently.
+
+The same trap existed on the client: `feedback-form.tsx` polled `clock_out_at`
+to decide when to render "Feedback received", which would have false-positived
+on cron and cleared the teacher's draft. It polls the feedback columns now.
+
+### Blocked clock-in attempts are logged from OUTSIDE the transaction that fails
+
+The PRD wants every attempt recorded, allowed or blocked. A `RAISE` aborts the
+transaction and takes any `INSERT` in the same function with it — precisely the
+blocked rows that matter most. Postgres has no autonomous transactions, and
+`pg_net` and `NOTIFY` are transactional too.
+
+`attempt_clock_in()` runs `clock_in()` inside a PL/pgSQL `BEGIN ... EXCEPTION`
+block, which establishes an implicit savepoint: catching the exception rolls
+back only to that savepoint, so the outer transaction survives and its audit
+INSERT commits. `clock_in()` itself is untouched and still raises, so every
+existing caller and every RLS test keeps its contract.
+
+## Implementation-level decisions (2026-08-12 — calendar reconciliation)
+
+### Wrong calendar pins are reported by a script, never auto-corrected
+
+The in-app queue lists calendars that *failed* to match a school. A calendar
+matched to the **wrong** school with high confidence is invisible there by
+construction — which is how "Hialeah Senior High" came to be pinned to
+Homestead Senior High's calendar at a similarity of 0.67, over the 0.5
+threshold and with no runner-up close enough to trip the ambiguity margin.
+
+`npm run calendar:coverage` now cross-checks every pin against the calendar's
+own name in Google (`pin_name_mismatch`) and flags pins whose calendar has
+disappeared (`pin_calendar_missing`, which otherwise stops syncing in silence).
+It reports and stops: six current mismatches are legitimate spelling variants,
+so this is a list for a human, not a repair job.
+
+### The school-level guard is honest about what it does not catch
+
+`classifyDiscoveredCalendar` refuses to auto-match when the calendar name and
+the school name declare *different* levels (HS/MS/ES/K8). Miami-Dade runs a
+senior high and a middle school under the same place name at nearly every site;
+those score high on trigram similarity and differ only in the one token that
+can never be a spelling variant.
+
+It would **not** have caught Hialeah/Homestead — both are high schools — and
+the test asserting exactly that is deliberate, so nobody later mistakes the
+guard for general protection against a bad match. It fires only when both sides
+declare a level; silence is common ("Mast Academy", "Beacon College Prep") and
+treating it as a mismatch would flood the review queue.
+
+### Sharing a calendar and subscribing to it are two different operations
+
+Worth restating because it cost a launch blocker. Granting the service account
+an ACL rule gives it real read access immediately, but does **not** add the
+calendar to its `calendarList` — a service account has no inbox and no UI to
+accept a share. Discovery reads `calendarList`, so a shared-but-unsubscribed
+calendar is invisible to the sync. That is why 45 calendars were missing, and
+why `scripts/apps-script/share-and-list-calendars.gs` does both halves.

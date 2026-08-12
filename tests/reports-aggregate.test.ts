@@ -170,3 +170,80 @@ describe("bucketReportRows — quarterly, anchored to school_years.start_date", 
     expect(summaries[0].periodEnd).toBe("2025-08-30");
   });
 });
+
+describe("bucketReportRows — daily", () => {
+  it("puts each UTC day in its own bucket", () => {
+    const rows: ReportRow[] = [
+      row({ event_id: "e1", start_at: "2026-01-05T15:00:00Z", attendance_status: "on_time" }),
+      row({ event_id: "e2", start_at: "2026-01-05T18:00:00Z", attendance_status: "late" }),
+      row({ event_id: "e3", start_at: "2026-01-06T15:00:00Z", attendance_status: "missed" }),
+    ];
+    const summaries = bucketReportRows(rows, "daily");
+    expect(summaries).toHaveLength(2);
+    // Newest first, matching every other granularity's sort.
+    expect(summaries[0].periodStart).toBe("2026-01-06");
+    expect(summaries[1].periodStart).toBe("2026-01-05");
+    expect(summaries[1].onTimeCount).toBe(1);
+    expect(summaries[1].lateCount).toBe(1);
+  });
+
+  it("collapses a day to a single-day period, not a range", () => {
+    const summaries = bucketReportRows(
+      [row({ event_id: "e1", start_at: "2026-01-05T15:00:00Z", attendance_status: "on_time" })],
+      "daily",
+    );
+    expect(summaries[0].periodStart).toBe(summaries[0].periodEnd);
+  });
+
+  // The UTC-day convention this codebase already uses everywhere (see
+  // schedules/format.ts's dayKey). An 8:30 PM Eastern class is 00:30 UTC the
+  // NEXT day and buckets there — documented, not accidental.
+  it("buckets a late-evening Eastern class into the following UTC day", () => {
+    const summaries = bucketReportRows(
+      [row({ event_id: "e1", start_at: "2026-01-06T00:30:00Z", attendance_status: "on_time" })],
+      "daily",
+    );
+    expect(summaries[0].periodStart).toBe("2026-01-06");
+  });
+});
+
+describe("bucketReportRows — yearly", () => {
+  const years: SchoolYear[] = [
+    { id: "y25", name: "2025-26", start_date: "2025-08-11", end_date: "2026-06-05", archived: false },
+    { id: "y26", name: "2026-27", start_date: "2026-08-12", end_date: "2027-06-02", archived: false },
+  ];
+
+  // Yearly means SCHOOL year. A calendar year would split each one in half at
+  // Christmas, which is not a period anyone at YMU reasons about.
+  it("groups classes either side of January into the same school year", () => {
+    const rows: ReportRow[] = [
+      row({ event_id: "e1", start_at: "2025-09-01T15:00:00Z", attendance_status: "on_time" }),
+      row({ event_id: "e2", start_at: "2026-02-01T15:00:00Z", attendance_status: "late" }),
+    ];
+    const summaries = bucketReportRows(rows, "yearly", years);
+    expect(summaries).toHaveLength(1);
+    expect(summaries[0].periodLabel).toBe("2025-26");
+    expect(summaries[0].scheduledCount).toBe(2);
+  });
+
+  it("separates two school years", () => {
+    const rows: ReportRow[] = [
+      row({ event_id: "e1", start_at: "2026-02-01T15:00:00Z", attendance_status: "on_time" }),
+      row({ event_id: "e2", start_at: "2026-09-01T15:00:00Z", attendance_status: "on_time" }),
+    ];
+    const summaries = bucketReportRows(rows, "yearly", years);
+    expect(summaries.map((s) => s.periodLabel).sort()).toEqual(["2025-26", "2026-27"]);
+  });
+
+  // Same fallback as quarterly: visible in its own bucket rather than
+  // silently dropped, which is how a summer class would otherwise disappear.
+  it("falls back to 'No school year' outside every known range", () => {
+    const summaries = bucketReportRows(
+      [row({ event_id: "e1", start_at: "2026-07-01T15:00:00Z", attendance_status: "on_time" })],
+      "yearly",
+      years,
+    );
+    expect(summaries).toHaveLength(1);
+    expect(summaries[0].periodLabel).toBe("No school year");
+  });
+});

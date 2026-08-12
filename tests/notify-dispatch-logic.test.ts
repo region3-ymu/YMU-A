@@ -153,3 +153,96 @@ describe("notificationCopy", () => {
     expect(copy.body).toBeTruthy();
   });
 });
+
+describe("notificationCopy — manager-facing detail (migration 0027)", () => {
+  const full = {
+    teacher_name: "James Perez",
+    teacher_phone: "305-555-0142",
+    school_name: "Madison Middle School",
+    summary: "Drumline",
+    start_at: "2026-08-12T16:30:00Z", // 12:30 PM in Miami
+  };
+
+  // The school goes in the TITLE: a manager covering a region triages by site
+  // first, and both platforms truncate the body long before the title.
+  it("puts the school in the title and the who/what/when/phone in the body", () => {
+    const copy = notificationCopy({ type: "late_clock_in", payload: { ...full, flag_id: "f1" } });
+    expect(copy.title).toBe("Missed clock-in — Madison Middle School");
+    expect(copy.body).toBe(
+      "James Perez hasn't clocked in for Drumline at 12:30 PM. Call 305-555-0142",
+    );
+    expect(copy.url).toBe("/flags");
+  });
+
+  // The exact bug commit 2ad1c92 fixed on the web side. This code runs in Deno
+  // on Supabase's UTC infrastructure, so an unpinned zone would render 4:30 PM
+  // for a 12:30 PM Miami class.
+  it("renders the start time in Miami time, not the runtime's zone", () => {
+    const copy = notificationCopy({ type: "late_clock_in", payload: full });
+    expect(copy.body).toContain("12:30 PM");
+    expect(copy.body).not.toContain("4:30 PM");
+  });
+
+  it("reports the distance for an out-of-fence GPS check", () => {
+    const copy = notificationCopy({
+      type: "gps_out_of_fence",
+      payload: { ...full, distance_m: 812 },
+    });
+    expect(copy.title).toBe("GPS check flagged — Madison Middle School");
+    expect(copy.body).toBe("James Perez was 812m away during Drumline at 12:30 PM. Call 305-555-0142");
+  });
+
+  // feedback_stuck previously fell through to the default branch and shipped
+  // managers a push reading "YMU-A / your class".
+  it("no longer falls through to the generic default", () => {
+    const copy = notificationCopy({ type: "feedback_stuck", payload: full });
+    expect(copy.title).toBe("Feedback overdue — Madison Middle School");
+    expect(copy.body).toContain("James Perez hasn't submitted feedback for Drumline");
+    expect(copy.url).toBe("/flags");
+  });
+
+  // manager_notification_payload strips nulls, so a thin payload is normal —
+  // an unmatched-school class is exactly what a manager most needs to hear
+  // about, and it must not be the case that produces "undefined" in the text.
+  it("degrades cleanly when the payload is missing fields", () => {
+    const copy = notificationCopy({ type: "late_clock_in", payload: { flag_id: "f1" } });
+    expect(copy.title).toBe("Missed clock-in");
+    expect(copy.body).toBe("A teacher hasn't clocked in for your class.");
+    expect(copy.body).not.toContain("undefined");
+  });
+
+  it("omits the phone rather than inventing one", () => {
+    const copy = notificationCopy({
+      type: "late_clock_in",
+      payload: { teacher_name: "James Perez", summary: "Drumline" },
+    });
+    expect(copy.body).toBe("James Perez hasn't clocked in for Drumline.");
+  });
+
+  it("ignores an unparseable start time instead of printing Invalid Date", () => {
+    const copy = notificationCopy({
+      type: "late_clock_in",
+      payload: { ...full, start_at: "not a date" },
+    });
+    expect(copy.body).toBe("James Perez hasn't clocked in for Drumline. Call 305-555-0142");
+  });
+});
+
+describe("notificationCopy — clock_out_reminder after 0026", () => {
+  // The reminder is about feedback now, which is the thing with a deadline;
+  // clocking out happens on its own.
+  it("names the feedback deadline when the payload carries one", () => {
+    const copy = notificationCopy({
+      type: "clock_out_reminder",
+      payload: { summary: "Drumline", due_at: "2026-08-13T20:30:00Z" },
+    });
+    expect(copy.title).toBe("Feedback due");
+    expect(copy.body).toBe("Feedback for Drumline is due by 4:30 PM.");
+    expect(copy.url).toBe("/feedback");
+  });
+
+  it("falls back to the old wording for a queue row enqueued before 0026", () => {
+    const copy = notificationCopy({ type: "clock_out_reminder", payload: { summary: "Drumline" } });
+    expect(copy.body).toBe("Drumline has ended.");
+  });
+});

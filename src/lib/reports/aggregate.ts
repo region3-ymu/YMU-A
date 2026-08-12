@@ -45,9 +45,23 @@ function monthEnd(ms: number): number {
   return Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0);
 }
 
+// Locale is pinned rather than left to the runtime: this same function runs
+// client-side for the on-screen report and server-side (Vercel, UTC/en-US) for
+// the CSV export, and an unpinned locale makes the two disagree on the label
+// for the same bucket. Same reasoning as lib/format/datetime.ts.
 function monthLabel(ms: number): string {
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat("en-US", {
     month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(ms));
+}
+
+function dayLabel(ms: number): string {
+  return new Intl.DateTimeFormat("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
     year: "numeric",
     timeZone: "UTC",
   }).format(new Date(ms));
@@ -104,7 +118,12 @@ export function bucketReportRows(
     let label: string;
     let key: string;
 
-    if (granularity === "weekly") {
+    if (granularity === "daily") {
+      periodStart = utcMidnight(startMs);
+      periodEnd = periodStart;
+      key = `${teacherKey}:d:${isoDate(periodStart)}`;
+      label = dayLabel(periodStart);
+    } else if (granularity === "weekly") {
       periodStart = weekStart(startMs);
       periodEnd = periodStart + 6 * DAY_MS;
       key = `${teacherKey}:w:${isoDate(periodStart)}`;
@@ -114,6 +133,22 @@ export function bucketReportRows(
       periodEnd = monthEnd(startMs);
       key = `${teacherKey}:m:${isoDate(periodStart)}`;
       label = monthLabel(periodStart);
+    } else if (granularity === "yearly") {
+      // School year, not calendar year — see the Granularity comment in
+      // types.ts. Shares quarterly's "No school year" fallback so a class
+      // outside every known range is visible rather than silently dropped.
+      const year = findSchoolYearForDate(isoDate(startMs), schoolYears);
+      if (year) {
+        periodStart = Date.parse(`${year.start_date}T00:00:00Z`);
+        periodEnd = Date.parse(`${year.end_date}T00:00:00Z`);
+        key = `${teacherKey}:y:${year.id}`;
+        label = year.name;
+      } else {
+        periodStart = utcMidnight(startMs);
+        periodEnd = periodStart;
+        key = `${teacherKey}:y:none`;
+        label = "No school year";
+      }
     } else {
       const bounds = quarterBoundsFor(startMs, schoolYears);
       if (bounds) {

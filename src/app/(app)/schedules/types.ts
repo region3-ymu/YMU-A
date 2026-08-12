@@ -14,7 +14,12 @@ export type CalendarSyncIssue = {
   id: string;
   calendar_id: string;
   calendar_summary: string | null;
-  reason: "no_matching_school" | "ambiguous_match" | "school_already_linked" | "sync_error";
+  reason:
+    | "no_matching_school"
+    | "ambiguous_match"
+    | "school_already_linked"
+    | "level_mismatch"
+    | "sync_error";
   candidates: CalendarSyncIssueCandidate[];
   detected_at: string;
 };

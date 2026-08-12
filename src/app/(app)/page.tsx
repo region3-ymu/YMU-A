@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { requireProfile } from "@/lib/auth/dal";
 import { navForRole } from "@/lib/auth/roles";
-import { getNextClass, getOpenSession } from "@/lib/attendance/queries";
+import { getFeedbackOwed, getNextClass, getOpenSession } from "@/lib/attendance/queries";
+import { describeDue, dueUrgency } from "@/lib/attendance/feedback-due";
 import { getReportRows } from "@/lib/reports/queries";
 import { bucketReportRows } from "@/lib/reports/aggregate";
 import type { PeriodSummary } from "@/lib/reports/types";
@@ -38,10 +39,11 @@ export default async function Home() {
   const profile = await requireProfile();
   const isTeacher = profile.role === "teacher";
 
-  // Teacher with an unfinished class => re-prompt the feedback gate on login.
-  // Only clock-in is blocked (the nav below stays reachable), so this is a
-  // prominent prompt rather than a hard redirect.
-  const [openSession, nextClass, weekRows] = isTeacher
+  // Teacher with feedback outstanding => re-prompt on login. Since migration
+  // 0026 this comes in two flavours: owed-but-in-window (a nudge) and overdue
+  // (clock-in is genuinely locked). Only clock-in is ever blocked — the nav
+  // below stays reachable — so both are prompts, not redirects.
+  const [openSession, nextClass, weekRows, owed] = isTeacher
     ? await Promise.all([
         getOpenSession(),
         getNextClass(),
@@ -49,8 +51,13 @@ export default async function Home() {
           const { from, to } = thisWeekRangeIso();
           return getReportRows({ teacherId: profile.id, from, to });
         })(),
+        getFeedbackOwed(),
       ])
-    : [null, null, []];
+    : [null, null, [], []];
+
+  const overdueOwed = owed.filter((o) => dueUrgency(o.feedback_due_at) === "overdue");
+  const pendingOwed = owed.filter((o) => dueUrgency(o.feedback_due_at) !== "overdue");
+  const clockInLocked = overdueOwed.length > 0;
 
   // One weekly bucket for this teacher (rows are already scoped to this week).
   const week: PeriodSummary | null = isTeacher
@@ -60,12 +67,12 @@ export default async function Home() {
   const onTimePct =
     week && week.scheduledCount > 0 ? Math.round((week.onTimeCount / week.scheduledCount) * 100) : null;
 
-  // The Clocking tile reflects which action is actually available right now:
-  // with an open session, clocking in is blocked, so the tile becomes the
-  // "Clock out" entry point instead of restating "Clocking".
+  // The Clocking tile reflects which action is actually available right now.
+  // With a session open the useful action really is clocking out; only when
+  // feedback is overdue is clocking in actually blocked.
   const nav = navForRole(profile.role, profile.is_app_admin).map((item) =>
     item.href === "/clocking" && openSession
-      ? { ...item, label: "Clock out", note: "Submit feedback to finish" }
+      ? { ...item, label: "Clock out", note: "End your current class" }
       : item,
   );
 
@@ -82,23 +89,32 @@ export default async function Home() {
         </p>
       </header>
 
-      {openSession && (
+      {clockInLocked && (
         <Link
           href="/feedback"
           className="block rounded-2xl bg-error-container p-4 text-on-error-container shadow-sm transition-transform active:scale-[0.99]"
         >
           <div className="flex items-start gap-3">
             <span className="material-symbols-outlined mt-0.5 shrink-0 text-error" aria-hidden>
-              warning
+              lock
             </span>
             <div className="flex-1">
-              <p className="font-bold">Feedback required</p>
+              <p className="font-bold">Clock-in locked</p>
               <p className="mt-0.5 text-sm opacity-90">
-                You&apos;re still clocked in to{" "}
-                <span className="font-semibold">
-                  {openSession.event?.summary?.trim() || "your last class"}
-                </span>
-                . Submit your feedback to clock out.
+                {overdueOwed.length === 1 ? (
+                  <>
+                    <span className="font-semibold">
+                      {overdueOwed[0].event?.summary?.trim() || "A class"}
+                    </span>{" "}
+                    is past its 24-hour feedback deadline.
+                  </>
+                ) : (
+                  <>
+                    <span className="font-semibold">{overdueOwed.length} classes</span> are past
+                    their 24-hour feedback deadline.
+                  </>
+                )}{" "}
+                Submit {overdueOwed.length === 1 ? "it" : "them"} to clock in again.
               </p>
               <span className="mt-3 inline-flex items-center gap-1 rounded-lg bg-error px-4 py-2 text-sm font-bold text-on-error">
                 Complete now
@@ -111,9 +127,32 @@ export default async function Home() {
         </Link>
       )}
 
+      {!clockInLocked && pendingOwed.length > 0 && (
+        <Link
+          href="/feedback"
+          className="block rounded-2xl bg-warning-container p-4 text-on-warning-container shadow-sm transition-transform active:scale-[0.99]"
+        >
+          <div className="flex items-start gap-3">
+            <span className="material-symbols-outlined mt-0.5 shrink-0" aria-hidden>
+              edit_note
+            </span>
+            <div className="flex-1">
+              <p className="font-bold">
+                Feedback owed for {pendingOwed.length} {pendingOwed.length === 1 ? "class" : "classes"}
+              </p>
+              <p className="mt-0.5 text-sm opacity-90">
+                Earliest {describeDue(pendingOwed[0].feedback_due_at).toLowerCase()}. You can keep
+                clocking in until then.
+              </p>
+            </div>
+          </div>
+        </Link>
+      )}
+
       {/* Gradient "Next up" hero (Base44) — the teacher's soonest clockable
-          class. Hidden while an open session blocks clock-in. */}
-      {isTeacher && !openSession && nextClass && (
+          class. Hidden only when clock-in is genuinely locked; feedback merely
+          pending no longer hides it, which is the whole point of the window. */}
+      {isTeacher && !clockInLocked && nextClass && (
         <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary to-[#7c3aed] p-5 text-white shadow-lg">
           <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-white/10" aria-hidden />
           <p className="text-xs font-semibold uppercase tracking-wide text-white/80">Next up</p>

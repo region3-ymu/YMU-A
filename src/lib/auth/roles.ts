@@ -5,6 +5,7 @@
 export const APP_ROLES = [
   "teacher",
   "regional_manager",
+  "academic_manager",
   "operations_manager",
   "cpo",
 ] as const;
@@ -15,11 +16,31 @@ export const REGIONS = ["central", "east", "west", "north", "south"] as const;
 
 export type Region = (typeof REGIONS)[number];
 
+// Deliberately NOT including academic_manager. MANAGER_ROLES gates /dashboard,
+// /lists and /flags, and the RLS behind all three still enumerates
+// regional_manager/operations_manager/cpo — an academic_manager admitted to
+// those routes would load a page and see nothing, which is worse than not
+// having the link. Widening those policies is its own piece of work; until
+// then the role's surface is tickets, which is what YMU actually asked for.
 export const MANAGER_ROLES = [
   "regional_manager",
   "operations_manager",
   "cpo",
 ] as const satisfies readonly AppRole[];
+
+// Roles whose ticket inbox is the whole organisation rather than one region.
+// academic_manager exists for exactly this (YMU 2026-08-12): it reads every
+// ticket but is only ever an *assignee* as the fallback for a region with no
+// Regional Manager.
+export const TICKET_GLOBAL_ROLES = [
+  "academic_manager",
+  "operations_manager",
+  "cpo",
+] as const satisfies readonly AppRole[];
+
+export function seesAllTickets(role: AppRole): boolean {
+  return (TICKET_GLOBAL_ROLES as readonly AppRole[]).includes(role);
+}
 
 export function isAppRole(value: unknown): value is AppRole {
   return (
@@ -40,6 +61,7 @@ export function isManagerRole(role: AppRole): boolean {
 export const ROLE_LABELS: Record<AppRole, string> = {
   teacher: "Teacher",
   regional_manager: "Regional Manager",
+  academic_manager: "Academic Manager",
   operations_manager: "Operations Manager",
   cpo: "CPO",
 };
@@ -75,6 +97,10 @@ export function navForRole(role: AppRole, isAppAdmin: boolean = false): NavItem[
       note: "Next class & clock-in",
       icon: "schedule",
     });
+  } else if (role === "academic_manager") {
+    // No Dashboard or Lists tile: those routes are still scoped to
+    // MANAGER_ROLES at the query layer, so linking them would promise data the
+    // database will not return.
   } else {
     items.push({
       href: "/dashboard",
@@ -90,6 +116,12 @@ export function navForRole(role: AppRole, isAppAdmin: boolean = false): NavItem[
     });
   }
   items.push(
+    {
+      href: "/tickets",
+      label: "Tickets",
+      note: role === "teacher" ? "Support requests you raised" : "Support requests to resolve",
+      icon: "confirmation_number",
+    },
     {
       href: "/schedules",
       label: "Schedules",
@@ -156,6 +188,9 @@ export const ROUTE_ROLES: Record<string, readonly AppRole[]> = {
   "/flags": MANAGER_ROLES,
   "/dashboard": MANAGER_ROLES,
   "/users": ["operations_manager", "cpo"],
+  // Teachers reach their own tickets through /tickets too — the RLS policy is
+  // what scopes them to their own rows, not the route.
+  "/tickets": APP_ROLES,
 };
 
 export function rolesAllowedForPath(pathname: string): readonly AppRole[] | null {

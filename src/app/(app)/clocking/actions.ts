@@ -38,7 +38,11 @@ export async function clockIn(
   if (lat === null || lng === null) return { error: "Your location wasn't captured. Try again." };
 
   const supabase = await createClient();
-  const { error } = await supabase.rpc("clock_in", {
+  // attempt_clock_in, not clock_in: it wraps the same gate in a subtransaction
+  // so a *blocked* attempt still gets written to clock_in_attempts (a RAISE
+  // would roll that INSERT back), and returns a friendly message instead of
+  // raising. clock_in() remains the authoritative implementation.
+  const { data, error } = await supabase.rpc("attempt_clock_in", {
     p_event_id: eventId,
     p_lat: lat,
     p_lng: lng,
@@ -46,12 +50,36 @@ export async function clockIn(
     p_client_key: clientKey,
   });
   if (error) return { error: error.message };
+  const result = data as { ok: boolean; error_message: string | null } | null;
+  if (!result?.ok) return { error: result?.error_message ?? "Clock-in failed. Please try again." };
 
-  // Now clocked in => an open session exists => every clock surface shows the
-  // feedback form until it's submitted. Redirect home rather than straight
-  // into the feedback form (user-confirmed) — the home dashboard's re-prompt
-  // card and the "Clock out" nav tile make it clear feedback is owed, without
-  // forcing the teacher into it the instant they clock in.
+  // Feedback is now owed for this class, but not due for 24 hours — the
+  // teacher is free to go teach. Redirect home; the banner there tracks the
+  // deadline.
+  revalidatePath("/clocking");
+  revalidatePath("/feedback");
+  revalidatePath("/");
+  redirect("/");
+}
+
+export type ClockOutState = { error?: string } | undefined;
+
+// Ends the class. Since 0026 this is a real, separate action: it does not ask
+// for feedback and does not settle the feedback obligation, which stays owed
+// until its own deadline.
+export async function clockOut(
+  _previous: ClockOutState,
+  formData: FormData,
+): Promise<ClockOutState> {
+  await requireRole("teacher");
+
+  const sessionIdRaw = String(formData.get("session_id") ?? "");
+  const sessionId = isUuid(sessionIdRaw) ? sessionIdRaw : null;
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("clock_out", { p_session_id: sessionId });
+  if (error) return { error: error.message };
+
   revalidatePath("/clocking");
   revalidatePath("/feedback");
   revalidatePath("/");

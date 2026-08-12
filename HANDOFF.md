@@ -22,6 +22,19 @@ installed as a PWA (Serwist service worker).
 
 - Live at `https://ymu-a-navy.vercel.app` (Vercel).
 - Hosted Supabase project: `vgyogyojxlvhiwujidhy`.
+- **There is exactly ONE database, and `.env.local` points at it.** Local
+  development, the RLS tests, the MCP tooling and production all share
+  `vgyogyojxlvhiwujidhy`. Code is isolated by branch until it is merged and
+  pushed; **schema and data are not isolated by anything**. Any migration or
+  UPDATE run from a laptop is live in production the instant it executes.
+  Supabase database branching exists but is a paid feature and is not in use.
+  Until it is, sequencing is the only safeguard: apply a migration when the
+  matching code is about to deploy, not before.
+- Work lands on the **`development`** branch and is merged to `main` to
+  deploy (2026-08-12 onwards).
+- **Migration `0026` is committed but NOT applied**, on purpose. It and the UI
+  must land together — see NEXT_STEPS.md for the deploy order and why the
+  reverse breaks.
 - **Migrations `0002`–`0018` are all applied and confirmed on the hosted
   project** — `0017`/`0018` (this phase) were applied by the user and
   verified directly against the live database (new columns/RPCs queried

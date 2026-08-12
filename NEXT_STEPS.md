@@ -1,46 +1,264 @@
 # NEXT_STEPS — YMU-A
 
-## 🟡 FUTURE (not this week): 24-hour feedback grace period + a teacher-facing "feedback owed" list
+## 🟡 OPEN — four schools awaiting a YMU answer (asked 2026-08-12)
 
-User request (2026-07-28), explicitly **not for this week** — just recording
-the idea before it's forgotten. Not designed in detail, not built.
+The calendar↔school reconciliation is done and verified; these four are the
+only gaps left, and each is the same question: **does this school run this
+year?** If yes, create the missing half. If no, remove it.
 
-**The problem this solves**: today, clocking into a new class is blocked
-until feedback for the previous class is submitted (`attendance_sessions`
-with `clock_out_at IS NULL` — DECISIONS.md's "the open session IS the
-Demand"). Back-to-back classes with little/no gap between them make this a
-real problem — a teacher physically can't stop to fill out the Zoho form
-before their next class starts, so the block fires when it shouldn't.
+| School | Has | Missing |
+|---|---|---|
+| John F. Kennedy MS | app row (north) | no Google calendar |
+| Linda Lentin K-8 | app row (north) | no Google calendar |
+| Oak Grove ES | app row (north) | no Google calendar |
+| Mandarin Lakes K-8 | Google calendar | no app row |
 
-**Proposed relief**: let a teacher clock into their next class even with a
-prior class's feedback still unsubmitted, but only for **24 hours** from
-[start? end? clock-in? — needs deciding] of the class the feedback is owed
-for. If 24 hours pass with that feedback still missing, clock-in blocks again
-until it's filled — same hard stop as today, just delayed instead of
-immediate.
+Two more roster questions from the 2026-08-11 import, still unanswered:
 
-**Also wanted**: some teacher-facing way to see which class(es) they still
-owe feedback for during that grace window — the user described it as "like
-flags, but for teachers" while trying to recall if this was already named
-something. It wasn't — searched NEXT_STEPS/HANDOFF/DECISIONS, no prior
-teacher-facing "feedback owed" concept exists under any name. `flags` is
-manager-only (no teacher-visible RLS policy at all, per HANDOFF.md's
-architecture notes) — this would be a new, separate teacher-facing surface,
-not a reuse of that table.
+- **Lehrman Community Day School** has no coordinates, so it cannot be clocked
+  into at all. Neither Census nor Nominatim resolves 727 Lehrman Dr, Miami
+  Beach. Set it by hand on `/lists`.
+- **"Highland Oaks Senior High School"** was on the roster but not created: it
+  shares an address with Highland Oaks Middle School and MDCPS lists no such
+  senior high. Probably a roster typo — confirm before adding.
 
-**Why this isn't a small tweak**: it changes the core "open session is the
-Demand" design multiple later phases were built on top of (Phase 4's
-decision, reaffirmed since). Clocking in would need to stop being gated on
-"does any session have `clock_out_at IS NULL`" and instead on something like
-"does any session's class end more than 24h ago AND still lack feedback" —
-which means clock-out and feedback-submitted need to become decoupled
-(a session could be clocked out without feedback yet, unlike today). Needs a
-real design pass before building: what exactly starts the 24h clock, what the
-teacher-facing list looks like, whether multiple overdue feedbacks stack or
-only the oldest blocks, and how this interacts with the Zoho-webhook-closes-
-the-session flow (Phase 4/9) vs. the native relay form (current PD-week
-path) — both close a session on feedback submission today, and both would
-need to know about this grace window.
+Also unexplained: YMU expected **105 calendars and 105 schools**. Reality is
+109 school calendars in Google and 111 school rows. Neither side is 105, so
+the number came from somewhere else — worth tracing before trusting it.
+
+---
+
+## 🟡 Manager alerts are push-only — no email fallback (noted 2026-08-12)
+
+`gps_out_of_fence`, `late_clock_in` and `feedback_stuck` are absent from
+`EMAIL_ELIGIBLE_TYPES` (`dispatch-logic.ts`), so a Regional Manager who has
+never subscribed a device to Web Push receives **nothing at all** for any of
+them. They also have no entry in `NOTIFICATION_TYPE_TO_PREFERENCE`, so there is
+no Settings toggle either way.
+
+The original brief scoped email to "schedule changes, cancellations, and
+clock-out reminders only", which is why it is this way. Left as-is rather than
+changed quietly — adding three types to the email path is a product decision,
+and the Resend free tier is capped at 100/day, which the cap logic in
+`planDispatch` already tracks.
+
+Migration 0027 made the push itself carry the full detail, so the content gap
+is closed; this is only about reach.
+
+---
+
+## ✅ Done 2026-08-12: all 109 school calendars discovered, 108 of 111 schools pinned
+
+Three of the four blockers below are closed. What actually fixed it:
+
+1. `scripts/apps-script/share-and-list-calendars.gs`, run from the calendar-
+   owning account, granted the service account read access to all 110 owned
+   calendars and dumped their ids.
+2. `scripts/subscribe-calendars.ts` subscribed them (109 of 110 — one
+   transient `fetch failed`, picked up on the next run).
+3. The `calendar-sync-5min` cron then ran the real sync **on its own**. No
+   manual `npm run sync:calendar` was ever needed.
+
+Google went 113 → 110 calendars once YMU deleted the three duplicate pairs.
+
+### A calendar was pinned to the WRONG school, and nothing could have shown it
+
+The sync pinned **"Hialeah Senior High" to Homestead Senior High's calendar** —
+two real schools about 30 miles apart. pg_trgm rated the names 0.67, over the
+0.5 threshold, with no runner-up close enough to trip the ambiguity margin, so
+it auto-matched confidently. Hialeah's teachers would have failed the geofence
+at their own school.
+
+The in-app queue lists calendars that **failed** to match; a confident wrong
+match is invisible there by construction. It only surfaced by cross-checking
+all 106 pins against each calendar's own name in Google.
+
+That check now lives in `npm run calendar:coverage` as `pin_name_mismatch`,
+plus `pin_calendar_missing` for a pin whose calendar was deleted or un-shared
+(which silently stops syncing — Dr. William Chapman was in exactly that state).
+Both are reported, never auto-corrected: six current mismatches are legitimate
+spelling variants, e.g. "Carrie P. Meek" pinned to "Carrie P. Meek/Westview
+K-8".
+
+`classifyDiscoveredCalendar` also gained a school-level guard. **It would not
+have caught Hialeah/Homestead** — both are high schools — and the test says so
+explicitly. What it catches is the family-name collision Miami-Dade creates at
+nearly every site (Homestead Senior High vs Homestead Middle School), which
+scores high on trigram similarity and differs only in the one token that can
+never be a spelling variant.
+
+### Data corrections applied directly to production
+
+Hialeah and Homestead re-pinned to their own calendars; Dr. William Chapman
+moved onto its surviving twin; John A. Ferguson linked (the fuzzy match had
+left it ambiguous); five stale issues resolved. All 108 pins verified one by
+one afterwards.
+
+### Still open from the 2026-08-11 blocker list
+
+**Only 8 of 111 schools have future classes.** Confirmed by YMU on 2026-08-12
+as expected — the 2026-27 schedule is still being loaded into Google. Re-check
+`select count(distinct school_id) from calendar_events where start_at >= now()`
+once loading finishes.
+
+**The 500 classes owned by `pedrodiazvaldes@gmail.com`** at Carol City Middle
+and Madison Middle are the boss's test events, per YMU. They will be deleted.
+Re-run the sync afterwards or they linger in the app as real classes. When the
+real schedule lands, the attendee email on each event must exactly match the
+teacher's app login email — `loadTeachers` matches case-insensitively but
+otherwise exactly (`supabase/functions/calendar-sync/sync.ts:123-146`).
+
+---
+
+## ✅ Done 2026-08-11: pilot data wiped, roster completed to 111 schools
+
+- Migration `0025_reset_pilot_data.sql` cleared `attendance_sessions` (85),
+  `gps_checks` (425), `flags` (168) and `notification_queue` (712). Schools,
+  calendar events, school years and accounts untouched.
+- **"Seed Test School" was squatting on a real school's calendar.** The QA
+  fixture (100 km geofence, from `scripts/seed-test-data.ts`) had fuzzy-matched
+  and pinned SEED School of Miami's calendar, and had been syncing that
+  school's events ever since. Converted in place rather than deleted, so the
+  pin and the synced events survive; the 100 km hole is closed.
+- Roster grew 73 → **111 schools** via the new `npm run import:schools`.
+  **The `west` region went from 0 schools to 14** — the single largest gap.
+- Fixed a long-standing typo: "Archola Lake" → "Arcola Lake".
+- One school still has no coordinates and therefore cannot be clocked into:
+  **Lehrman Community Day School** (727 Lehrman Dr, Miami Beach) — neither
+  Census nor Nominatim resolves that address. Set it by hand on `/lists`.
+- One roster row deferred, not created: **"Highland Oaks Senior High School"**
+  shares an address with the existing Highland Oaks Middle School and MDCPS
+  lists no such senior high. Probably a roster typo — confirm before adding.
+
+### The importer is two-step on purpose
+
+`npm run import:schools` writes `school-import-review.csv` and stops. Nothing
+touches the database until a human resolves the `REVIEW` rows and re-runs with
+`IMPORT_ALLOW=1 ... --apply`.
+
+That is not ceremony. Name-only fuzzy matching on this roster paired
+"Homestead Senior High" with "Homestead Middle School" and "Redondo
+Elementary" with "Redland Elementary" — different schools that would have been
+silently merged, each inheriting the other's geofence, breaking clock-in for
+real teachers. Two guards cut the ambiguous set from 14 rows to 1:
+
+- **Level conflict**: `HS`/`MS`/`ES`/`K8` tokens that disagree can never match,
+  however similar the rest of the name.
+- **Street address**: same street number + street name means the same site
+  regardless of the name. This is what caught "Carie P. Meek/Westview K-8" ≙
+  "Carrie P. Meek" and "Dr. Henry Mack / West Little River K-8" ≙ "Little River
+  K-8", which no name matcher would ever reconcile.
+
+## ✅ Built 2026-08-12 (migration 0026, NOT yet applied): the 24-hour feedback window
+
+Requested 2026-07-28, re-requested and built 2026-08-12. Answers every open
+question the original note listed.
+
+**The problem**: `clock_out_at IS NULL` meant three things at once — still in
+class, feedback owed, and feedback blocking the next clock-in. Back-to-back
+classes made that fuse fire when it shouldn't: a teacher physically cannot stop
+and fill a form before the next class starts.
+
+**The split**, and the whole change in three lines:
+
+```
+still in class     -> clock_out_at IS NULL          (unchanged meaning)
+feedback owed      -> feedback_settled_at IS NULL   (new, generated column)
+feedback BLOCKING  -> feedback_settled_at IS NULL AND feedback_due_at < now()
+```
+
+Decisions the original note left open, now settled:
+
+- **The clock starts at the class's scheduled END**, snapshotted at clock-in as
+  `scheduled_end_at` so a later calendar re-sync cannot move a teacher's
+  deadline. A class with no scheduled end gets no deadline and never blocks.
+- **All overdue items block, and all must be cleared.** "Only the oldest
+  blocks" produces a rolling wall: clear one, tap Clock in, blocked by the next.
+- **The teacher-facing list is `/feedback`** — the "like flags, but for
+  teachers" surface, with `/feedback/[sessionId]` per class. `ROUTE_ROLES`
+  matches by prefix, so `roles.ts` needed no change.
+- **Clock-out happens three ways**: `clock_in()` closes any still-open session
+  in the same transaction as the insert (this is what makes back-to-back
+  classes work, and makes the partial unique index collision structurally
+  impossible); an explicit Clock out button; and a cron sweep
+  (`auto_clock_out_ended_sessions`) for the teacher who walks away. None
+  distorts hours — `attendance_period_rows.hours_worked` has been the
+  *scheduled* duration since 0021.
+- **Both feedback providers keep working.** Their idempotency guards moved from
+  `clock_out_at` to their own feedback columns, and this is load-bearing: with
+  auto clock-out, `clock_out_at` is routinely non-null when a genuine
+  first-time submission arrives, and the old guard would swallow it and return
+  success — feedback lost, no error anywhere.
+
+### ✅ Migrations 0026 and 0027 APPLIED 2026-08-12
+
+Applied to production via the Supabase MCP, in four verified chunks for 0026
+plus one for 0027. Verified after the fact: four new columns on
+attendance_sessions (feedback_settled_at reporting `is_generated = ALWAYS`),
+six new functions, the clock_in_attempts table and the clock_in_result type,
+and the grant matrix — attempt_clock_in and clock_out executable by
+`authenticated`, auto_clock_out_ended_sessions and
+manager_notification_payload service_role only, so a teacher cannot read
+another teacher's phone through the payload helper.
+
+Safe to apply ahead of the code because the DB change is strictly more
+permissive and the old client cannot reach it: the deployed /clocking page
+swaps itself for the feedback form whenever a session is open, so the relaxed
+gate is unreachable until the new UI ships. The backfill was a no-op — zero
+attendance_sessions rows after the 0025 reset.
+
+`auto-clockout` is **deployed** (verify_jwt false, shared-secret header, same
+shape as late-detect) and confirmed failing closed: it returns
+`{"error":"Auto clock-out is not configured."}` until the secret exists.
+
+### ⚠️ The auto-clockout cron is deliberately NOT scheduled yet
+
+Scheduling it before the web code deploys reintroduces exactly the bug the
+migration was careful to avoid. The deployed feedback form still polls
+`clock_out_at` to decide when to render "Feedback received"; once cron starts
+closing sessions, that poll false-positives and tells a teacher their unsent
+feedback arrived, then clears their draft. The fixed poll (reading the feedback
+columns) is on the `development` branch, undeployed.
+
+So the remaining order is: **push and deploy the web code first**, then
+schedule the cron. Steps, in order:
+
+1. Supabase dashboard → Project Settings → Edge Functions → Secrets → add
+   `AUTO_CLOCKOUT_SECRET`.
+2. SQL editor, storing the SAME value so the cron can read it back:
+   `select vault.create_secret('<value>', 'auto_clockout_secret');`
+3. Schedule it (same shape as `calendar-sync-5min`):
+
+```sql
+select cron.schedule('auto-clockout-5min', '*/5 * * * *', $$
+  select net.http_post(
+    url := 'https://vgyogyojxlvhiwujidhy.supabase.co/functions/v1/auto-clockout',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'x-auto-clockout-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'auto_clockout_secret')
+    ),
+    body := '{}'::jsonb
+  );
+$$);
+```
+
+Rotate note, same trap as `check_closeout_secret`: the cron reads from Vault
+and the function reads its own Edge secret, so rotating one without the other
+breaks it silently.
+
+### Also owed at deploy time
+
+- ~~Redeploy `notify-dispatch`~~ — **done 2026-08-12** (version 18). Confirmed
+  live: `net._http_response` shows it returning 200 with the expected body on
+  the 1-minute cron. That also proves the cross-boundary import survives the
+  deployed Deno runtime — `dispatch-logic.ts` pulls `APP_TIME_ZONE` from
+  `src/lib/format/datetime.ts`, and a failed import would have boot-errored the
+  whole function rather than degrading quietly.
+- `stuck-session-detect` remains **undeployed and unscheduled**, and its
+  meaning changed in 0026: `p_stuck_after_hours` is now a grace period *after*
+  the deadline, not a window measured from clock-in. Default 0 means "escalate
+  the moment the 24h window lapses", which is the same moment clock-in starts
+  blocking.
 
 ## ✅ Fixed: class times showed +4h wrong on server-rendered screens (2026-07-28)
 
