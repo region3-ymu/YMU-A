@@ -21,7 +21,6 @@
 -- automatic clock-out — see the comment above section 6 for why splitting them
 -- silently destroys teacher feedback.
 
-begin;
 
 -- ===========================================================================
 -- 1. Schema
@@ -900,5 +899,3 @@ grant execute on function public.attempt_clock_in(uuid, double precision, double
 
 comment on function public.attempt_clock_in(uuid, double precision, double precision, double precision, uuid, integer, text, timestamptz) is
   'Logged wrapper around clock_in(). Returns (ok, error_message, session) instead of raising for a policy denial, so the caller can render a friendly message AND the attempt is recorded. clock_in() itself is unchanged and still raises.';
-
-commit;

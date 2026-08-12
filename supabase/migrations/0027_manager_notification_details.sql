@@ -21,7 +21,6 @@
 -- teacher's phone matches the PRD's ticket metadata side-panel and the NFR
 -- that contact details are visible to assigned agents and Admins.
 
-begin;
 
 -- ---------------------------------------------------------------------------
 -- The shared enrichment. One LEFT JOIN per entity so a missing school or a
@@ -281,5 +280,3 @@ $$;
 
 revoke execute on function public.record_gps_check(uuid, double precision, double precision, double precision) from public, anon;
 grant execute on function public.record_gps_check(uuid, double precision, double precision, double precision) to authenticated;
-
-commit;

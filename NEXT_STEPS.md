@@ -190,24 +190,73 @@ Decisions the original note left open, now settled:
   first-time submission arrives, and the old guard would swallow it and return
   success — feedback lost, no error anywhere.
 
-### ⚠️ Migration 0026 is written but deliberately NOT applied
+### ✅ Migrations 0026 and 0027 APPLIED 2026-08-12
 
-The DB and the UI must land together. Applying it early leaves production with
-new database behaviour and the old client, whose feedback form polls
-`clock_out_at` and would tell a teacher their unsent feedback had been
-received — then clear the draft. (That poll now reads the feedback columns.)
+Applied to production via the Supabase MCP, in four verified chunks for 0026
+plus one for 0027. Verified after the fact: four new columns on
+attendance_sessions (feedback_settled_at reporting `is_generated = ALWAYS`),
+six new functions, the clock_in_attempts table and the clock_in_result type,
+and the grant matrix — attempt_clock_in and clock_out executable by
+`authenticated`, auto_clock_out_ended_sessions and
+manager_notification_payload service_role only, so a teacher cannot read
+another teacher's phone through the payload helper.
 
-Deploy order, no exceptions: **apply 0026 first, then ship the code.** The
-reverse breaks immediately, because the new UI calls `clock_out()` and that
-function would not exist yet.
+Safe to apply ahead of the code because the DB change is strictly more
+permissive and the old client cannot reach it: the deployed /clocking page
+swaps itself for the feedback form whenever a session is open, so the relaxed
+gate is unreachable until the new UI ships. The backfill was a no-op — zero
+attendance_sessions rows after the 0025 reset.
 
-Also owed at deploy time:
+`auto-clockout` is **deployed** (verify_jwt false, shared-secret header, same
+shape as late-detect) and confirmed failing closed: it returns
+`{"error":"Auto clock-out is not configured."}` until the secret exists.
 
-- Deploy the `auto-clockout` Edge Function and set `AUTO_CLOCKOUT_SECRET`.
-- Schedule it on pg_cron every 5 minutes (same shape as `late-detect-1min`).
-- Note that `stuck-session-detect` still has **no** cron job scheduled, and its
+### ⚠️ The auto-clockout cron is deliberately NOT scheduled yet
+
+Scheduling it before the web code deploys reintroduces exactly the bug the
+migration was careful to avoid. The deployed feedback form still polls
+`clock_out_at` to decide when to render "Feedback received"; once cron starts
+closing sessions, that poll false-positives and tells a teacher their unsent
+feedback arrived, then clears their draft. The fixed poll (reading the feedback
+columns) is on the `development` branch, undeployed.
+
+So the remaining order is: **push and deploy the web code first**, then
+schedule the cron. Steps, in order:
+
+1. Supabase dashboard → Project Settings → Edge Functions → Secrets → add
+   `AUTO_CLOCKOUT_SECRET`.
+2. SQL editor, storing the SAME value so the cron can read it back:
+   `select vault.create_secret('<value>', 'auto_clockout_secret');`
+3. Schedule it (same shape as `calendar-sync-5min`):
+
+```sql
+select cron.schedule('auto-clockout-5min', '*/5 * * * *', $$
+  select net.http_post(
+    url := 'https://vgyogyojxlvhiwujidhy.supabase.co/functions/v1/auto-clockout',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'x-auto-clockout-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'auto_clockout_secret')
+    ),
+    body := '{}'::jsonb
+  );
+$$);
+```
+
+Rotate note, same trap as `check_closeout_secret`: the cron reads from Vault
+and the function reads its own Edge secret, so rotating one without the other
+breaks it silently.
+
+### Also owed at deploy time
+
+- **Redeploy `notify-dispatch`.** 0027 now writes enriched payloads, but the
+  deployed function still runs the old `notificationCopy()`, which ignores the
+  new fields — managers keep getting the generic one-liner until it ships. No
+  breakage either way; the new keys are simply unread.
+- `stuck-session-detect` remains **undeployed and unscheduled**, and its
   meaning changed in 0026: `p_stuck_after_hours` is now a grace period *after*
-  the deadline, not a window measured from clock-in.
+  the deadline, not a window measured from clock-in. Default 0 means "escalate
+  the moment the 24h window lapses", which is the same moment clock-in starts
+  blocking.
 
 ## ✅ Fixed: class times showed +4h wrong on server-rendered screens (2026-07-28)
 
