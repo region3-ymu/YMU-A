@@ -89,7 +89,7 @@ describe("resolveRange", () => {
 
 describe("rangeOptions", () => {
   it("lists rolling windows, then school years newest first, then all time", () => {
-    expect(rangeOptions(YEARS, DURING_2026)).toEqual([
+    expect(rangeOptions(YEARS)).toEqual([
       { key: "30d", label: "Last 30 days" },
       { key: "90d", label: "Last 90 days" },
       { key: "sy:y26", label: "2026-27" },
@@ -99,6 +99,6 @@ describe("rangeOptions", () => {
   });
 
   it("still offers the rolling windows with no school years", () => {
-    expect(rangeOptions([], DURING_2026).map((o) => o.key)).toEqual(["30d", "90d", "all"]);
+    expect(rangeOptions([]).map((o) => o.key)).toEqual(["30d", "90d", "all"]);
   });
 });

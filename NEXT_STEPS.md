@@ -28,6 +28,25 @@ the number came from somewhere else — worth tracing before trusting it.
 
 ---
 
+## 🟡 Manager alerts are push-only — no email fallback (noted 2026-08-12)
+
+`gps_out_of_fence`, `late_clock_in` and `feedback_stuck` are absent from
+`EMAIL_ELIGIBLE_TYPES` (`dispatch-logic.ts`), so a Regional Manager who has
+never subscribed a device to Web Push receives **nothing at all** for any of
+them. They also have no entry in `NOTIFICATION_TYPE_TO_PREFERENCE`, so there is
+no Settings toggle either way.
+
+The original brief scoped email to "schedule changes, cancellations, and
+clock-out reminders only", which is why it is this way. Left as-is rather than
+changed quietly — adding three types to the email path is a product decision,
+and the Resend free tier is capped at 100/day, which the cap logic in
+`planDispatch` already tracks.
+
+Migration 0027 made the push itself carry the full detail, so the content gap
+is closed; this is only about reach.
+
+---
+
 ## ✅ Done 2026-08-12: all 109 school calendars discovered, 108 of 111 schools pinned
 
 Three of the four blockers below are closed. What actually fixed it:

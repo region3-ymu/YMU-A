@@ -6,6 +6,12 @@
 // index.ts is the thin Deno wrapper that fetches real rows, calls planDispatch,
 // and performs the actual push/email sends this file only decides about.
 
+// The one cross-boundary import, same pattern as calendar-sync/sync.ts pulling
+// in the Google client: datetime.ts has zero imports of its own, so it loads
+// cleanly under Deno. Worth the coupling to keep a single definition of "app
+// time" — a second copy of the zone string is a second thing to forget.
+import { APP_TIME_ZONE } from "../../../src/lib/format/datetime.ts";
+
 export type PreferenceType =
   | "be_there_soon"
   | "clock_in_reminder"
@@ -131,13 +137,24 @@ export function planDispatch(
 // Human-facing copy, keyed by notification_queue's raw type. Kept here (not
 // in index.ts) so a copy typo is caught by the same unit tests as the
 // routing logic.
+//
+// Manager-facing types (the last three) read the enriched payload that
+// migration 0027 writes: teacher name and phone, school name, class summary
+// and start time. Before that they said "A teacher hasn't clocked in for a
+// scheduled class" and nothing else, which told a manager only that they
+// should stop what they were doing and go look something up.
+//
+// Every field is optional on purpose. manager_notification_payload strips
+// nulls, so an unmatched school or a deleted event yields fewer keys — and a
+// thinner notification is the right degradation, since an unmatched-school
+// class is exactly what a manager most needs to hear about.
 export function notificationCopy(row: Pick<QueueRow, "type" | "payload">): {
   title: string;
   body: string;
   url: string;
 } {
   const payload = row.payload ?? {};
-  const summary = typeof payload.summary === "string" && payload.summary ? payload.summary : "your class";
+  const summary = str(payload.summary) ?? "your class";
 
   switch (row.type) {
     case "be_there_soon":
@@ -145,7 +162,13 @@ export function notificationCopy(row: Pick<QueueRow, "type" | "payload">): {
     case "clock_in_reminder":
       return { title: "Don't forget to clock in", body: `${summary} has started.`, url: "/clocking" };
     case "clock_out_reminder":
-      return { title: "Clock out & submit feedback", body: `${summary} has ended.`, url: "/feedback" };
+      // Since 0026 clocking out and submitting feedback are separate, and this
+      // reminder is about the feedback — the one with a deadline.
+      return {
+        title: "Feedback due",
+        body: dueSuffix(payload) ?? `${summary} has ended.`,
+        url: "/feedback",
+      };
     case "time_changed":
       return { title: "Schedule changed", body: `${summary}'s time changed.`, url: "/schedules" };
     case "location_changed":
@@ -154,13 +177,88 @@ export function notificationCopy(row: Pick<QueueRow, "type" | "payload">): {
       return { title: "Schedule changed", body: `${summary}'s teacher assignment changed.`, url: "/schedules" };
     case "event_cancelled":
       return { title: "Class cancelled", body: `${summary} was cancelled.`, url: "/schedules" };
-    case "gps_out_of_fence":
-      return { title: "GPS check flagged", body: "A teacher's GPS check landed outside the fence.", url: "/flags" };
+
+    case "gps_out_of_fence": {
+      const distance = num(payload.distance_m);
+      const how = distance == null ? "outside the geofence" : `${Math.round(distance)}m away`;
+      return {
+        title: managerTitle("GPS check flagged", payload),
+        body: managerBody(`${teacher(payload)} was ${how} during ${summary}`, payload),
+        url: "/flags",
+      };
+    }
     case "late_clock_in":
-      return { title: "Missed clock-in", body: "A teacher hasn't clocked in for a scheduled class.", url: "/flags" };
+      return {
+        title: managerTitle("Missed clock-in", payload),
+        body: managerBody(`${teacher(payload)} hasn't clocked in for ${summary}`, payload),
+        url: "/flags",
+      };
+    case "feedback_stuck":
+      return {
+        title: managerTitle("Feedback overdue", payload),
+        body: managerBody(`${teacher(payload)} hasn't submitted feedback for ${summary}`, payload),
+        url: "/flags",
+      };
+
     default:
       return { title: "YMU-A", body: summary, url: "/" };
   }
+}
+
+function str(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function num(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function teacher(payload: Record<string, unknown>): string {
+  return str(payload.teacher_name) ?? "A teacher";
+}
+
+// The school goes in the TITLE, not the body. A manager covering a region
+// triages by site first, and Android/iOS both truncate the body long before
+// the title on a locked screen.
+function managerTitle(base: string, payload: Record<string, unknown>): string {
+  const school = str(payload.school_name);
+  return school ? `${base} — ${school}` : base;
+}
+
+// Time then phone, in that order: the time tells the manager whether this is
+// still actionable, and the phone is what they do about it. Tapping a number
+// in a notification dials on both platforms.
+function managerBody(lead: string, payload: Record<string, unknown>): string {
+  const parts = [lead];
+  const startAt = str(payload.start_at);
+  if (startAt) {
+    const at = timeInAppZone(startAt);
+    if (at) parts[0] = `${lead} at ${at}`;
+  }
+  const phone = str(payload.teacher_phone);
+  return phone ? `${parts[0]}. Call ${phone}` : `${parts[0]}.`;
+}
+
+function dueSuffix(payload: Record<string, unknown>): string | undefined {
+  const summary = str(payload.summary);
+  const due = str(payload.due_at);
+  if (!summary || !due) return undefined;
+  const at = timeInAppZone(due);
+  return at ? `Feedback for ${summary} is due by ${at}.` : undefined;
+}
+
+// This runs in Deno on Supabase's infrastructure, which is UTC. Rendering a
+// bare time there would tell a Miami manager a class started four hours later
+// than it did — the exact bug commit 2ad1c92 fixed on the web side. The zone
+// is imported rather than repeated so there is one definition of "app time".
+function timeInAppZone(iso: string): string | undefined {
+  const ms = Date.parse(iso);
+  if (Number.isNaN(ms)) return undefined;
+  return new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: APP_TIME_ZONE,
+  }).format(new Date(ms));
 }
 
 // The "today" boundary for the email cap. UTC, matching Postgres's

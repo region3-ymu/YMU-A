@@ -75,10 +75,9 @@ export function defaultRangeKey(schoolYears: SchoolYear[], now: number = Date.no
   return year ? `sy:${year.id}` : "90d";
 }
 
-export function rangeOptions(
-  schoolYears: SchoolYear[],
-  now: number = Date.now(),
-): { key: string; label: string }[] {
+// No `now` parameter: the option LIST is the same whenever you ask. Only
+// resolveRange turns a key into bounds, and that is where the clock matters.
+export function rangeOptions(schoolYears: SchoolYear[]): { key: string; label: string }[] {
   const years = schoolYears
     .slice()
     .sort((a, b) => b.start_date.localeCompare(a.start_date))
