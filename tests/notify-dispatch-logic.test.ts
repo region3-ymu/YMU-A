@@ -246,3 +246,57 @@ describe("notificationCopy — clock_out_reminder after 0026", () => {
     expect(copy.body).toBe("Drumline has ended.");
   });
 });
+
+describe("notificationCopy — ticketing (migration 0030)", () => {
+  const managerPayload = {
+    teacher_name: "James Perez",
+    teacher_phone: "305-555-0142",
+    school_name: "Madison Middle School",
+    summary: "Drumline",
+    start_at: "2026-08-12T16:30:00Z",
+    ticket_id: "11111111-2222-3333-4444-555555555555",
+    category_type: "Operational",
+  };
+
+  it("names who, where and how to reach them for a new ticket", () => {
+    const copy = notificationCopy({ type: "ticket_opened", payload: managerPayload });
+    expect(copy.title).toBe("New ticket — Madison Middle School");
+    expect(copy.body).toBe(
+      "James Perez raised a operational issue at 12:30 PM. Call 305-555-0142",
+    );
+  });
+
+  // Deep-links so a manager lands on the thread instead of a list to search.
+  it("links straight to the ticket", () => {
+    expect(notificationCopy({ type: "ticket_opened", payload: managerPayload }).url).toBe(
+      "/tickets/11111111-2222-3333-4444-555555555555",
+    );
+  });
+
+  it("falls back to the list when the id is missing", () => {
+    expect(notificationCopy({ type: "ticket_assigned", payload: {} }).url).toBe("/tickets");
+  });
+
+  // Teacher-facing: their own name and phone would be noise, so these stay
+  // short and reference the ticket number instead.
+  it("keeps the teacher's own notifications short", () => {
+    const copy = notificationCopy({
+      type: "ticket_needs_you",
+      payload: { ticket_id: "abc", ticket_number: 42 },
+    });
+    expect(copy.title).toBe("Your ticket needs a reply");
+    expect(copy.body).toBe("Ticket #42 is waiting on you.");
+  });
+
+  it("tells the teacher a ticket was resolved and that reopening is possible", () => {
+    const copy = notificationCopy({ type: "ticket_resolved", payload: { ticket_number: 7 } });
+    expect(copy.body).toContain("Ticket #7 was resolved");
+    expect(copy.body).toContain("Reopen");
+  });
+
+  it("degrades without a ticket number rather than printing undefined", () => {
+    const copy = notificationCopy({ type: "ticket_resolved", payload: {} });
+    expect(copy.body).toContain("Your ticket");
+    expect(copy.body).not.toContain("undefined");
+  });
+});

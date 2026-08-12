@@ -200,6 +200,34 @@ export function notificationCopy(row: Pick<QueueRow, "type" | "payload">): {
         url: "/flags",
       };
 
+    // Ticketing (migration 0030). The first two are manager-facing and reuse
+    // the enriched payload; the last two go to the teacher, whose own name and
+    // phone would be noise, so they stay short.
+    case "ticket_opened":
+      return {
+        title: managerTitle("New ticket", payload),
+        body: managerBody(`${teacher(payload)} raised a ${category(payload)} issue`, payload),
+        url: ticketUrl(payload),
+      };
+    case "ticket_assigned":
+      return {
+        title: managerTitle("Ticket assigned to you", payload),
+        body: managerBody(`${teacher(payload)}'s ${category(payload)} issue is now yours`, payload),
+        url: ticketUrl(payload),
+      };
+    case "ticket_needs_you":
+      return {
+        title: "Your ticket needs a reply",
+        body: `${ticketRef(payload)} is waiting on you.`,
+        url: ticketUrl(payload),
+      };
+    case "ticket_resolved":
+      return {
+        title: "Ticket resolved",
+        body: `${ticketRef(payload)} was resolved. Reopen it if the problem is still there.`,
+        url: ticketUrl(payload),
+      };
+
     default:
       return { title: "YMU-A", body: summary, url: "/" };
   }
@@ -215,6 +243,22 @@ function num(value: unknown): number | undefined {
 
 function teacher(payload: Record<string, unknown>): string {
   return str(payload.teacher_name) ?? "A teacher";
+}
+
+function category(payload: Record<string, unknown>): string {
+  return (str(payload.category_type) ?? "support").toLowerCase();
+}
+
+function ticketRef(payload: Record<string, unknown>): string {
+  const n = num(payload.ticket_number);
+  return n == null ? "Your ticket" : `Ticket #${n}`;
+}
+
+// Deep-links to the ticket when we know which one, so a manager lands on the
+// thread rather than on a list they then have to search.
+function ticketUrl(payload: Record<string, unknown>): string {
+  const id = str(payload.ticket_id);
+  return id ? `/tickets/${id}` : "/tickets";
 }
 
 // The school goes in the TITLE, not the body. A manager covering a region
