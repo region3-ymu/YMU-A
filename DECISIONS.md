@@ -1025,3 +1025,36 @@ reported the exact fault from the other end.
 It was marked resolved instead. A count of zero is worth less than the record
 of a real fault reported by the person it happened to — and the two are not in
 conflict, since resolved rows leave the inbox either way.
+
+### "A user sees the wrong data" is not always a permissions bug
+
+Kevin Bodniza reported schools in his schedule that he does not teach at, which
+reads exactly like an RLS leak. It was not one, and checking that first is what
+kept the fix from being aimed at the wrong layer:
+
+- `calendar_events_select` restricts a teacher to `auth.uid() = ANY
+  (teacher_ids)`;
+- `/schedules` queries with the user's own client, so the policy applies;
+- and every event he could see genuinely names his address as a Google Calendar
+  attendee.
+
+The classes really were his. The **school** attached to them was wrong — 2,598
+events across 9 schools, filed under whatever school their calendar was pinned
+to at the moment the row was first written, and never revisited when the pin
+was later corrected.
+
+The tell was that Horace Mann, where he does teach, had zero events while a
+school he had never heard of had 180. A leak adds rows; a mislabel moves them.
+
+### Stale `school_id` is a geofence bug wearing a label's clothes
+
+It would be easy to file "the class says the wrong school" as cosmetic. It is
+not. `school_id` is what clock-in measures the teacher's GPS against, and the
+mismatched pairs here were up to 11.2 km apart — a teacher standing in their
+own classroom would have failed the geofence with no way to tell why. It also
+decides the region a ticket routes to, so the wrong manager gets it.
+
+Two things follow. Any re-pin of a school's calendar has to be followed by
+`relink_event_schools()`, because the incremental sync will not revisit events
+Google considers unchanged. And when a value is used both as a display label
+and as a validation input, a bug in it is worth triaging on the second use.

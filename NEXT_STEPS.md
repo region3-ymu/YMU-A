@@ -34,6 +34,46 @@ nobody could clock into any of them. Login changed in place, re-linked, done.
 **He must be told his login changed**, and it cannot be self-served: `ymu.org`
 still has no SPF/DKIM/DMARC, so "Forgot password?" delivers nothing.
 
+## ✅ FIXED: 2,598 classes were filed under the wrong school (2026-08-12)
+
+Kevin Bodniza reported seeing Young Men's Preparatory Academy and North Miami
+MS in his schedule, and he teaches at neither. He was right, and it was not a
+permissions bug — that was checked first and is sound:
+
+- `calendar_events_select` restricts a teacher to `auth.uid() = ANY
+  (teacher_ids)`, so a teacher can only ever read a class they are named on.
+- `/schedules` queries with the user's own client, so RLS applies. No bypass.
+- Every event he saw genuinely carries `bodniza.kevin@gmail.com` as a Google
+  Calendar attendee.
+
+**The classes were his. The school on them was wrong.** His 180 "Young Men's
+Preparatory Academy" classes come from the calendar pinned to **Horace Mann
+Middle School** — where he does in fact teach.
+
+### Why, and why it matters more than a wrong label
+
+Same shape as the teacher-linkage bug 0035 fixed. An event's school is resolved
+when the row is first written, and the sync is incremental. Every time a pin
+was corrected — Hialeah/Homestead, Dr. William Chapman, John A. Ferguson, and
+the re-subscription of all 111 calendars — the events already stored kept
+pointing at whichever school the pin used to name.
+
+`school_id` is what **clock-in validates the geofence against**. The mismatched
+pairs were up to **11.2 km** apart, so a teacher standing in their own
+classroom would have been told they were nowhere near it. It also decides which
+region a ticket routes to.
+
+`relink_event_schools()` (0036) re-files every event under its calendar's
+current pin. 3,253 rows corrected; 0 mismatches remain out of 14,935. Kevin now
+shows exactly Horace Mann, Paul L. Dunbar and Carrie P. Meek.
+
+**Run it after any re-pin**, alongside the teacher one:
+
+```sql
+select public.relink_event_schools();
+select public.relink_event_teachers();
+```
+
 ## ✅ Reset to zero for the 2026-27 start (2026-08-12)
 
 Every operational table is empty. Audited by enumerating **all 20 public
