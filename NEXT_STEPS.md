@@ -248,10 +248,12 @@ breaks it silently.
 
 ### Also owed at deploy time
 
-- **Redeploy `notify-dispatch`.** 0027 now writes enriched payloads, but the
-  deployed function still runs the old `notificationCopy()`, which ignores the
-  new fields — managers keep getting the generic one-liner until it ships. No
-  breakage either way; the new keys are simply unread.
+- ~~Redeploy `notify-dispatch`~~ — **done 2026-08-12** (version 18). Confirmed
+  live: `net._http_response` shows it returning 200 with the expected body on
+  the 1-minute cron. That also proves the cross-boundary import survives the
+  deployed Deno runtime — `dispatch-logic.ts` pulls `APP_TIME_ZONE` from
+  `src/lib/format/datetime.ts`, and a failed import would have boot-errored the
+  whole function rather than degrading quietly.
 - `stuck-session-detect` remains **undeployed and unscheduled**, and its
   meaning changed in 0026: `p_stuck_after_hours` is now a grace period *after*
   the deadline, not a window measured from clock-in. Default 0 means "escalate
