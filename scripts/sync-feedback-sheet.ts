@@ -14,10 +14,10 @@
 // service account as an EDITOR (reader cannot append).
 
 import { parseServiceAccount } from "../src/lib/google/calendar.ts";
-import { appendRows, ensureHeader, type SheetCell } from "../src/lib/google/sheets.ts";
+import { appendRows, ensureHeader, resolveSheetName, type SheetCell } from "../src/lib/google/sheets.ts";
 import { createClient } from "@supabase/supabase-js";
 
-const SHEET_NAME = process.env.FEEDBACK_SHEET_NAME?.trim() || "Feedback";
+const PREFERRED_SHEET = process.env.FEEDBACK_SHEET_NAME?.trim() || "Feedback";
 const BATCH = 500;
 
 // Order defines the column order in the sheet. Appending a new field means
@@ -69,8 +69,11 @@ async function main() {
     { auth: { autoRefreshToken: false, persistSession: false } },
   );
 
-  const wroteHeader = await ensureHeader(serviceAccount, spreadsheetId, SHEET_NAME, HEADER);
-  if (wroteHeader) console.log(`  wrote the header row to "${SHEET_NAME}"`);
+  // A new spreadsheet's only tab is "Sheet1"; writing to a tab that does not
+  // exist fails with an unhelpful 400, so take whichever tab is actually there.
+  const sheetName = await resolveSheetName(serviceAccount, spreadsheetId, PREFERRED_SHEET);
+  const wroteHeader = await ensureHeader(serviceAccount, spreadsheetId, sheetName, HEADER);
+  console.log(`  sheet tab: "${sheetName}"${wroteHeader ? " (header written)" : ""}`);
 
   let total = 0;
   for (;;) {
@@ -87,7 +90,7 @@ async function main() {
       }),
     );
 
-    await appendRows(serviceAccount, spreadsheetId, `${SHEET_NAME}!A1`, rows);
+    await appendRows(serviceAccount, spreadsheetId, `${sheetName}!A1`, rows);
 
     // Stamp only after Google confirmed the write.
     const ids = pending.map((r) => String(r.id));

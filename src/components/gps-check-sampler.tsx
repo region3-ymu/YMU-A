@@ -4,7 +4,11 @@ import { useEffect } from "react";
 import { getDueChecks, getOwnOpenSessionId, recordGpsCheck } from "@/lib/gps-checks/actions";
 import { enqueueGpsCheck, listPendingClockIns } from "@/lib/offline/queue";
 
-const CHECK_OFFSETS_MIN = [5, 10, 15, 20, 25];
+// Mirrors clock_in()'s insert (migration 0034). Three checks across 45
+// minutes rather than five in the first 25: a teacher present at minute 5 is
+// present at minute 10, and YMU classes run 60-80 minutes, so this covers the
+// class instead of clustering at its start.
+const CHECK_OFFSETS_MIN = [15, 30, 45];
 
 // While the app is foregrounded and the teacher has an open session, this
 // silently samples GPS for any gps_checks row that's come due (+5/10/15/20/25

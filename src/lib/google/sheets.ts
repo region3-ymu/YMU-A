@@ -79,6 +79,41 @@ export async function appendRows(
 }
 
 /**
+ * The tab to write to: the requested one if it exists, otherwise the first.
+ *
+ * A brand-new spreadsheet's only tab is called "Sheet1", and a range naming a
+ * tab that does not exist fails with a 400 that mentions parsing, not naming —
+ * so guessing wrong is a genuinely confusing failure. Resolving it means YMU
+ * can name the tab whatever they like without touching config.
+ */
+export async function resolveSheetName(
+  serviceAccount: GoogleServiceAccount,
+  spreadsheetId: string,
+  preferred?: string,
+): Promise<string> {
+  const token = await getGoogleAccessToken(serviceAccount, SHEETS_SCOPE);
+  const response = await fetch(
+    `${SHEETS_API}/${encodeURIComponent(spreadsheetId)}?fields=sheets.properties.title`,
+    { headers: { authorization: `Bearer ${token}` } },
+  );
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new GoogleCalendarError(
+      response.status === 403
+        ? describe403(body, serviceAccount.client_email)
+        : `Could not open the spreadsheet (${response.status}). Check the id is correct.`,
+      response.status,
+      body,
+    );
+  }
+  const data = (await response.json()) as { sheets?: { properties?: { title?: string } }[] };
+  const titles = (data.sheets ?? []).map((s) => s.properties?.title).filter(Boolean) as string[];
+  if (titles.length === 0) throw new Error("That spreadsheet has no sheets.");
+  if (preferred && titles.includes(preferred)) return preferred;
+  return titles[0];
+}
+
+/**
  * Writes the header row, once, only if the sheet is empty.
  *
  * Checked rather than assumed: appending a header to a sheet that already has
