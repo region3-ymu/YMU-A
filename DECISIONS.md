@@ -1105,3 +1105,17 @@ It now reads both IndexedDB stores: how many clock-ins are saved on the device
 (the one thing a teacher who already tapped needs to know) and the next class
 it remembers. That also decouples correctness from the HTML cache's age — the
 class shown comes from IndexedDB, not from week-old markup.
+
+### Extending a cache's life extends what a lost phone leaks
+
+The page caches hold rendered authenticated screens. `supabase.auth.signOut()`
+clears the session but cannot touch Cache Storage, which is client-only — so
+those screens stayed readable offline on the device after sign-out. Always
+true, but it mattered less at serwist's 24-hour default than at the week this
+release moves to, and that made it this change's problem to fix rather than a
+pre-existing one to inherit.
+
+Sign-out now drops both page caches first, best-effort: a storage error must
+never leave someone unable to sign out. The precache and the static-asset
+caches are deliberately untouched — they hold no one's data, and clearing them
+would make the next login a cold download.

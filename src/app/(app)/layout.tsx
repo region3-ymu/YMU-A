@@ -8,8 +8,8 @@ import BackButton from "@/components/back-button";
 import BottomNav from "@/components/bottom-nav";
 import GpsCheckSampler from "@/components/gps-check-sampler";
 import OfflineIndicator from "@/components/offline-indicator";
+import SignOutButton from "@/components/sign-out-button";
 import YmuMark from "@/components/ymu-mark";
-import { signOut } from "../(auth)/actions";
 
 // Shell for every signed-in page. data-role drives the per-role accent color
 // (see globals.css); it lives here instead of <html> because this layout
@@ -59,18 +59,7 @@ export default async function AppLayout({
             <span className="hidden text-sm text-on-surface-variant sm:inline">
               {profile.full_name}
             </span>
-            <form action={signOut}>
-              <button
-                type="submit"
-                className="flex h-9 w-9 items-center justify-center rounded-full text-on-surface-variant transition-colors hover:bg-surface-container-high"
-                aria-label="Sign out"
-                title="Sign out"
-              >
-                <span className="material-symbols-outlined text-xl" aria-hidden>
-                  logout
-                </span>
-              </button>
-            </form>
+            <SignOutButton />
           </div>
         </div>
       </header>
