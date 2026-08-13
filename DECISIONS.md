@@ -1058,3 +1058,50 @@ Two things follow. Any re-pin of a school's calendar has to be followed by
 `relink_event_schools()`, because the incremental sync will not revisit events
 Google considers unchanged. And when a value is used both as a display label
 and as a validation input, a bug in it is worth triaging on the second use.
+
+### Weak signal is the hard case, not no signal
+
+Serwist's default page strategy is NetworkFirst with no timeout, which is
+exactly backwards for a school building. With NO signal the fetch fails
+immediately and the cache is served, so the app works. With WEAK signal the
+browser believes it is online, so the app waits on a network that will never
+answer — and the teacher gives up long before it falls back.
+
+A teacher reported "trouble clocking in, most likely the lack of reception in
+the school". That is the weak-signal case, and the app was at its worst
+precisely where it was supposed to be at its best. The navigation strategies
+now carry `networkTimeoutSeconds: 3`.
+
+Worth generalising: an offline story tested by toggling airplane mode only
+tests the easy half. The realistic failure is a network that accepts the
+connection and never replies.
+
+### A long cache TTL is safe only if a deploy clears it
+
+The page cache moved from serwist's 24 hours to 7 days, because a teacher
+working Tuesdays and Thursdays otherwise met an expired cache at every class.
+
+24 hours was not a careless default though, and the risk is real: cached HTML
+references the build's hashed JS chunks, and serwist drops the previous build's
+chunks from the precache when a new worker activates. Week-old HTML surviving a
+deploy would ask for files that exist in no cache and render broken — offline,
+with no way for the teacher to see why.
+
+So the two changes are a pair, not two independent tweaks: `activate` deletes
+the page caches, which happens exactly once per deploy. Staleness is bounded by
+the last release rather than by the TTL. Never raise one without the other.
+
+### The offline screen was a dead end, and a purpose-built cache had no reader
+
+`getCachedNextClass()` was written on every render of the clocking screen and
+read by nothing — the app's own memory of "which class is next" went unused
+while offline behaviour depended entirely on stale cached HTML.
+
+Meanwhile the offline fallback said the page was unavailable and stopped. That
+is the last thing a teacher sees before deciding the app is broken and reaching
+for the paper log, and it offered them nothing.
+
+It now reads both IndexedDB stores: how many clock-ins are saved on the device
+(the one thing a teacher who already tapped needs to know) and the next class
+it remembers. That also decouples correctness from the HTML cache's age — the
+class shown comes from IndexedDB, not from week-old markup.
