@@ -16,7 +16,7 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { parseServiceAccount } from "@/lib/google/calendar";
-import { ensureTab, overwriteRows, type SheetCell } from "@/lib/google/sheets";
+import { ensureTab, overwriteRows, readTabMeta, type SheetCell } from "@/lib/google/sheets";
 import { SHEET_TABS, toTabRow } from "@/lib/google/sheet-tabs";
 
 // Seven tabs and ~7,000 rows of Sheets writes; the default timeout is not
@@ -63,6 +63,9 @@ export async function POST(request: Request) {
   const written: Record<string, number> = {};
 
   try {
+    // One read of the spreadsheet's shape for the whole run — see readTabMeta.
+    let meta = await readTabMeta(serviceAccount, spreadsheetId);
+
     for (const tab of SHEET_TABS) {
       const rows: Record<string, unknown>[] = [];
       for (let from = 0; ; from += PAGE) {
@@ -75,9 +78,10 @@ export async function POST(request: Request) {
         if (page.length < PAGE) break;
       }
 
-      await ensureTab(serviceAccount, spreadsheetId, tab.name);
+      const created = await ensureTab(serviceAccount, spreadsheetId, tab.name, meta);
+      if (created) meta = await readTabMeta(serviceAccount, spreadsheetId);
       const values: SheetCell[][] = rows.map((row) => toTabRow(tab, row));
-      await overwriteRows(serviceAccount, spreadsheetId, tab.name, [...tab.header], values);
+      await overwriteRows(serviceAccount, spreadsheetId, tab.name, [...tab.header], values, meta);
       written[tab.name] = rows.length;
     }
 

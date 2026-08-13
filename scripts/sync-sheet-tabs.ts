@@ -12,7 +12,7 @@
 // append-based sync cannot offer and the reason for the split.
 
 import { parseServiceAccount } from "../src/lib/google/calendar.ts";
-import { ensureTab, overwriteRows, type SheetCell } from "../src/lib/google/sheets.ts";
+import { ensureTab, overwriteRows, readTabMeta, type SheetCell } from "../src/lib/google/sheets.ts";
 import { SHEET_TABS, toTabRow } from "../src/lib/google/sheet-tabs.ts";
 import { createClient } from "@supabase/supabase-js";
 
@@ -62,11 +62,19 @@ async function main() {
   console.log(`Mirroring ${SHEET_TABS.length} tabs …\n`);
   let total = 0;
 
+  // Read the spreadsheet's shape ONCE. See readTabMeta: the quota that binds
+  // is per-minute per-user, and letting every tab look this up itself was 14
+  // of 36 requests per run.
+  let meta = await readTabMeta(serviceAccount, spreadsheetId);
+
   for (const tab of SHEET_TABS) {
     const rows = await readAll(supabase, tab.rpc, tab.args);
-    const created = await ensureTab(serviceAccount, spreadsheetId, tab.name);
+    const created = await ensureTab(serviceAccount, spreadsheetId, tab.name, meta);
+    // A new tab is not in the snapshot taken above, so refresh it — once, and
+    // only on the run that actually creates something.
+    if (created) meta = await readTabMeta(serviceAccount, spreadsheetId);
     const values: SheetCell[][] = rows.map((row) => toTabRow(tab, row));
-    await overwriteRows(serviceAccount, spreadsheetId, tab.name, [...tab.header], values);
+    await overwriteRows(serviceAccount, spreadsheetId, tab.name, [...tab.header], values, meta);
 
     total += rows.length;
     console.log(`  ${created ? "＋" : "·"} ${tab.name.padEnd(16)} ${rows.length} row(s)`);

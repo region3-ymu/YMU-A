@@ -23,6 +23,31 @@ const SHEETS_API = "https://sheets.googleapis.com/v4/spreadsheets";
 
 export type SheetCell = string | number | boolean | null;
 
+/**
+ * fetch, with the retry Google's own docs ask for.
+ *
+ * The binding quota is 60 requests per MINUTE PER USER, and a service account
+ * is one user — so the hourly tab sync (23 requests) and the two-minute
+ * feedback sync share one budget and can collide. Google returns 429 for that
+ * and recommends truncated exponential backoff; without it a collision means a
+ * tab throws and stays a whole hour stale for a condition that clears in
+ * seconds.
+ *
+ * 5xx is retried for the same reason. 4xx other than 429 is not: a bad range
+ * or a missing tab will fail identically however long you wait.
+ */
+async function sheetsFetch(url: string, init?: RequestInit, attempt = 0): Promise<Response> {
+  const response = await fetch(url, init);
+  const retryable = response.status === 429 || response.status >= 500;
+  if (!retryable || attempt >= 4) return response;
+
+  // 1s, 2s, 4s, 8s, plus jitter so two callers backing off together do not
+  // simply collide again on the same schedule.
+  const waitMs = 2 ** attempt * 1000 + Math.floor(Math.random() * 250);
+  await new Promise((resolve) => setTimeout(resolve, waitMs));
+  return sheetsFetch(url, init, attempt + 1);
+}
+
 // A 403 from Sheets has two very different causes and Google's own message is
 // the only way to tell them apart. Guessing "not shared" when the API is
 // simply switched off sends whoever is debugging to the wrong console page.
@@ -245,37 +270,80 @@ export async function clearDataRows(
   return rowCount - 1;
 }
 
+/** One tab's identity and grid size, as Google reports it. */
+export type TabMeta = {
+  sheetId: number;
+  title: string;
+  rowCount: number;
+  columnCount: number;
+};
+
+/**
+ * Every tab's id and grid size, in ONE request.
+ *
+ * Read once per sync run and passed down, because the quota that binds here is
+ * 60 requests per minute PER USER and the service account is a single user.
+ * Letting ensureTab and overwriteRows each fetch this themselves cost two
+ * reads per tab — 14 of a measured 36 requests per run, for information that
+ * cannot change mid-run except when this same code adds a tab.
+ */
+export async function readTabMeta(
+  serviceAccount: GoogleServiceAccount,
+  spreadsheetId: string,
+): Promise<TabMeta[]> {
+  const token = await getGoogleAccessToken(serviceAccount, SHEETS_SCOPE);
+  const response = await sheetsFetch(
+    `${SHEETS_API}/${encodeURIComponent(spreadsheetId)}`
+    + `?fields=sheets(properties(sheetId,title,gridProperties(rowCount,columnCount)))`,
+    { headers: { authorization: `Bearer ${token}` } },
+  );
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new GoogleCalendarError(
+      response.status === 403
+        ? describe403(body, serviceAccount.client_email)
+        : `Could not open the spreadsheet (${response.status}).`,
+      response.status,
+      body,
+    );
+  }
+  const data = (await response.json()) as {
+    sheets?: {
+      properties?: {
+        sheetId?: number;
+        title?: string;
+        gridProperties?: { rowCount?: number; columnCount?: number };
+      };
+    }[];
+  };
+  return (data.sheets ?? [])
+    .map((s) => s.properties)
+    .filter((p): p is NonNullable<typeof p> => p?.sheetId != null && p.title != null)
+    .map((p) => ({
+      sheetId: p.sheetId as number,
+      title: p.title as string,
+      rowCount: p.gridProperties?.rowCount ?? 0,
+      columnCount: p.gridProperties?.columnCount ?? 0,
+    }));
+}
+
 /**
  * Creates a tab if it is not already there. Returns true if it created one.
  *
- * Idempotent by design: the snapshot sync calls this for every tab on every
- * run rather than tracking which ones exist, so adding a tab to the registry
- * is the only step needed to get it into the spreadsheet.
+ * Pass `known` (from readTabMeta) to skip the lookup — see the note there on
+ * why the request count matters.
  */
 export async function ensureTab(
   serviceAccount: GoogleServiceAccount,
   spreadsheetId: string,
   sheetName: string,
+  known?: TabMeta[],
 ): Promise<boolean> {
-  const token = await getGoogleAccessToken(serviceAccount, SHEETS_SCOPE);
-  const metaResponse = await fetch(
-    `${SHEETS_API}/${encodeURIComponent(spreadsheetId)}?fields=sheets.properties.title`,
-    { headers: { authorization: `Bearer ${token}` } },
-  );
-  if (!metaResponse.ok) {
-    const body = await metaResponse.text().catch(() => "");
-    throw new GoogleCalendarError(
-      metaResponse.status === 403
-        ? describe403(body, serviceAccount.client_email)
-        : `Could not open the spreadsheet (${metaResponse.status}).`,
-      metaResponse.status,
-      body,
-    );
-  }
-  const meta = (await metaResponse.json()) as { sheets?: { properties?: { title?: string } }[] };
-  if ((meta.sheets ?? []).some((s) => s.properties?.title === sheetName)) return false;
+  const meta = known ?? (await readTabMeta(serviceAccount, spreadsheetId));
+  if (meta.some((t) => t.title === sheetName)) return false;
 
-  const response = await fetch(`${SHEETS_API}/${encodeURIComponent(spreadsheetId)}:batchUpdate`, {
+  const token = await getGoogleAccessToken(serviceAccount, SHEETS_SCOPE);
+  const response = await sheetsFetch(`${SHEETS_API}/${encodeURIComponent(spreadsheetId)}:batchUpdate`, {
     method: "POST",
     headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
     body: JSON.stringify({
@@ -307,7 +375,7 @@ export async function overwriteRows(
   sheetName: string,
   header: string[],
   rows: SheetCell[][],
-  previousRowCount?: number,
+  known?: TabMeta[],
 ): Promise<number> {
   const token = await getGoogleAccessToken(serviceAccount, SHEETS_SCOPE);
   const quoted = `'${sheetName.replace(/'/g, "''")}'`;
@@ -317,14 +385,15 @@ export async function overwriteRows(
   // values.update cannot extend it — writing 6,855 rows into it fails with a
   // 400 that talks about grid limits, not about size. values.append grows the
   // grid implicitly, which is why the feedback sync never hit this.
-  await ensureGrid(
+  const previous = await ensureGrid(
     token, spreadsheetId, sheetName,
     rows.length + 2,
     Math.max(header.length, ...rows.map((r) => r.length), 1),
+    known,
   );
 
   async function put(range: string, values: SheetCell[][]) {
-    const response = await fetch(
+    const response = await sheetsFetch(
       `${SHEETS_API}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}`
       + `?valueInputOption=USER_ENTERED`,
       {
@@ -356,9 +425,9 @@ export async function overwriteRows(
   // while an under-wide one leaves last week's rows masquerading as this
   // week's.
   const staleFrom = rows.length + 2;
-  const staleTo = Math.max(previousRowCount ?? 0, rows.length) + 5000;
+  const staleTo = Math.max(previous, rows.length + 2);
   if (staleTo >= staleFrom) {
-    const response = await fetch(
+    const response = await sheetsFetch(
       `${SHEETS_API}/${encodeURIComponent(spreadsheetId)}/values/`
       + `${encodeURIComponent(`${quoted}!A${staleFrom}:ZZ${staleTo}`)}:clear`,
       { method: "POST", headers: { authorization: `Bearer ${token}` } },
@@ -386,32 +455,43 @@ async function ensureGrid(
   sheetName: string,
   minRows: number,
   minCols: number,
-): Promise<void> {
-  const metaResponse = await fetch(
-    `${SHEETS_API}/${encodeURIComponent(spreadsheetId)}`
-    + `?fields=sheets(properties(sheetId,title,gridProperties(rowCount,columnCount)))`,
-    { headers: { authorization: `Bearer ${token}` } },
-  );
-  if (!metaResponse.ok) {
-    throw new Error(`Could not read the spreadsheet grid (${metaResponse.status}).`);
+  known?: TabMeta[],
+): Promise<number> {
+  let tab = known?.find((t) => t.title === sheetName);
+  if (!tab) {
+    // Not in the caller's snapshot: either none was passed, or this tab was
+    // created after it was taken. One extra read, only in that case.
+    const metaResponse = await sheetsFetch(
+      `${SHEETS_API}/${encodeURIComponent(spreadsheetId)}`
+      + `?fields=sheets(properties(sheetId,title,gridProperties(rowCount,columnCount)))`,
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    if (!metaResponse.ok) {
+      throw new Error(`Could not read the spreadsheet grid (${metaResponse.status}).`);
+    }
+    const meta = (await metaResponse.json()) as {
+      sheets?: {
+        properties?: {
+          sheetId?: number;
+          title?: string;
+          gridProperties?: { rowCount?: number; columnCount?: number };
+        };
+      }[];
+    };
+    const props = (meta.sheets ?? []).find((x) => x.properties?.title === sheetName)?.properties;
+    if (!props || props.sheetId == null) throw new Error(`No tab named "${sheetName}".`);
+    tab = {
+      sheetId: props.sheetId,
+      title: sheetName,
+      rowCount: props.gridProperties?.rowCount ?? 0,
+      columnCount: props.gridProperties?.columnCount ?? 0,
+    };
   }
-  const meta = (await metaResponse.json()) as {
-    sheets?: {
-      properties?: {
-        sheetId?: number;
-        title?: string;
-        gridProperties?: { rowCount?: number; columnCount?: number };
-      };
-    }[];
-  };
-  const props = (meta.sheets ?? []).find((s) => s.properties?.title === sheetName)?.properties;
-  if (!props || props.sheetId == null) throw new Error(`No tab named "${sheetName}".`);
 
-  const rowCount = props.gridProperties?.rowCount ?? 0;
-  const columnCount = props.gridProperties?.columnCount ?? 0;
-  if (rowCount >= minRows && columnCount >= minCols) return;
+  const { rowCount, columnCount } = tab;
+  if (rowCount >= minRows && columnCount >= minCols) return rowCount;
 
-  const response = await fetch(`${SHEETS_API}/${encodeURIComponent(spreadsheetId)}:batchUpdate`, {
+  const response = await sheetsFetch(`${SHEETS_API}/${encodeURIComponent(spreadsheetId)}:batchUpdate`, {
     method: "POST",
     headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
     body: JSON.stringify({
@@ -419,7 +499,7 @@ async function ensureGrid(
         {
           updateSheetProperties: {
             properties: {
-              sheetId: props.sheetId,
+              sheetId: tab.sheetId,
               gridProperties: {
                 rowCount: Math.max(rowCount, minRows),
                 columnCount: Math.max(columnCount, minCols),
@@ -435,4 +515,5 @@ async function ensureGrid(
     const body = await response.text().catch(() => "");
     throw new Error(`Could not resize "${sheetName}" (${response.status}): ${body}`);
   }
+  return rowCount;
 }

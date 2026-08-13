@@ -1168,3 +1168,23 @@ have had someone build a term's dashboard on a seventh of the data.
 
 Any service-role read of a set-returning function has to page until a short
 page comes back. Row counts that look suspiciously round are worth distrusting.
+
+### The Sheets quota that binds is per-user, and a service account is one user
+
+300 requests/minute per project reads like plenty. The limit that actually
+applies is **60 per minute per user**, and every call the app makes is the same
+service account — so the hourly tab sync and the two-minute feedback sync draw
+on one shared budget and can land in the same minute.
+
+Measured with a wrapped fetch rather than reasoned about: the tab sync was 36
+requests, 60% of the ceiling, with a collision able to push it over. Fourteen
+of those were `ensureTab` and `ensureGrid` each fetching the spreadsheet's
+metadata, twice per tab, for something that cannot change during a run.
+Reading it once per run took it to 24 — and, incidentally, the run from 33s to
+12s, because those reads were serial.
+
+Two habits worth keeping from this. **Measure API call counts, do not estimate
+them** — the duplicate metadata read was invisible in the code and obvious in
+the count. And **retry 429 with backoff before you think you need it**: without
+it a one-second overlap leaves a tab an hour stale, which looks like a data bug
+rather than a quota one.

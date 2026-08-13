@@ -66,6 +66,37 @@ Those columns are now labelled `(at submission)` and point at the `Tickets`
 tab, which is the live answer. The positions could not be reused — months of
 rows sit under them.
 
+### Google's quota, measured rather than assumed
+
+The binding limit is **60 requests per minute per USER**, and a service account
+is one user — so the hourly tab sync and the two-minute feedback sync share one
+budget. (Per project it is 300/min, and per day is unlimited, so neither of
+those is the constraint.)
+
+Measured with a wrapped `fetch`, not estimated:
+
+| | Requests | When |
+|---|---|---|
+| Tab sync | **24** (1 read, 23 writes) in ~12s | hourly |
+| Feedback sync | 2 idle, 3 when appending | every 2 min |
+| **Worst single minute** | **27 of 60 — 45%** | |
+
+It was 36 before, at 60% of the quota with the two syncs able to collide.
+`ensureTab` and `ensureGrid` each fetched the spreadsheet's metadata, twice per
+tab, for something that cannot change mid-run: 14 of the 36. `readTabMeta()`
+now reads it once per run and passes it down. The run also went from 33s to
+12s.
+
+Every Sheets call goes through `sheetsFetch()`, which retries 429 and 5xx with
+truncated exponential backoff and jitter — Google's own recommendation. Without
+it a collision would leave a tab an hour stale over a condition that clears in
+seconds.
+
+**Headroom check:** even someone running `npm run sync:sheet:full` by hand at
+the exact minute the cron fires is 24 + 24 + 3 = 51 of 60, and the backoff
+covers the rest. Adding tabs costs ~3 requests each, so there is room for
+roughly ten more before this needs rethinking.
+
 ### Two traps worth remembering
 
 - **PostgREST truncates at 1000 rows and reports success.** The first run
