@@ -1337,3 +1337,27 @@ school clocks in against the wrong geofence.
 
 Now on `relink-events-10min`. Both functions only write rows that actually
 differ, so a clean run costs an indexed check and nothing else.
+
+### Recording a past class must not leave it open
+
+`admin_create_attendance()` never set `clock_out_at`, so every class a manager
+recorded was written as still in progress. There is a partial unique index —
+`unique (teacher_id) where clock_out_at is null` — enforcing that a teacher is
+in at most one class at a time, so recording a SECOND class for the same
+teacher failed with a raw constraint name. Which is exactly the shape of the
+job: a manager fixing up a day's worth of missed clock-ins does several in a
+row.
+
+The fix is not to relax the index — it is right, and it is what stops a teacher
+being clocked into two rooms at once. The session is now closed when the class
+has already ended, and left open only while it genuinely is still running.
+
+`clock_out_at` is set to the class's scheduled END, never `now()`: a manager
+fixing Tuesday's register on Thursday must not create two days of phantom
+attendance. Pay is unaffected either way — `hours_worked` has been the
+scheduled duration since 0021 — but people read the timestamp.
+
+The general lesson: when a write path fabricates a row that a live path
+normally produces, it has to fabricate ALL of the columns that path sets, not
+just the ones the immediate feature needs. This is the second gap in this same
+function — 0037 added the feedback deadline it was also skipping.
