@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import DarkModeToggle from "./dark-mode-toggle";
 import PushSettings from "./push-settings";
 import NotificationSettings from "./notification-settings";
+import ChangePassword from "./change-password";
 
 export const metadata: Metadata = { title: "Settings" };
 
@@ -22,7 +23,7 @@ export default async function SettingsPage() {
         <span className="material-symbols-outlined" aria-hidden>settings</span>
         Settings
       </h1>
-      <p className="mt-1 text-sm text-on-surface-variant">Notifications & theme</p>
+      <p className="mt-1 text-sm text-on-surface-variant">Account, notifications & theme</p>
 
       <div className="mt-6">
         <DarkModeToggle />
@@ -36,6 +37,19 @@ export default async function SettingsPage() {
       </div>
 
       <NotificationSettings userId={profile.id} initialPrefs={prefs ?? []} />
+
+      {/* Last, because it is the least-used control here — but it is the ONLY
+          way to change a password while "Forgot password?" cannot deliver
+          mail. profile.email comes from auth.users via the DAL and is what the
+          re-verification signs in with. */}
+      {profile.email && (
+        <div className="mt-6">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-on-surface-variant">Password</h2>
+          <div className="mt-3">
+            <ChangePassword email={profile.email} />
+          </div>
+        </div>
+      )}
     </main>
   );
 }

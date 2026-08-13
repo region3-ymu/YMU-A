@@ -170,7 +170,7 @@ export function navForRole(role: AppRole, isAppAdmin: boolean = false): NavItem[
     {
       href: "/settings",
       label: "Settings",
-      note: "Notifications & theme",
+      note: "Account, notifications & theme",
       icon: "settings",
     },
   );
