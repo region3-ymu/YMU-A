@@ -148,6 +148,7 @@ Deno.serve(async (request) => {
   const pushSentIds: string[] = [];
   const pushFailedIds: string[] = []; // attempts incremented, not yet at the cap
   const pushGaveUpIds: string[] = []; // hit MAX_PUSH_ATTEMPTS this run
+  const noDeviceIds: string[] = []; // recipient has never subscribed a device
 
   const emailCache = new Map<string, string | null>(); // recipient_id -> email (or null if lookup failed)
   const emailSentIds: string[] = [];
@@ -156,8 +157,23 @@ Deno.serve(async (request) => {
   for (const decision of decisions) {
     const { row } = decision;
 
-    if (decision.sendPush) {
-      const subs = subsByUser.get(row.recipient_id) ?? [];
+    const subs = decision.sendPush ? subsByUser.get(row.recipient_id) ?? [] : [];
+
+    // NOTHING TO SEND TO IS NOT A FAILURE. Most teachers have never added the
+    // app to their home screen, so they have no push subscription at all.
+    // Treating that as a send failure retried the row five times over five
+    // minutes — at a recipient no amount of retrying can reach — and then left
+    // it "failed" for good. That is what put 244 failures on the manager's
+    // dashboard on day one, burying the handful that were real.
+    //
+    // Given its own terminal state instead: an honest record that the
+    // notification was due and had nowhere to go, never retried. Deliberately
+    // NOT a `continue` — the email fallback below is exactly what should still
+    // run for someone with no device, when their type is email-eligible.
+    const noDevice = decision.sendPush && subs.length === 0;
+    if (noDevice) noDeviceIds.push(row.id);
+
+    if (decision.sendPush && !noDevice) {
       const copy = notificationCopy(row);
       const payloadJson = JSON.stringify({ title: copy.title, body: copy.body, url: copy.url });
       let anySucceeded = false;
@@ -237,6 +253,9 @@ Deno.serve(async (request) => {
     pushGaveUpIds.length
       ? supabase.from("notification_queue").update({ status: "failed" }).in("id", pushGaveUpIds)
       : Promise.resolve(),
+    noDeviceIds.length
+      ? supabase.from("notification_queue").update({ status: "no_device" }).in("id", noDeviceIds)
+      : Promise.resolve(),
     emailSentIds.length
       ? supabase.from("notification_queue").update({ email_status: "sent", email_sent_at: nowIso }).in("id", emailSentIds)
       : Promise.resolve(),
@@ -264,6 +283,7 @@ Deno.serve(async (request) => {
     enqueued: enqueuedCount ?? 0,
     processed: pending.length,
     pushSent: pushSentIds.length,
+      noDevice: noDeviceIds.length,
     pushFailed: pushFailedIds.length + pushGaveUpIds.length,
     staleSubscriptionsRemoved: staleSubscriptionIds.length,
     emailSent: emailSentIds.length,

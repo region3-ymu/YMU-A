@@ -61,6 +61,14 @@ export default function AdminEditAttendanceForm({
       return;
     }
 
+    // READ THE FORM BEFORE THE AWAIT. React clears the synthetic event once
+    // the handler yields, so `event.currentTarget` is null by the time an
+    // awaited call resolves — `new FormData(null)` then throws, inside a
+    // promise nobody is watching. The visible result was a manager typing a
+    // reason and a password, pressing the button, and having absolutely
+    // nothing happen: no save, no error, no clue.
+    const data = new FormData(event.currentTarget);
+
     setVerifying(true);
     const supabase = createClient();
     const { error } = await supabase.auth.signInWithPassword({ email: callerEmail, password });
@@ -71,7 +79,8 @@ export default function AdminEditAttendanceForm({
       return;
     }
 
-    dispatch(new FormData(event.currentTarget));
+    setPassword("");
+    dispatch(data);
   }
 
   return (

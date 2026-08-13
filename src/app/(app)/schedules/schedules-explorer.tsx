@@ -24,7 +24,7 @@ export default function SchedulesExplorer({ events, schools, calendarIssues, cal
     if (schoolId !== "all" && event.school_id !== schoolId) return false;
     return true;
   }), [events, region, schoolId]);
-  const groups = useMemo(() => groupByDay(visibleEvents), [visibleEvents]);
+  const groups = useMemo(() => groupByDay(visibleEvents, now), [visibleEvents, now]);
   const unmatched = managersView ? events.filter((event) => !event.school_id && event.status !== "cancelled") : [];
   const schoolsWithoutCalendar = managersView ? schools.filter((school) => !school.google_calendar_id) : [];
 
@@ -71,24 +71,58 @@ export default function SchedulesExplorer({ events, schools, calendarIssues, cal
   );
 }
 
-function groupByDay(events: ScheduleEvent[]) {
+// Where a class sits relative to now: 0 = happening, 1 = still to come,
+// 2 = over. The whole ordering rests on this, and the buckets are ranked
+// rather than the times sorted, because "what should I look at" is not the
+// same question as "what happens next".
+function shiftRank(event: ScheduleEvent, now: Date): 0 | 1 | 2 {
+  if (isCurrentlyInShift(event, now)) return 0;
+  const endsAt = event.end_at ?? event.start_at;
+  if (endsAt && new Date(endsAt).getTime() < now.getTime()) return 2;
+  return 1;
+}
+
+function groupByDay(events: ScheduleEvent[], now: Date) {
   const groups = new Map<string, ScheduleEvent[]>();
   for (const event of events) {
     const key = dayKey(event);
     groups.set(key, [...(groups.get(key) ?? []), event]);
   }
+  // Within a day: in-shift first, then upcoming, then finished — and
+  // chronological inside each bucket. On any day other than today every class
+  // falls in one bucket, so this is a no-op there and the ordering stays
+  // purely chronological, which is what a manager reading next week expects.
+  for (const [key, dayEvents] of groups) {
+    groups.set(key, [...dayEvents].sort((left, right) => {
+      const byRank = shiftRank(left, now) - shiftRank(right, now);
+      if (byRank !== 0) return byRank;
+      return (left.start_at ?? "").localeCompare(right.start_at ?? "");
+    }));
+  }
   return [...groups.entries()].sort(([left], [right]) => left.localeCompare(right));
 }
 
 function EventCard({ event, now, managersView }: { event: ScheduleEvent; now: Date; managersView: boolean }) {
-  const currentlyInShift = isCurrentlyInShift(event, now);
+  const rank = shiftRank(event, now);
+  const currentlyInShift = rank === 0;
+  const finished = rank === 2;
   const schoolName = event.school?.name ?? (event.location_raw ? "School not matched" : "No school location");
   return (
     <Link
       href={`/schedules/${event.id}`}
-      className="relative block overflow-hidden rounded-2xl bg-surface-container p-4 pl-5 shadow-sm transition-transform active:scale-[0.99]"
+      // Finished classes recede rather than disappear: still readable, still
+      // tappable — a teacher often needs the one that just ended, to file its
+      // feedback — but visibly no longer the thing to act on.
+      className={`relative block overflow-hidden rounded-2xl p-4 pl-5 shadow-sm transition-transform active:scale-[0.99] ${
+        finished ? "bg-surface-container-low opacity-60" : "bg-surface-container"
+      }`}
     >
-      <div className={`absolute inset-y-0 left-0 w-1.5 ${currentlyInShift ? "bg-tertiary" : "bg-primary"}`} aria-hidden />
+      <div
+        className={`absolute inset-y-0 left-0 w-1.5 ${
+          currentlyInShift ? "bg-tertiary" : finished ? "bg-outline-variant" : "bg-primary"
+        }`}
+        aria-hidden
+      />
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h3 className="font-semibold text-on-surface">{eventTitle(event)}</h3>
@@ -101,6 +135,11 @@ function EventCard({ event, now, managersView }: { event: ScheduleEvent; now: Da
           <span className="flex items-center gap-1 rounded-full bg-tertiary-container px-2.5 py-1 text-xs font-semibold text-on-tertiary-container">
             <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden />
             In shift
+          </span>
+        )}
+        {finished && (
+          <span className="rounded-full bg-surface-container-high px-2.5 py-1 text-xs font-semibold text-on-surface-variant">
+            Finished
           </span>
         )}
       </div>

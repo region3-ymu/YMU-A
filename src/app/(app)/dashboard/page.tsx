@@ -11,7 +11,7 @@ import {
   getCalendarSyncHealth,
   getOpenLateFlags,
   getOpenSessions,
-  getRecentNotificationFailureCount,
+  getNotificationHealth,
   getTodayAttendanceRows,
   getUpcomingClasses,
 } from "./queries";
@@ -21,13 +21,13 @@ export const metadata: Metadata = { title: "Dashboard" };
 export default async function DashboardPage() {
   const profile = await requireRole(...MANAGER_ROLES);
 
-  const [openSessions, lateFlags, stuckFeedback, syncFailures, notificationFailures, todayRows, upcoming, roster] =
+  const [openSessions, lateFlags, stuckFeedback, syncFailures, notifications, todayRows, upcoming, roster] =
     await Promise.all([
       getOpenSessions(),
       getOpenLateFlags(),
       getStuckSessionFlags(),
       getCalendarSyncHealth(),
-      getRecentNotificationFailureCount(),
+      getNotificationHealth(),
       getTodayAttendanceRows(),
       getUpcomingClasses(),
       getReportRoster(true),
@@ -74,8 +74,18 @@ export default async function DashboardPage() {
         />
         <StatCard
           label="Notification failures (24h)"
-          value={notificationFailures}
-          warn={notificationFailures > 0}
+          value={notifications.realFailures}
+          note={notifications.realFailures > 0 ? "sends that broke" : "all delivered"}
+          warn={notifications.realFailures > 0}
+        />
+        {/* Split out of the failure count, because it is a different problem
+            with a different fix: these teachers get no reminders at all until
+            they add the app to their home screen. Not a warning — nothing is
+            broken, and it will be most of the roster for a while. */}
+        <StatCard
+          label="Teachers with no device (24h)"
+          value={notifications.noDeviceRecipients}
+          note={notifications.noDeviceRecipients > 0 ? "missing push reminders" : "everyone reachable"}
         />
       </div>
 

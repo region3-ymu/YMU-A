@@ -1188,3 +1188,57 @@ them** — the duplicate metadata read was invisible in the code and obvious in
 the count. And **retry 429 with backoff before you think you need it**: without
 it a one-second overlap leaves a tab an hour stale, which looks like a data bug
 rather than a quota one.
+
+### Read the form before you await
+
+`admin-edit-attendance-form.tsx` built its FormData from `event.currentTarget`
+*after* awaiting `signInWithPassword()`. React clears the synthetic event once
+the handler yields, so by then `currentTarget` is null and `new FormData(null)`
+throws — inside a promise with no catch. A manager typed a reason, typed their
+password, pressed the button, and nothing happened at all: no save, no error,
+no clue.
+
+The rule the codebase now follows in both places that re-verify a password
+(this one and Settings' change-password): capture the FormData synchronously,
+before the first await. The same trap is waiting in any handler that validates
+asynchronously and then submits.
+
+Worth noting how it presented: "Record attendance doesn't save" sounds like a
+permissions or RPC problem, and both were fine — calling
+`admin_create_attendance()` directly from SQL as the same manager worked first
+time. The failure was entirely in the four lines between the click and the RPC.
+
+### A notification with nowhere to go is not a failed notification
+
+The manager dashboard opened the first day of term reading 244 notification
+failures. 218 of them were teachers who have never added the app to their home
+screen and therefore have no push subscription: notify-dispatch retried each
+one five times over five minutes — at a recipient no retry can ever reach — and
+then marked it `failed` for good.
+
+The cost is not the wasted requests. It is that the 15 genuine send failures
+were invisible inside that number, and a warning tile nobody can act on trains
+people to stop reading it.
+
+Two changes, and the second is the one that matters: `no_device` as its own
+terminal state with no retries, and a `notification_health()` RPC that counts
+by joining `push_subscriptions` rather than trusting `status`. The RPC answers
+correctly whether or not the Edge Function carrying the first change has been
+deployed — which is the point, since Edge Functions deploy separately and this
+one could not be deployed from the environment that wrote it.
+
+"Teachers with no device" is now its own tile, without a warning colour: it is
+a real number worth knowing, it will be most of the roster for a while, and the
+fix is a conversation rather than a retry.
+
+### Recording attendance by hand carries the same duty as clocking in
+
+`admin_create_attendance()` wrote the session but not `scheduled_end_at` or
+`feedback_due_at` — the two columns the whole feedback obligation hangs off
+(0026). So a class a manager recorded counted for hours and attendance, and
+then quietly skipped the feedback form.
+
+That is backwards. Both paths assert the same thing — I was there, I taught it
+— so both should owe the same form. Left as it was, the tidier route for a
+teacher would have been to skip clock-in and let a manager record it, which
+bought them out of the feedback entirely.

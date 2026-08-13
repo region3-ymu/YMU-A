@@ -115,18 +115,25 @@ export async function getCalendarSyncHealth(): Promise<CalendarSyncFailure[]> {
   return (data as unknown as CalendarSyncFailure[]) ?? [];
 }
 
-// notification_queue (0014/0018) — notify-dispatch marks a row failed once
-// it's exhausted its attempts cap. A count over the last 24h is enough for a
-// dashboard widget; per-row detail isn't actionable here the way a flag is.
-export async function getRecentNotificationFailureCount(): Promise<number> {
+/**
+ * The two numbers behind the dashboard's notification tiles.
+ *
+ * One round-trip to notification_health() (0038) rather than two queries,
+ * and computed in SQL rather than off notification_queue.status, because the
+ * status alone cannot tell a broken send from a recipient who has no device.
+ * On the first day of term that difference was 244 versus 15.
+ */
+export async function getNotificationHealth(): Promise<{
+  realFailures: number;
+  noDeviceRecipients: number;
+}> {
   const supabase = await createClient();
-  const sinceIso = new Date(Date.now() - DAY_MS).toISOString();
-  const { count } = await supabase
-    .from("notification_queue")
-    .select("id", { count: "exact", head: true })
-    .gte("created_at", sinceIso)
-    .or("status.eq.failed,email_status.eq.failed");
-  return count ?? 0;
+  const { data } = await supabase.rpc("notification_health", { p_hours: 24 });
+  const row = (data as { real_failures: number; no_device_recipients: number }[] | null)?.[0];
+  return {
+    realFailures: row?.real_failures ?? 0,
+    noDeviceRecipients: row?.no_device_recipients ?? 0,
+  };
 }
 
 export type UpcomingEventRow = {
