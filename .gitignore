@@ -40,3 +40,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 !.env.example
+
+# Real teachers' names, emails and phone numbers as literal source. Left out of
+# git pending YMU's decision on whether that contact data should live in the
+# repository's history forever — and ignored rather than merely untracked
+# because `git add -A scripts` has now swept it into a commit twice.
+scripts/onboard-real-users.ts
