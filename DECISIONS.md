@@ -1119,3 +1119,52 @@ Sign-out now drops both page caches first, best-effort: a storage error must
 never leave someone unable to sign out. The precache and the static-asset
 caches are deliberately untouched — they hold no one's data, and clearing them
 would make the next login a cold download.
+
+### The spreadsheet exports facts, not dashboards
+
+YMU's Academic Manager asked for the app's data in one spreadsheet so he could
+build dashboards. The tempting reading is "give him the dashboards" — export
+the numbers /tickets/insights already computes.
+
+That inverts who owns the questions. Pre-aggregated tabs answer today's
+question fast and make every new one a code change; fact tabs plus small
+reference lists let him answer questions nobody has thought of, with a pivot
+table, on a Tuesday, without us. Both were built — but the aggregates are
+labelled as derivable from the fact tabs, so nobody mistakes them for the only
+way in.
+
+### Append and snapshot are different contracts, chosen per tab
+
+Feedback is mirrored append-only with a one-shot watermark, and that is right
+*because its rows are immutable* — verified column by column: `sheet_synced_at`
+is the only thing that ever changes on that table.
+
+Every other tab is a snapshot: read whole, write over the top. Tickets,
+sessions and flags all mutate for days after they are created, and a ticket's
+`resolved_at` is not even monotonic — reopening nulls it. Incremental sync was
+considered and rejected because it needs `updated_at > sheet_synced_at`, and
+`tickets.updated_at` has no trigger; it is maintained by RPC convention, so one
+direct UPDATE would strand a row forever. A snapshot cannot drift.
+
+### Snapshots overwrite cells; they never delete rows
+
+`clearDataRows()` deletes rows, which is right for wiping a term and wrong for
+a tab someone builds on: deleting rows silently breaks every pivot table, chart
+and named range pointing at them. `overwriteRows()` writes the new values over
+the old and blanks the surplus below, so the references survive and a shrunken
+export just reads as empty rows.
+
+It also has to grow the grid first. A new tab is 1000 rows by 26 columns and
+`values.update` cannot extend it — writing 6,886 rows into it fails with a 400
+about grid limits. `values.append` grows the grid implicitly, which is why the
+feedback exporter never met this.
+
+### PostgREST truncates at 1000 rows and does not say so
+
+The first run of the tab sync reported success having mirrored **1000 of 6,855**
+attendance rows. Supabase's `db-max-rows` caps a response and returns no error,
+no flag, and no indication that more exists — a silent truncation that would
+have had someone build a term's dashboard on a seventh of the data.
+
+Any service-role read of a set-returning function has to page until a short
+page comes back. Row counts that look suspiciously round are worth distrusting.

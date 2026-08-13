@@ -126,9 +126,15 @@ export async function resolveSheetName(
  * manager reading the sheet has no way to interpret.
  *
  * Widening only ever happens when the existing header is SHORTER — the columns
- * already there keep their positions, so no historic row changes meaning. An
- * existing header of equal or greater width is left exactly as it is, which
- * keeps a hand-edited heading from being clobbered every two minutes by cron.
+ * already there keep their positions, so no historic row changes meaning.
+ *
+ * It also rewrites when a label has CHANGED, which is how the "(at submission)"
+ * warnings on the ticket columns reach a spreadsheet that already has a header.
+ * The labels are the code's to own: a human editing one is fighting the
+ * exporter, and a wrong label on a column that is quietly frozen is exactly the
+ * failure those renames exist to prevent. Only the columns this export knows
+ * about are touched — anything a human added to the RIGHT of them is theirs and
+ * is left alone.
  */
 export async function ensureHeader(
   serviceAccount: GoogleServiceAccount,
@@ -155,7 +161,10 @@ export async function ensureHeader(
   }
   const data = (await response.json()) as { values?: unknown[][] };
   const existing = data.values?.[0] ?? [];
-  if (existing.length >= header.length) return false;
+  const matches =
+    existing.length >= header.length
+    && header.every((label, i) => String(existing[i] ?? "") === label);
+  if (matches) return false;
 
   await fetch(
     `${SHEETS_API}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(`${sheetName}!A1`)}`
@@ -234,4 +243,196 @@ export async function clearDataRows(
     throw new Error(`Could not clear the sheet (${response.status}): ${body}`);
   }
   return rowCount - 1;
+}
+
+/**
+ * Creates a tab if it is not already there. Returns true if it created one.
+ *
+ * Idempotent by design: the snapshot sync calls this for every tab on every
+ * run rather than tracking which ones exist, so adding a tab to the registry
+ * is the only step needed to get it into the spreadsheet.
+ */
+export async function ensureTab(
+  serviceAccount: GoogleServiceAccount,
+  spreadsheetId: string,
+  sheetName: string,
+): Promise<boolean> {
+  const token = await getGoogleAccessToken(serviceAccount, SHEETS_SCOPE);
+  const metaResponse = await fetch(
+    `${SHEETS_API}/${encodeURIComponent(spreadsheetId)}?fields=sheets.properties.title`,
+    { headers: { authorization: `Bearer ${token}` } },
+  );
+  if (!metaResponse.ok) {
+    const body = await metaResponse.text().catch(() => "");
+    throw new GoogleCalendarError(
+      metaResponse.status === 403
+        ? describe403(body, serviceAccount.client_email)
+        : `Could not open the spreadsheet (${metaResponse.status}).`,
+      metaResponse.status,
+      body,
+    );
+  }
+  const meta = (await metaResponse.json()) as { sheets?: { properties?: { title?: string } }[] };
+  if ((meta.sheets ?? []).some((s) => s.properties?.title === sheetName)) return false;
+
+  const response = await fetch(`${SHEETS_API}/${encodeURIComponent(spreadsheetId)}:batchUpdate`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify({
+      requests: [{ addSheet: { properties: { title: sheetName } } }],
+    }),
+  });
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(`Could not create the tab "${sheetName}" (${response.status}): ${body}`);
+  }
+  return true;
+}
+
+/**
+ * Replaces a tab's contents: header in row 1, `rows` under it, nothing else.
+ *
+ * WRITES OVER, THEN BLANKS THE SURPLUS — it never deletes rows. That is the
+ * whole difference between this and `clearDataRows` above, and it is not a
+ * detail: deleting rows silently breaks every pivot table, chart and named
+ * range built on the tab, which is exactly what this data is FOR. A blanked
+ * row leaves those references intact and simply reads as empty.
+ *
+ * Chunked because a single values.update carrying ~7,000 rows is large enough
+ * to be refused, and a refusal midway is how a tab ends up half-written.
+ */
+export async function overwriteRows(
+  serviceAccount: GoogleServiceAccount,
+  spreadsheetId: string,
+  sheetName: string,
+  header: string[],
+  rows: SheetCell[][],
+  previousRowCount?: number,
+): Promise<number> {
+  const token = await getGoogleAccessToken(serviceAccount, SHEETS_SCOPE);
+  const quoted = `'${sheetName.replace(/'/g, "''")}'`;
+  const CHUNK = 2000;
+
+  // Grow the grid FIRST. A new tab is 1000 rows x 26 columns, and
+  // values.update cannot extend it — writing 6,855 rows into it fails with a
+  // 400 that talks about grid limits, not about size. values.append grows the
+  // grid implicitly, which is why the feedback sync never hit this.
+  await ensureGrid(
+    token, spreadsheetId, sheetName,
+    rows.length + 2,
+    Math.max(header.length, ...rows.map((r) => r.length), 1),
+  );
+
+  async function put(range: string, values: SheetCell[][]) {
+    const response = await fetch(
+      `${SHEETS_API}/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}`
+      + `?valueInputOption=USER_ENTERED`,
+      {
+        method: "PUT",
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        body: JSON.stringify({ values }),
+      },
+    );
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      throw new GoogleCalendarError(
+        response.status === 403
+          ? describe403(body, serviceAccount.client_email)
+          : `Writing "${sheetName}" failed (${response.status}).`,
+        response.status,
+        body,
+      );
+    }
+  }
+
+  await put(`${quoted}!A1`, [header]);
+
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    await put(`${quoted}!A${i + 2}`, rows.slice(i, i + CHUNK));
+  }
+
+  // Blank whatever the previous run left below the new data. Without a known
+  // previous count, clear generously — an over-wide clear costs one request,
+  // while an under-wide one leaves last week's rows masquerading as this
+  // week's.
+  const staleFrom = rows.length + 2;
+  const staleTo = Math.max(previousRowCount ?? 0, rows.length) + 5000;
+  if (staleTo >= staleFrom) {
+    const response = await fetch(
+      `${SHEETS_API}/${encodeURIComponent(spreadsheetId)}/values/`
+      + `${encodeURIComponent(`${quoted}!A${staleFrom}:ZZ${staleTo}`)}:clear`,
+      { method: "POST", headers: { authorization: `Bearer ${token}` } },
+    );
+    // A clear that fails on a range past the end of the grid is harmless —
+    // there was nothing there to blank.
+    if (!response.ok && response.status !== 400) {
+      const body = await response.text().catch(() => "");
+      throw new Error(`Clearing stale rows of "${sheetName}" failed (${response.status}): ${body}`);
+    }
+  }
+
+  return rows.length;
+}
+
+/**
+ * Widens a tab's grid so `values.update` has somewhere to write.
+ *
+ * Only ever grows. Shrinking would delete cells — and with them any formula
+ * or pivot a human put to the right of the exported columns.
+ */
+async function ensureGrid(
+  token: string,
+  spreadsheetId: string,
+  sheetName: string,
+  minRows: number,
+  minCols: number,
+): Promise<void> {
+  const metaResponse = await fetch(
+    `${SHEETS_API}/${encodeURIComponent(spreadsheetId)}`
+    + `?fields=sheets(properties(sheetId,title,gridProperties(rowCount,columnCount)))`,
+    { headers: { authorization: `Bearer ${token}` } },
+  );
+  if (!metaResponse.ok) {
+    throw new Error(`Could not read the spreadsheet grid (${metaResponse.status}).`);
+  }
+  const meta = (await metaResponse.json()) as {
+    sheets?: {
+      properties?: {
+        sheetId?: number;
+        title?: string;
+        gridProperties?: { rowCount?: number; columnCount?: number };
+      };
+    }[];
+  };
+  const props = (meta.sheets ?? []).find((s) => s.properties?.title === sheetName)?.properties;
+  if (!props || props.sheetId == null) throw new Error(`No tab named "${sheetName}".`);
+
+  const rowCount = props.gridProperties?.rowCount ?? 0;
+  const columnCount = props.gridProperties?.columnCount ?? 0;
+  if (rowCount >= minRows && columnCount >= minCols) return;
+
+  const response = await fetch(`${SHEETS_API}/${encodeURIComponent(spreadsheetId)}:batchUpdate`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+    body: JSON.stringify({
+      requests: [
+        {
+          updateSheetProperties: {
+            properties: {
+              sheetId: props.sheetId,
+              gridProperties: {
+                rowCount: Math.max(rowCount, minRows),
+                columnCount: Math.max(columnCount, minCols),
+              },
+            },
+            fields: "gridProperties.rowCount,gridProperties.columnCount",
+          },
+        },
+      ],
+    }),
+  });
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(`Could not resize "${sheetName}" (${response.status}): ${body}`);
+  }
 }

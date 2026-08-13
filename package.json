@@ -11,6 +11,7 @@
     "seed:test": "node --env-file=.env.local scripts/seed-test-data.ts",
     "onboard:real": "node --env-file=.env.local scripts/onboard-real-users.ts",
     "calendar:coverage": "node --env-file=.env.local scripts/calendar-coverage-report.ts",
+    "sync:sheet:full": "node --env-file=.env.local scripts/sync-sheet-tabs.ts",
     "sheet:reset": "node --env-file=.env.local scripts/reset-feedback-sheet.ts",
     "sync:sheet": "node --env-file=.env.local scripts/sync-feedback-sheet.ts",
     "import:schools": "node --env-file=.env.local scripts/import-schools.ts",

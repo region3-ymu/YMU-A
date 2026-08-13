@@ -34,6 +34,54 @@ nobody could clock into any of them. Login changed in place, re-linked, done.
 **He must be told his login changed**, and it cannot be self-served: `ymu.org`
 still has no SPF/DKIM/DMARC, so "Forgot password?" delivers nothing.
 
+## ✅ The whole app is in one spreadsheet now (2026-08-12)
+
+Juan Pelaez asked for all the app's data in one spreadsheet, a tab per thing,
+so he can analyse and build dashboards without asking for a code change. Seven
+new tabs alongside the existing `Feedback` one, live and populated:
+
+| Tab | Rows today | What it answers |
+|---|---|---|
+| `Attendance` | 6,886 | Late clock-ins, absences, hours — by teacher, school, region |
+| `Tickets` | 0 | Live ticket state with SLA verdicts |
+| `Flags` | 4 | GPS and late-clock-in escalations |
+| `Schools` | 110 | Reference list to group any tab by region |
+| `Teachers` | 58 | Reference list, regions derived from where they teach |
+| `Programs` | 96 | The objective lists on the feedback form |
+| `Ticket insights` | 0 | Root cause × category, pre-aggregated |
+
+Refreshed hourly by `sheet-tabs-hourly` (cron, minute 7). By hand:
+`npm run sync:sheet:full`.
+
+### The Feedback tab was lying about tickets, and now says so
+
+`feedback_for_sheet()` denormalises six mutable ticket columns into each
+feedback row, and the watermark is one-shot — a row is written once and never
+revisited. Since `submit_class_feedback()` creates the feedback and its ticket
+in the same transaction and the cron runs two minutes later, **the sheet
+captured every ticket at birth**: status `Open`, root cause blank, forever,
+however it was later resolved.
+
+Those columns are now labelled `(at submission)` and point at the `Tickets`
+tab, which is the live answer. The positions could not be reused — months of
+rows sit under them.
+
+### Two traps worth remembering
+
+- **PostgREST truncates at 1000 rows and reports success.** The first run
+  mirrored 1000 of 6,855 attendance rows and said it was done. Every
+  service-role read of a set-returning function pages until a short page.
+- **`values.update` cannot grow a tab's grid.** A new tab is 1000×26 and
+  writing 6,886 rows into it fails with a 400 about grid limits. The exporter
+  resizes first.
+
+### If Juan wants real dashboards later
+
+Looker Studio connects straight to PostgreSQL and reads Supabase live, with no
+export step. It needs a read-only database user, not the service role. The
+fact/dimension split above is exactly the shape it wants, so these tabs are
+also a fine staging layer — nothing here has to be undone.
+
 ## ✅ FIXED: 2,598 classes were filed under the wrong school (2026-08-12)
 
 Kevin Bodniza reported seeing Young Men's Preparatory Academy and North Miami

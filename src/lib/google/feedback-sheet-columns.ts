@@ -31,6 +31,20 @@ export const COLUMNS = [
   "custom_program", "custom_notes",
 ] as const;
 
+// SEVERAL OF THESE SAY "at submission", AND THAT IS NOT DECORATION.
+//
+// This export is append-only with a one-shot watermark: a row is written once
+// and never revisited. But it denormalises columns that keep changing — the
+// ticket's status, owner and root cause, and the session's clock-in details.
+// Because submit_class_feedback() creates the feedback row and its ticket in
+// the same transaction and the cron runs two minutes later, the sheet captures
+// every ticket at BIRTH: status Open, root cause blank. It stays that way
+// forever, however the ticket is later resolved.
+//
+// Anyone charting resolution rates off these columns would get a number that
+// is not merely stale but structurally wrong. The positions cannot be reused
+// or removed — months of rows sit under them — so the labels carry the
+// warning, and the `Tickets` tab (see sheet-tabs.ts) is the live answer.
 export const HEADER: string[] = [
   "Feedback ID", "Submitted at", "Class date", "Class time",
   "Teacher", "Teacher email", "Teacher phone",
@@ -38,9 +52,12 @@ export const HEADER: string[] = [
   "Class title", "Program",
   "Engagement", "Focus pillar (retired)", "Objectives worked", "Open notes",
   "Quarter goals on track",
-  "Reported an issue", "Issue category", "Issue type", "Urgency", "What the teacher wrote",
-  "Ticket #", "Ticket status", "Ticket owner", "Root cause",
-  "Clock-in status", "Clocked in at", "Clock-in origin",
+  "Reported an issue", "Issue category (at submission)", "Issue type (at submission)",
+  "Urgency (at submission)", "What the teacher wrote",
+  "Ticket #", "Ticket status (at submission — see Tickets tab)",
+  "Ticket owner (at submission)", "Root cause (at submission — see Tickets tab)",
+  "Clock-in status (at submission)", "Clocked in at (at submission)",
+  "Clock-in origin",
   "Other program (teacher-named)", "Other program — what they worked on",
 ];
 
