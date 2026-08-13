@@ -30,16 +30,20 @@ export default function SchedulesExplorer({ events, schools, calendarIssues, cal
 
   return (
     <div className="grid gap-6">
+      {/* grid, not flex-wrap, and every control min-w-0. A <select> sizes
+          itself to its WIDEST OPTION, and the school picker holds 110 school
+          names — left unconstrained it set the width of the whole page and
+          forced horizontal scrolling on a phone. */}
       {managersView && (
-        <div className="flex flex-wrap gap-3 rounded-2xl bg-surface-container p-4 shadow-sm">
-          <label className="grid gap-1 text-sm font-medium text-on-surface">Region
-            <select value={region} onChange={(event) => setRegion(event.target.value as Region | "all")} className="rounded-lg bg-surface-container-low px-3 py-2 font-normal text-on-surface outline-none focus:ring-2 focus:ring-primary">
+        <div className="grid min-w-0 gap-3 rounded-2xl bg-surface-container p-4 shadow-sm sm:grid-cols-2">
+          <label className="grid min-w-0 gap-1 text-sm font-medium text-on-surface">Region
+            <select value={region} onChange={(event) => setRegion(event.target.value as Region | "all")} className="w-full min-w-0 truncate rounded-lg bg-surface-container-low px-3 py-2 font-normal text-on-surface outline-none focus:ring-2 focus:ring-primary">
               <option value="all">All visible regions</option>
               {Object.entries(REGION_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>
           </label>
-          <label className="grid gap-1 text-sm font-medium text-on-surface">School
-            <select value={schoolId} onChange={(event) => setSchoolId(event.target.value)} className="rounded-lg bg-surface-container-low px-3 py-2 font-normal text-on-surface outline-none focus:ring-2 focus:ring-primary">
+          <label className="grid min-w-0 gap-1 text-sm font-medium text-on-surface">School
+            <select value={schoolId} onChange={(event) => setSchoolId(event.target.value)} className="w-full min-w-0 truncate rounded-lg bg-surface-container-low px-3 py-2 font-normal text-on-surface outline-none focus:ring-2 focus:ring-primary">
               <option value="all">All visible schools</option>
               {schools.map((school) => <option key={school.id} value={school.id}>{school.name}</option>)}
             </select>

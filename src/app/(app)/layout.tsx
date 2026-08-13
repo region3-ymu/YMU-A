@@ -59,6 +59,7 @@ export default async function AppLayout({
             <span className="hidden text-sm text-on-surface-variant sm:inline">
               {profile.full_name}
             </span>
+            <AppFeedbackButton userId={profile.id} />
             <SignOutButton />
           </div>
         </div>
@@ -75,7 +76,6 @@ export default async function AppLayout({
           all (RLS-scoped), so this is a no-op for managers. Mounted here
           (not per-page) so sampling continues across in-app navigation. */}
       {profile.role === "teacher" && <GpsCheckSampler />}
-      <AppFeedbackButton userId={profile.id} />
     </div>
   );
 }

@@ -36,10 +36,10 @@ function UnmatchedEvent({ event, schools }: { event: ScheduleEvent; schools: Sch
       <input type="hidden" name="event_id" value={event.id} />
       <p className="font-medium text-on-surface">{eventTitle(event)}</p>
       <p className="mt-0.5 flex items-center gap-1 text-sm text-on-surface-variant"><span className="material-symbols-outlined text-base" aria-hidden>schedule</span>{formatEventTime(event)}</p>
-      <p className="mt-1 text-sm text-on-surface"><span className="font-medium">Google Location:</span> {event.location_raw || "No Location supplied"}</p>
+      <p className="mt-1 break-words text-sm text-on-surface"><span className="font-medium">Google Location:</span> {event.location_raw || "No Location supplied"}</p>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <label className="sr-only" htmlFor={`school-${event.id}`}>School for {eventTitle(event)}</label>
-        <select id={`school-${event.id}`} name="school_id" required defaultValue="" className="min-w-56 rounded-lg bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary">
+        <select id={`school-${event.id}`} name="school_id" required defaultValue="" className="w-full min-w-0 rounded-lg bg-surface-container-low sm:w-auto sm:min-w-56 px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary">
           <option value="" disabled>Choose school…</option>
           {schools.map((school) => <option key={school.id} value={school.id}>{school.name}{school.region ? ` (${school.region})` : ""}</option>)}
         </select>

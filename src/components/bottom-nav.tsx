@@ -12,23 +12,29 @@ export default function BottomNav({ items }: { items: NavItem[] }) {
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-outline-variant/40 bg-surface/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl">
-      <ul className="mx-auto flex max-w-3xl items-stretch justify-around px-1">
+      {/* items-stretch + min-w-0 everywhere below: the bar has to FIT, not
+          overflow. Measured at 402px (iPhone 17 Pro's logical width) the five
+          tabs ended at x=398 — four pixels of margin, which iOS spends on
+          slightly wider system-font metrics, so the last tab (Schedules) fell
+          off the edge while Android, a few points wider, kept it. Nothing here
+          may have a minimum width any more. */}
+      <ul className="mx-auto flex w-full max-w-3xl items-stretch justify-around px-0.5">
         {items.map((item) => {
           const active =
             item.href === "/"
               ? pathname === "/"
               : pathname === item.href || pathname.startsWith(`${item.href}/`);
           return (
-            <li key={item.href} className="flex-1">
+            <li key={item.href} className="min-w-0 flex-1">
               <Link
                 href={item.href}
                 aria-current={active ? "page" : undefined}
-                className={`flex h-16 min-w-16 flex-col items-center justify-center gap-1 transition-colors ${
+                className={`flex h-16 w-full min-w-0 flex-col items-center justify-center gap-1 px-0.5 transition-colors ${
                   active ? "text-primary" : "text-on-surface-variant"
                 }`}
               >
                 <span
-                  className={`relative flex h-8 w-14 items-center justify-center rounded-full transition-colors ${
+                  className={`relative flex h-8 w-full max-w-12 items-center justify-center rounded-full transition-colors ${
                     active ? "bg-primary-container text-on-primary-container" : ""
                   }`}
                 >
@@ -47,7 +53,9 @@ export default function BottomNav({ items }: { items: NavItem[] }) {
                     </span>
                   )}
                 </span>
-                <span className="text-[11px] font-medium leading-none">
+                {/* Truncates rather than widening its tab. A clipped word is
+                    survivable; a tab pushed off the screen is not. */}
+                <span className="w-full truncate text-center text-[10px] font-medium leading-none">
                   {item.label}
                 </span>
               </Link>

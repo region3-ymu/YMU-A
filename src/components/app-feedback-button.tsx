@@ -18,15 +18,23 @@ export default function AppFeedbackButton({ userId }: { userId: string }) {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // Lives in the header now, not floating over the page.
+  //
+  // It used to be a 48px filled circle pinned above the bottom nav, which put
+  // it on top of whatever the page was showing at that corner — and on the
+  // busier screens that is content, not blank space. As a quiet icon button
+  // beside Sign out it is still reachable from every screen, which was the
+  // whole point, and it covers nothing. The panel it opens is unchanged.
   if (!open) {
     return (
       <button
         type="button"
         onClick={() => setOpen(true)}
         aria-label="Report a problem"
-        className="fixed bottom-20 right-4 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-secondary text-on-secondary-container shadow-lg transition-transform active:scale-95"
+        title="Report a problem"
+        className="flex h-9 w-9 items-center justify-center rounded-full text-on-surface-variant transition-colors hover:bg-surface-container-high"
       >
-        <span className="material-symbols-outlined" aria-hidden>
+        <span className="material-symbols-outlined text-xl" aria-hidden>
           bug_report
         </span>
       </button>

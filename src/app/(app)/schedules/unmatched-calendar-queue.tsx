@@ -42,16 +42,19 @@ function UnmatchedCalendar({ issue, schools }: { issue: CalendarSyncIssue; schoo
   return (
     <form action={formAction} className="rounded-2xl bg-surface-container p-3 shadow-sm">
       <input type="hidden" name="calendar_id" value={issue.calendar_id} />
-      <p className="font-medium text-on-surface">{issue.calendar_summary || issue.calendar_id}</p>
+      {/* break-all because the fallback is a raw Google calendar id —
+          60-odd characters with no space in them, which is what was pushing
+          this page wider than the phone and forcing sideways scrolling. */}
+      <p className="break-all font-medium text-on-surface">{issue.calendar_summary || issue.calendar_id}</p>
       <p className="mt-0.5 text-sm text-on-surface-variant">{REASON_LABELS[issue.reason]}</p>
       {issue.candidates.length > 0 && (
         <p className="mt-1 text-sm text-on-surface-variant">
           Closest matches: {issue.candidates.map((candidate) => `${candidate.school_name} (${candidate.score.toFixed(2)})`).join(", ")}
         </p>
       )}
-      <div className="mt-3 flex flex-wrap items-center gap-2">
+      <div className="mt-3 flex min-w-0 flex-wrap items-center gap-2">
         <label className="sr-only" htmlFor={`calendar-school-${issue.id}`}>School for {issue.calendar_summary || issue.calendar_id}</label>
-        <select id={`calendar-school-${issue.id}`} name="school_id" required defaultValue="" className="min-w-56 rounded-lg bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary">
+        <select id={`calendar-school-${issue.id}`} name="school_id" required defaultValue="" className="w-full min-w-0 rounded-lg bg-surface-container-low sm:w-auto sm:min-w-56 px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary">
           <option value="" disabled>Choose school…</option>
           {schools.map((school) => <option key={school.id} value={school.id}>{school.name}{school.region ? ` (${school.region})` : ""}</option>)}
         </select>

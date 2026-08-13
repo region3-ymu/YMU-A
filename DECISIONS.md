@@ -1289,3 +1289,51 @@ simply be deleted:
 
 Simplifying a state machine is never only removing values from a CHECK. The
 question each time is what the state was silently doing, and where that goes.
+
+### The bug button was sitting on top of the last nav tab
+
+"Schedules is missing from the bottom bar on iPhone, but not on Android" sounds
+like a layout-overflow bug. Measured at 402px — iPhone 17 Pro's logical width —
+the bar did not overflow at all: five flex-1 tabs, last one ending at 400px.
+
+The floating "report a problem" button was pinned at `bottom-20 right-4`, 80px
+up from the viewport bottom. On iOS the nav is 64px tall PLUS
+`env(safe-area-inset-bottom)` — about 34px for the home indicator — so the bar
+occupies the bottom 98px and the button landed inside it, on the right, exactly
+over the last tab. On Android the inset is 0, the bar is 64px, and the button
+floated clear above it.
+
+Moving the button into the header fixes it and removes a whole class of
+overlap: a fixed element positioned against the viewport bottom cannot be
+reasoned about without accounting for the safe-area inset, and the inset differs
+per device.
+
+The nav was made unshrinkable-proof anyway (`min-w-0` throughout, truncating
+labels) — four pixels of margin is not a margin.
+
+### Long ids need break-all, and selects need min-w-0
+
+The manager's Schedules view scrolled sideways on a phone. Two causes, both in
+the calendar-matching queues: a `min-w-56` on the school picker, and — the real
+one — a raw Google calendar id rendered as the fallback title. Sixty characters
+with no space in them, so nothing could wrap and the page grew to fit.
+
+Any string that comes from a machine (an id, an endpoint, a token) needs
+`break-all` when shown to a person, and any `<select>` in a narrow column needs
+`w-full min-w-0`, because a select is as wide as its widest option unless told
+otherwise.
+
+### The relink functions are now on a cron, because this drifted three times
+
+`relink_event_schools()` and `relink_event_teachers()` exist because the
+calendar sync is incremental: Google returns only what changed, so a corrected
+pin or a newly created account never revisits events already stored. Both were
+written as one-shot repairs.
+
+They drifted again the same week — 315 events filed under the wrong school
+after two more pins moved. Running a repair by hand is a plan that depends on
+somebody noticing, and the symptom here is silent: a class under the wrong
+school clocks in against the wrong geofence.
+
+Now on `relink-events-10min`. Both functions only write rows that actually
+differ, so a clean run costs an indexed check and nothing else.
