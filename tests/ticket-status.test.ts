@@ -53,12 +53,26 @@ describe("status vocabulary", () => {
     }
   });
 
-  // Resolved and Closed are the only two that need nobody's attention; the
-  // inbox's default filter depends on that being exactly right.
-  it("treats every status except Resolved and Closed as needing action", () => {
-    expect(OPEN_STATUSES).toHaveLength(TICKET_STATUSES.length - 2);
-    expect(OPEN_STATUSES).not.toContain("Resolved");
+  // Closed is now the ONLY status needing nobody's attention — Resolved was
+  // folded into it in 0040, since the two described the same act. The inbox's
+  // default filter depends on this being exactly right.
+  it("treats every status except Closed as needing action", () => {
+    expect(OPEN_STATUSES).toHaveLength(TICKET_STATUSES.length - 1);
     expect(OPEN_STATUSES).not.toContain("Closed");
+    // Every open status is a real one, and nothing open is missing.
+    for (const status of TICKET_STATUSES) {
+      if (status === "Closed") continue;
+      expect(OPEN_STATUSES).toContain(status);
+    }
+  });
+
+  // The two statuses YMU removed must not creep back through a stale import or
+  // a copy-pasted literal: both had behaviour attached (Pending_Teacher paused
+  // the SLA clock, Resolved carried the root-cause requirement) that now lives
+  // on On_Hold and Closed instead.
+  it("no longer knows Pending_Teacher or Resolved", () => {
+    expect(TICKET_STATUSES).not.toContain("Pending_Teacher");
+    expect(TICKET_STATUSES).not.toContain("Resolved");
   });
 
   it("labels every SLA state", () => {

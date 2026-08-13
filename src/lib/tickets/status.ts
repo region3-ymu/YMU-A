@@ -6,13 +6,16 @@
 // (it builds fine under tsc, so `npm run build` is what catches it). Same
 // pure-module shape as lib/attendance/status.ts and feedback-due.ts.
 
+// Five, not seven (YMU 2026-08-13). `Resolved` and `Closed` were the same act
+// described twice, so Closed absorbed it — including the root-cause
+// requirement. `Pending_Teacher` went too; `On_Hold` is now the state for
+// waiting on anyone, and it pauses the SLA clock exactly as Pending_Teacher
+// did. See migration 0040.
 export const TICKET_STATUSES = [
   "Open",
   "In_Progress",
-  "Pending_Teacher",
   "Escalated",
   "On_Hold",
-  "Resolved",
   "Closed",
 ] as const;
 
@@ -21,10 +24,8 @@ export type TicketStatus = (typeof TICKET_STATUSES)[number];
 export const STATUS_LABELS: Record<TicketStatus, string> = {
   Open: "Open",
   In_Progress: "In progress",
-  Pending_Teacher: "Waiting on teacher",
   Escalated: "Escalated",
   On_Hold: "On hold",
-  Resolved: "Resolved",
   Closed: "Closed",
 };
 
@@ -33,13 +34,13 @@ export const STATUS_LABELS: Record<TicketStatus, string> = {
 export const OPEN_STATUSES: TicketStatus[] = [
   "Open",
   "In_Progress",
-  "Pending_Teacher",
   "Escalated",
   "On_Hold",
 ];
 
-// PRD 4.5 — required before a ticket can be Resolved, because it is the only
+// PRD 4.5 — required before a ticket can be CLOSED, because it is the only
 // input to the PD-planning aggregate and nobody remembers it a week later.
+// (Was required on Resolved; the requirement moved with the meaning.)
 export const ROOT_CAUSES = [
   { value: "Curriculum_Pedagogy", label: "Curriculum & pedagogy" },
   { value: "Technology_Software", label: "Technology & software" },

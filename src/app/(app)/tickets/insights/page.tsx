@@ -108,7 +108,7 @@ export default async function TicketInsightsPage({
           </div>
         </div>
         <div className="mt-2 grid grid-cols-2 gap-3">
-          <Stat label="Resolved" value={metrics?.resolved_in_period ?? 0} />
+          <Stat label="Closed" value={metrics?.resolved_in_period ?? 0} />
           <Stat
             label="SLA met"
             value={metrics?.sla_compliance_pct == null ? "—" : `${metrics.sla_compliance_pct}%`}
@@ -217,7 +217,7 @@ function WorkloadChart({ weeks }: { weeks: WorkloadWeek[] }) {
           <span className="inline-block size-2 rounded-full bg-primary" aria-hidden /> Opened
         </span>
         <span className="flex items-center gap-1">
-          <span className="inline-block size-2 rounded-full bg-tertiary" aria-hidden /> Resolved
+          <span className="inline-block size-2 rounded-full bg-tertiary" aria-hidden /> Closed
         </span>
       </p>
     </div>

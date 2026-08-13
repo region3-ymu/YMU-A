@@ -1242,3 +1242,50 @@ That is backwards. Both paths assert the same thing — I was there, I taught it
 — so both should owe the same form. Left as it was, the tidier route for a
 teacher would have been to skip clock-in and let a manager record it, which
 bought them out of the feedback entirely.
+
+### Turning email off is a data change, not a code change
+
+The Resend channel is disabled by enqueueing `clock_out_reminder` with a null
+`email_status` instead of `'pending'` (0039). `planDispatch()` only sends when
+that column reads `'pending'`, so a null row is never even considered — no
+attempt, no failure, nothing on the dashboard.
+
+Chosen over editing `dispatch-logic.ts` or unsetting `RESEND_API_KEY` because
+it is the switch that works with no deploy: Edge Functions ship separately from
+migrations, and this environment cannot deploy them. Whatever version of the
+function is running obeys it. Turning email back on once `ymu.org` has SPF and
+DKIM is putting one literal back; the send path, the eligible-type list and the
+daily cap were left untouched.
+
+### Never rebuild a live function from the migration files
+
+Writing 0039 the obvious way — copy `enqueue_reminder_notifications` out of
+0014/0026, change the literal — would have silently reverted three production
+behaviours. The files still say `e.status = 'confirmed'`, a two-hour clock-in
+window and `coalesce(e.end_at, a.clock_in_at)`; production says
+`<> 'cancelled'`, thirty minutes and `a.scheduled_end_at`.
+
+The migration history is where a function came from, not what it is. Fetch
+`pg_get_functiondef()` first, change only the line you mean to change, and say
+in the header that the body is production's. This is the second time drift has
+nearly caused a regression in this codebase; the first filled 0037.
+
+### Five ticket statuses, and what had to be re-homed
+
+`Resolved` and `Closed` were the same act described twice — YMU never used the
+distinction — so Closed absorbed it along with the root-cause requirement.
+`Pending_Teacher` went too, and that one carried real behaviour that could not
+simply be deleted:
+
+- **It paused the SLA clock.** Half the reason 0031 exists: an agent must not
+  be scored late for time spent waiting on someone else. `On_Hold` pauses
+  identically, so it inherits the role, and the resume-on-teacher-reply trigger
+  is repointed at it. Without that repoint the pause would accrue overnight and
+  quietly flatter the agent's numbers — the exact bug 0031 called out.
+- **It pushed `ticket_needs_you` at the teacher.** Deliberately NOT inherited:
+  most holds are waiting on a part, a school or a decision, and pinging the
+  teacher every time would teach them to ignore it. Asking a teacher for
+  something is a message on the ticket, which already notifies them.
+
+Simplifying a state machine is never only removing values from a CHECK. The
+question each time is what the state was silently doing, and where that goes.

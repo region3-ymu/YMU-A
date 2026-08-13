@@ -70,7 +70,7 @@ export function StatusControl({
 
   // The root-cause picker appears only when it is about to be required, so the
   // common transitions stay one tap.
-  const needsRootCause = status === "Resolved" && !currentRootCause;
+  const needsRootCause = status === "Closed" && !currentRootCause;
 
   return (
     <form action={action} className="grid min-w-0 gap-2">
