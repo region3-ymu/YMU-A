@@ -5,7 +5,11 @@ import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth/dal";
 import { createClient } from "@/lib/supabase/server";
 import { getTopicsForProgram } from "@/lib/feedback/queries";
-import { issueCategoryFor, MIN_ISSUE_DESCRIPTION } from "@/lib/feedback/program-match";
+import {
+  CANCELLED_ENGAGEMENT,
+  issueCategoryFor,
+  MIN_ISSUE_DESCRIPTION,
+} from "@/lib/feedback/program-match";
 import { buildObjectivePayload, describeObjectiveGap } from "@/lib/feedback/objectives";
 
 export type ClassFeedbackState = { error?: string } | undefined;
@@ -27,8 +31,23 @@ export async function submitClassFeedback(
   if (!isUuid(sessionId)) return { error: "No class selected." };
 
   const engagement = String(formData.get("engagement_level") ?? "");
-  if (!["High", "Solid", "Low"].includes(engagement)) {
+  if (!["High", "Solid", "Low", CANCELLED_ENGAGEMENT].includes(engagement)) {
     return { error: "Please choose how students engaged today." };
+  }
+
+  // The cancellation path short-circuits everything below: no program, no
+  // objectives, no quarter-goal answer, no issue — only optional notes, which
+  // become the auto-created ticket's description inside the RPC.
+  if (engagement === CANCELLED_ENGAGEMENT) {
+    const supabase = await createClient();
+    const { error } = await supabase.rpc("submit_class_feedback", {
+      p_session_id: sessionId,
+      p_engagement_level: engagement,
+      p_quarter_goals_on_track: null,
+      p_cancellation_notes: String(formData.get("cancellation_notes") ?? "").trim() || null,
+    });
+    if (error) return { error: error.message };
+    return afterSubmit();
   }
 
   const onTrackRaw = String(formData.get("quarter_goals_on_track") ?? "");
@@ -109,7 +128,14 @@ export async function submitClassFeedback(
   });
   if (error) return { error: error.message };
 
+  return afterSubmit();
+}
+
+// Both submission paths land here. redirect() throws, so this never returns —
+// the return type keeps TypeScript happy at the two call sites.
+function afterSubmit(): never {
   revalidatePath("/feedback");
+  revalidatePath("/feedbacks");
   revalidatePath("/clocking");
   revalidatePath("/tickets");
   revalidatePath("/");

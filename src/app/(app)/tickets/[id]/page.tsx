@@ -5,6 +5,7 @@ import { requireProfile } from "@/lib/auth/dal";
 import { isManagerRole, seesAllTickets, ROLE_LABELS, type AppRole } from "@/lib/auth/roles";
 import { getAssignableAgents, getTicket, getTicketMessages } from "@/lib/tickets/queries";
 import { STATUS_LABELS } from "@/lib/tickets/status";
+import { ENGAGEMENT_LABELS, ISSUE_SUBCATEGORIES } from "@/lib/feedback/program-match";
 import { formatDateTime, formatTimeRange, formatWeekdayLong } from "@/lib/format/datetime";
 import { ReassignControl, ReplyBox, StatusControl } from "./ticket-controls";
 
@@ -99,10 +100,18 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
           </h2>
           <dl className="mt-2 grid gap-2 text-sm">
             <Row label="Engagement" value={ENGAGEMENT_LABELS[ticket.feedback.engagement_level] ?? ticket.feedback.engagement_level} />
-            <Row
-              label="Quarter goals"
-              value={ticket.feedback.quarter_goals_on_track ? "On track" : "Falling behind"}
-            />
+            {/* Null for a cancelled class — there was no session to be on
+                track with, and rendering that as "Falling behind" would
+                invent a problem the teacher never reported. */}
+            {ticket.feedback.quarter_goals_on_track !== null && (
+              <Row
+                label="Quarter goals"
+                value={ticket.feedback.quarter_goals_on_track ? "On track" : "Falling behind"}
+              />
+            )}
+            {ticket.feedback.cancellation_notes && (
+              <Row label="Cancellation" value={ticket.feedback.cancellation_notes} />
+            )}
             {ticket.feedback.objectives_worked.length > 0 && (
               <Row label="Objectives" value={ticket.feedback.objectives_worked.join(", ")} />
             )}
@@ -182,22 +191,12 @@ export default async function TicketPage({ params }: { params: Promise<{ id: str
   );
 }
 
-const ISSUE_LABELS: Record<string, string> = {
-  attendance: "Attendance / missing students",
-  behavior: "Student behavior & management",
-  instruments: "Damaged / missing instruments",
-  facilities: "Tech, connectivity or facilities",
-  cancelled: "Class cancelled on site",
-  repertoire: "Repertoire difficulty / sheet music",
-  coaching: "Pedagogical support & coaching",
-  technique: "Technique / literacy barriers",
-};
-
-const ENGAGEMENT_LABELS: Record<string, string> = {
-  High: "High engagement & strong output",
-  Solid: "Solid / on target",
-  Low: "Low engagement / struggling",
-};
+// Derived from the same list the form renders, rather than a second literal
+// map: the two drifted the moment a 4th engagement level was added, and a
+// missing key here degrades to showing a raw enum value to a manager.
+const ISSUE_LABELS: Record<string, string> = Object.fromEntries(
+  ISSUE_SUBCATEGORIES.map((s) => [s.value, s.label]),
+);
 
 // A fixed label column with a wrapping value column. The old flex row let a
 // long school address push the whole card past the screen edge on a phone.

@@ -30,6 +30,33 @@ const SYNC_TIME_BUDGET_MS = 4 * 60_000;
 const CALENDAR_SYNC_DELAY_MS = 200;
 const LOCK_LEASE_MINUTES = 5;
 const PAGE_SIZE = 1_000;
+// How far ahead a cancelled class has to start for the teacher to still get a
+// push about it. Bulk calendar housekeeping -- deleting next year's recurrence
+// series, tidying up past instances -- otherwise fans out one push per teacher
+// per deleted instance: 900 of the first 1,126 rows ever queued were
+// cancellations, 731 of them for classes more than 30 days out and 81 for
+// classes that had already happened. Only 23 were inside a week. A cancelled
+// event outside this window still syncs and still shows as cancelled in the
+// app; it just doesn't interrupt anyone (YMU 2026-08-14).
+const CANCELLATION_NOTICE_HORIZON_DAYS = 7;
+
+/**
+ * Whether a cancelled class is close enough to be worth pushing about.
+ * Exported for the unit tests -- pure, so the horizon can be pinned down at
+ * its boundaries without a Google or Supabase round trip.
+ */
+export function cancellationIsWorthNotifying(
+  startAt: string | null,
+  now: Date,
+  horizonDays: number = CANCELLATION_NOTICE_HORIZON_DAYS,
+): boolean {
+  if (!startAt) return false;
+  const start = new Date(startAt).getTime();
+  if (Number.isNaN(start)) return false;
+  // Already happened: nothing left to warn anyone about.
+  if (start <= now.getTime()) return false;
+  return start <= now.getTime() + horizonDays * 24 * 60 * 60 * 1_000;
+}
 
 type DatabaseEvent = {
   id: string;
@@ -200,13 +227,17 @@ async function queueNotifications(
   };
 
   if (next.status === "cancelled") {
-    for (const recipientId of previous.teacher_ids) {
-      rows.push({
-        recipient_id: recipientId,
-        event_id: next.id,
-        type: "event_cancelled",
-        payload: basePayload,
-      });
+    // Only classes starting inside the horizon are worth a push. The status
+    // change itself is already persisted by the caller either way.
+    if (cancellationIsWorthNotifying(next.start_at ?? previous.start_at, new Date())) {
+      for (const recipientId of previous.teacher_ids) {
+        rows.push({
+          recipient_id: recipientId,
+          event_id: next.id,
+          type: "event_cancelled",
+          payload: basePayload,
+        });
+      }
     }
   } else {
     if (previous.start_at !== next.start_at || previous.end_at !== next.end_at || previous.all_day !== next.all_day) {

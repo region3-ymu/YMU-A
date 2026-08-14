@@ -38,11 +38,14 @@ export type TicketRow = {
   event: { summary: string | null; start_at: string | null; end_at: string | null } | null;
   feedback: {
     engagement_level: string;
-    quarter_goals_on_track: boolean;
+    /** Null when the class was cancelled — there were no goals to be on track with. */
+    quarter_goals_on_track: boolean | null;
     objectives_worked: string[];
     is_custom_program: boolean;
     custom_program_name: string | null;
     custom_notes: string | null;
+    /** Only ever set when engagement_level is 'Canceled'. */
+    cancellation_notes: string | null;
     open_topic_note: string | null;
     submitted_at: string;
     program: { name: string } | null;
@@ -59,7 +62,7 @@ const TICKET_COLUMNS = `
   feedback:feedback_submissions!tickets_feedback_id_fkey(
     engagement_level, quarter_goals_on_track, objectives_worked,
     is_custom_program, custom_program_name, custom_notes,
-    open_topic_note, submitted_at, program:programs(name)
+    cancellation_notes, open_topic_note, submitted_at, program:programs(name)
   )
 `;
 
@@ -144,6 +147,8 @@ export async function getTicketSlaMap(): Promise<Map<string, TicketSla>> {
 }
 
 export type AgentMetrics = {
+  /** Every ticket the caller can read, closed or not — 0 means "no tickets", not "all clear". */
+  total_in_scope: number;
   open_total: number;
   open_urgent: number;
   open_warning: number;
@@ -157,9 +162,18 @@ export type AgentMetrics = {
   reopen_rate_pct: number | null;
 };
 
+// These three RPCs used to swallow their errors (`const { data } = ...`), so a
+// function that was missing, renamed or permission-denied rendered exactly like
+// a queue with nothing in it. That is precisely how the insights page managed
+// to look "broken but empty" for a week. Log loudly, still degrade gracefully.
+function warnRpc(name: string, error: { message: string } | null) {
+  if (error) console.error(`[tickets] ${name} failed: ${error.message}`);
+}
+
 export async function getAgentMetrics(days = 30): Promise<AgentMetrics | null> {
   const supabase = await createClient();
-  const { data } = await supabase.rpc("agent_ticket_metrics", { p_days: days });
+  const { data, error } = await supabase.rpc("agent_ticket_metrics", { p_days: days });
+  warnRpc("agent_ticket_metrics", error);
   // The function returns a single row; PostgREST hands it back as an array.
   return ((data as AgentMetrics[]) ?? [])[0] ?? null;
 }
@@ -168,7 +182,8 @@ export type WorkloadWeek = { week_start: string; opened: number; resolved: numbe
 
 export async function getWorkloadTrend(weeks = 8): Promise<WorkloadWeek[]> {
   const supabase = await createClient();
-  const { data } = await supabase.rpc("agent_workload_trend", { p_weeks: weeks });
+  const { data, error } = await supabase.rpc("agent_workload_trend", { p_weeks: weeks });
+  warnRpc("agent_workload_trend", error);
   return (data as WorkloadWeek[]) ?? [];
 }
 
@@ -183,10 +198,11 @@ export type RootCauseRow = {
 
 export async function getRootCauseReport(from?: string, to?: string): Promise<RootCauseRow[]> {
   const supabase = await createClient();
-  const { data } = await supabase.rpc("root_cause_report", {
+  const { data, error } = await supabase.rpc("root_cause_report", {
     p_from: from ?? null,
     p_to: to ?? null,
   });
+  warnRpc("root_cause_report", error);
   return (data as RootCauseRow[]) ?? [];
 }
 

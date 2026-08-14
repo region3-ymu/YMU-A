@@ -29,6 +29,10 @@ export const COLUMNS = [
   // Added by 0032, and therefore last: the "not this one?" escape hatch, for
   // the class whose program the calendar title got wrong.
   "custom_program", "custom_notes",
+  // Added by 0046, and therefore after those: what the teacher said about a
+  // class that never happened. Blank on every other row, including every row
+  // written before the cancellation option existed.
+  "cancellation_notes",
 ] as const;
 
 // SEVERAL OF THESE SAY "at submission", AND THAT IS NOT DECORATION.
@@ -59,6 +63,7 @@ export const HEADER: string[] = [
   "Clock-in status (at submission)", "Clocked in at (at submission)",
   "Clock-in origin",
   "Other program (teacher-named)", "Other program — what they worked on",
+  "Cancellation notes",
 ];
 
 /** Turns one RPC row into the sheet row, in COLUMNS order. */

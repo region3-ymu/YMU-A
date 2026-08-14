@@ -98,9 +98,40 @@ export const ENGAGEMENT_OPTIONS = [
     label: "Low engagement / struggling",
     hint: "Passive, distracted, or struggled to participate.",
   },
+  // Added 2026-08-13 (Juan Pelaez's cancellation spec). A 4th option here
+  // rather than a new question or screen, so the normal path costs no extra
+  // taps: the cancellation route only appears once a teacher reaches for it.
+  // Selecting it hides Sections 2 and 3 and files an Operational ticket —
+  // see submit_class_feedback() and CANCELLED_ENGAGEMENT below.
+  {
+    value: "Canceled",
+    label: "Class canceled — no session held",
+    hint: "The scheduled class did not take place today.",
+  },
 ] as const;
 
 export type EngagementLevel = (typeof ENGAGEMENT_OPTIONS)[number]["value"];
+
+/**
+ * The engagement value that means "this class did not happen".
+ *
+ * Named rather than spelled out at each site: the form, the server action, the
+ * teacher's list and the ticket detail all branch on it, and a typo in any one
+ * of them fails silently as "a normal class".
+ */
+export const CANCELLED_ENGAGEMENT = "Canceled";
+
+/**
+ * Short labels for reading a submission back. Kept beside the options so the
+ * form and the two read-only views can never drift — they used to carry their
+ * own literal maps, and adding a 4th level meant remembering all three.
+ */
+export const ENGAGEMENT_LABELS: Record<string, string> = {
+  High: "High engagement",
+  Solid: "Solid / on target",
+  Low: "Low engagement",
+  Canceled: "Class canceled",
+};
 
 // PRD Section 4 + Module B's category table. `category` is the Operational /
 // Academic split the ticket records; it is a LABEL for filtering and reporting

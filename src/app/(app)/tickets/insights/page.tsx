@@ -59,11 +59,22 @@ export default async function TicketInsightsPage({
           <span className="material-symbols-outlined text-base" aria-hidden>arrow_back</span>
           Tickets
         </Link>
-        <h1 className="mt-2 text-2xl font-bold tracking-tight text-on-surface">Your ticket insights</h1>
+        <h1 className="mt-2 text-2xl font-bold tracking-tight text-on-surface">Ticket insights</h1>
         <p className="mt-1 text-sm text-on-surface-variant">
-          Your own queue and response times{seesAllTickets(profile.role) ? " across every region" : ""}.
+          {seesAllTickets(profile.role)
+            ? "Queue and response times across every region."
+            : "Queue and response times for your region."}
         </p>
       </div>
+
+      {/* Zero open tickets reads as "all clear"; zero tickets at all reads the
+          same way but means something completely different. Say which. */}
+      {(metrics?.total_in_scope ?? 0) === 0 && (
+        <p className="rounded-2xl bg-surface-container p-4 text-sm text-on-surface-variant">
+          No tickets have been raised{seesAllTickets(profile.role) ? "" : " in your region"} yet, so every
+          figure below is zero rather than good news.
+        </p>
+      )}
 
       <section>
         <h2 className="text-sm font-semibold uppercase tracking-wide text-on-surface-variant">
@@ -149,7 +160,9 @@ export default async function TicketInsightsPage({
         </p>
         {rootCauses.length === 0 ? (
           <p className="mt-2 rounded-2xl bg-surface-container p-4 text-sm text-on-surface-variant">
-            Nothing resolved yet, so there are no causes to count.
+            {(metrics?.resolved_in_period ?? 0) > 0
+              ? "The tickets closed so far were closed without a recorded root cause, so there is nothing to count yet. Choosing a cause is required on close from now on."
+              : "Nothing closed yet, so there are no causes to count."}
           </p>
         ) : (
           <ul className="mt-2 grid gap-2">

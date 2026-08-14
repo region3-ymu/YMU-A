@@ -26,9 +26,11 @@ export type OpenSessionRow = {
   event: { summary: string | null } | null;
 };
 
-// Every currently-open session IS a teacher clocked in right now AND owing
-// feedback (Phase 4's "open session is the Demand") — one query serves both
-// the "clocked in now" and "pending feedback" widgets.
+// Teachers clocked in right now. This used to serve the "pending feedback"
+// widget as well, on Phase 4's "an open session IS the demand" model — but
+// 0026 gave feedback its own 24-hour window and its own settled marker, so an
+// open session and an owed feedback are now different things. Pending feedback
+// reads getPendingFeedback() below instead.
 //
 // Deliberately does NOT embed profiles(full_name) for the teacher: a
 // Regional Manager's profiles_select RLS gates on profiles.region, which is
@@ -55,23 +57,96 @@ export type LateFlagRow = {
   teacher_id: string;
   created_at: string;
   school: { name: string } | null;
-  event: { summary: string | null; start_at: string | null } | null;
+  event: { summary: string | null; start_at: string | null; end_at: string | null } | null;
+  /** Null when the teacher still has not clocked in for this class. */
+  clock_in_at: string | null;
 };
 
-// Same reasoning as getOpenSessions() above: no profiles embed, teacher_id
-// only — resolve the name via getReportRoster() at render time.
+/**
+ * Open late-clock-in flags, each carrying whether the teacher has since
+ * turned up.
+ *
+ * A flag is raised 5 minutes after start when no session exists, and until
+ * now nothing distinguished "flagged, then walked in 11 minutes late" from
+ * "flagged and never showed" — the card mixed both. clock_in() (0044) now
+ * auto-resolves the flag when someone arrives inside the 15-minute grace, so
+ * what survives here is either a genuinely absent teacher or an arrival late
+ * enough to be worth a manager's attention. Either way the caller can label it.
+ *
+ * The session is looked up separately rather than embedded: flags.session_id
+ * is null for this flag type by construction (there was no session when it was
+ * raised), so the only link back is the (event_id, teacher_id) pair.
+ *
+ * Same reasoning as getOpenSessions() above: no profiles embed, teacher_id
+ * only — resolve the name via getReportRoster() at render time.
+ */
 export async function getOpenLateFlags(): Promise<LateFlagRow[]> {
   const supabase = await createClient();
   const { data } = await supabase
     .from("flags")
     .select(
-      "id, teacher_id, created_at, " +
-        "school:schools(name), event:calendar_events(summary, start_at)",
+      "id, teacher_id, event_id, created_at, " +
+        "school:schools(name), event:calendar_events(summary, start_at, end_at)",
     )
     .eq("type", "late_clock_in")
     .is("resolved_at", null)
     .order("created_at", { ascending: false });
-  return (data as unknown as LateFlagRow[]) ?? [];
+
+  const flags = (data as unknown as (LateFlagRow & { event_id: string | null })[]) ?? [];
+  const eventIds = [...new Set(flags.map((f) => f.event_id).filter((id): id is string => Boolean(id)))];
+  if (eventIds.length === 0) return flags.map((f) => ({ ...f, clock_in_at: null }));
+
+  const { data: sessions } = await supabase
+    .from("attendance_sessions")
+    .select("event_id, teacher_id, clock_in_at")
+    .in("event_id", eventIds);
+
+  const clockInByKey = new Map(
+    ((sessions as { event_id: string; teacher_id: string; clock_in_at: string }[] | null) ?? []).map((s) => [
+      `${s.event_id}:${s.teacher_id}`,
+      s.clock_in_at,
+    ]),
+  );
+
+  return flags.map((f) => ({
+    ...f,
+    clock_in_at: f.event_id ? clockInByKey.get(`${f.event_id}:${f.teacher_id}`) ?? null : null,
+  }));
+}
+
+export type PendingFeedbackRow = {
+  id: string;
+  teacher_id: string;
+  feedback_due_at: string;
+  school: { name: string } | null;
+  event: { summary: string | null; start_at: string | null } | null;
+};
+
+/**
+ * Every shift still owing a class feedback log, overdue or not.
+ *
+ * Replaces the old "stuck feedback sessions" widget, which read
+ * `flags.type = 'feedback_stuck'` — a flag written by a detector that has no
+ * cron entry and has never produced a single row, behind an empty state that
+ * still talked about a Zoho webhook we no longer use.
+ *
+ * The predicate is deliberately the same one has_overdue_feedback() uses to
+ * block clock-in (0026), minus the due-date comparison, so the dashboard and
+ * the gate can never disagree about who owes what. The caller decides which
+ * rows are overdue by comparing feedback_due_at to now.
+ */
+export async function getPendingFeedback(): Promise<PendingFeedbackRow[]> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("attendance_sessions")
+    .select(
+      "id, teacher_id, feedback_due_at, " +
+        "school:schools(name), event:calendar_events(summary, start_at)",
+    )
+    .is("feedback_settled_at", null)
+    .not("feedback_due_at", "is", null)
+    .order("feedback_due_at", { ascending: true });
+  return (data as unknown as PendingFeedbackRow[]) ?? [];
 }
 
 export type TodayAttendanceRow = {
@@ -116,24 +191,45 @@ export async function getCalendarSyncHealth(): Promise<CalendarSyncFailure[]> {
 }
 
 /**
- * The two numbers behind the dashboard's notification tiles.
+ * Sends that genuinely broke in the last 24 hours.
  *
- * One round-trip to notification_health() (0038) rather than two queries,
- * and computed in SQL rather than off notification_queue.status, because the
+ * Computed in SQL rather than off notification_queue.status, because the
  * status alone cannot tell a broken send from a recipient who has no device.
- * On the first day of term that difference was 244 versus 15.
+ * On the first day of term that difference was 244 versus 15. 0043 further
+ * pins "has a device" to each notification's own created_at — asking it as of
+ * now() meant a teacher's entire pre-install backlog turned into real failures
+ * the moment they installed the app (that is where the 97 came from).
+ *
+ * The RPC's second column (no_device_recipients) is deliberately ignored here:
+ * getTeachersWithoutApp() answers that question against the roster instead.
  */
-export async function getNotificationHealth(): Promise<{
-  realFailures: number;
-  noDeviceRecipients: number;
-}> {
+export async function getNotificationHealth(): Promise<{ realFailures: number }> {
   const supabase = await createClient();
   const { data } = await supabase.rpc("notification_health", { p_hours: 24 });
-  const row = (data as { real_failures: number; no_device_recipients: number }[] | null)?.[0];
-  return {
-    realFailures: row?.real_failures ?? 0,
-    noDeviceRecipients: row?.no_device_recipients ?? 0,
-  };
+  const row = (data as { real_failures: number }[] | null)?.[0];
+  return { realFailures: row?.real_failures ?? 0 };
+}
+
+export type TeacherWithoutAppRow = {
+  teacher_id: string;
+  full_name: string;
+  has_upcoming_classes: boolean;
+};
+
+/**
+ * Teachers with no push subscription — the closest the schema gets to "has
+ * not installed the app".
+ *
+ * push_subscriptions is RLS'd to own-rows-only, so this has to go through the
+ * security-definer teachers_without_app() (0043), which scopes itself back
+ * down with can_read_profile(). The old tile counted distinct recipients of a
+ * failed notification in the last 24 hours instead, which drifted day to day,
+ * missed anyone who had no class that day, and could count managers.
+ */
+export async function getTeachersWithoutApp(): Promise<TeacherWithoutAppRow[]> {
+  const supabase = await createClient();
+  const { data } = await supabase.rpc("teachers_without_app");
+  return (data as TeacherWithoutAppRow[] | null) ?? [];
 }
 
 export type UpcomingEventRow = {

@@ -5,13 +5,16 @@ import { MANAGER_ROLES } from "@/lib/auth/roles";
 import SearchBox from "@/components/search-box";
 import { formatDateTime, formatTime } from "@/lib/format/datetime";
 import AdminEditAttendanceForm from "../flags/admin-edit-attendance-form";
-import { getStuckSessionFlags } from "@/lib/attendance/stuck-sessions";
 import { getReportRoster } from "@/lib/reports/queries";
+import { isOverdue } from "@/lib/attendance/feedback-due";
+import { classifyLateFlag, describeLateFlag, needsChasing } from "@/lib/attendance/late-flags";
 import {
   getCalendarSyncHealth,
   getOpenLateFlags,
   getOpenSessions,
   getNotificationHealth,
+  getPendingFeedback,
+  getTeachersWithoutApp,
   getTodayAttendanceRows,
   getUpcomingClasses,
 } from "./queries";
@@ -21,21 +24,47 @@ export const metadata: Metadata = { title: "Dashboard" };
 export default async function DashboardPage() {
   const profile = await requireRole(...MANAGER_ROLES);
 
-  const [openSessions, lateFlags, stuckFeedback, syncFailures, notifications, todayRows, upcoming, roster] =
-    await Promise.all([
-      getOpenSessions(),
-      getOpenLateFlags(),
-      getStuckSessionFlags(),
-      getCalendarSyncHealth(),
-      getNotificationHealth(),
-      getTodayAttendanceRows(),
-      getUpcomingClasses(),
-      getReportRoster(true),
-    ]);
+  const [
+    openSessions,
+    lateFlags,
+    pendingFeedback,
+    syncFailures,
+    notifications,
+    noAppTeachers,
+    todayRows,
+    upcoming,
+    roster,
+  ] = await Promise.all([
+    getOpenSessions(),
+    getOpenLateFlags(),
+    getPendingFeedback(),
+    getCalendarSyncHealth(),
+    getNotificationHealth(),
+    getTeachersWithoutApp(),
+    getTodayAttendanceRows(),
+    getUpcomingClasses(),
+    getReportRoster(true),
+  ]);
 
   const nameById = new Map(roster.map((t) => [t.id, t.full_name]));
   const scheduledTeacherIds = new Set(todayRows.map((r) => r.teacher_id));
   const missing = todayRows.filter((r) => r.attendance_status === "missed");
+
+  // Three states, not one: arrived-but-late, still-missing with the class
+  // running, and never-showed with the class over. classifyLateFlag decides
+  // which; the card no longer presents them as one undifferentiated pile.
+  const lateEntries = lateFlags.map((flag) => {
+    const state = classifyLateFlag(flag);
+    return { flag, tag: describeLateFlag(state), chase: needsChasing(state) };
+  });
+  // Still-absent first: they are the ones a manager can still do something about.
+  lateEntries.sort((a, b) => Number(b.chase) - Number(a.chase));
+  const stillAbsentCount = lateEntries.filter((e) => e.chase).length;
+
+  // Same predicate the clock-in gate uses, so the dashboard and the block a
+  // teacher hits can never disagree about who is overdue.
+  const overdueFeedback = pendingFeedback.filter((s) => isOverdue(s.feedback_due_at));
+  const noAppWithClasses = noAppTeachers.filter((t) => t.has_upcoming_classes);
 
   return (
     <main className="flex flex-1 flex-col gap-6 p-6">
@@ -57,15 +86,24 @@ export default async function DashboardPage() {
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard label="Scheduled today" value={scheduledTeacherIds.size} note={`${todayRows.length} classes`} />
         <StatCard label="Clocked in now" value={openSessions.length} />
-        <StatCard label="Late" value={lateFlags.length} warn={lateFlags.length > 0} />
-        <StatCard label="Missing clock-ins" value={missing.length} warn={missing.length > 0} />
-        <StatCard label="Pending feedback" value={openSessions.length} />
-        <StatCard label="Upcoming classes" value={upcoming.length} />
         <StatCard
-          label="Stuck feedback sessions"
-          value={stuckFeedback.length}
-          warn={stuckFeedback.length > 0}
+          label="Late"
+          value={lateEntries.length}
+          note={
+            lateEntries.length > 0
+              ? `${stillAbsentCount} still not clocked in`
+              : undefined
+          }
+          warn={stillAbsentCount > 0}
         />
+        <StatCard label="Missing clock-ins" value={missing.length} warn={missing.length > 0} />
+        <StatCard
+          label="Pending feedback"
+          value={pendingFeedback.length}
+          note={overdueFeedback.length > 0 ? `${overdueFeedback.length} overdue` : undefined}
+          warn={overdueFeedback.length > 0}
+        />
+        <StatCard label="Upcoming classes" value={upcoming.length} />
         <StatCard
           label="Calendar sync"
           value={syncFailures.length}
@@ -83,9 +121,13 @@ export default async function DashboardPage() {
             they add the app to their home screen. Not a warning — nothing is
             broken, and it will be most of the roster for a while. */}
         <StatCard
-          label="Teachers with no device (24h)"
-          value={notifications.noDeviceRecipients}
-          note={notifications.noDeviceRecipients > 0 ? "missing push reminders" : "everyone reachable"}
+          label="No app installed"
+          value={noAppTeachers.length}
+          note={
+            noAppTeachers.length > 0
+              ? `${noAppWithClasses.length} with classes coming up`
+              : "everyone reachable"
+          }
         />
       </div>
 
@@ -127,19 +169,31 @@ export default async function DashboardPage() {
           <span className="material-symbols-outlined text-warning" aria-hidden>timer</span>
           Late clock-ins
         </h2>
-        {lateFlags.length === 0 ? (
+        {lateEntries.length === 0 ? (
           <Empty text="No open late flags." icon="check_circle" />
         ) : (
           <ul className="grid gap-3">
-            {lateFlags.map((f) => (
+            {lateEntries.map(({ flag: f, tag, chase }) => (
               <li
                 key={f.id}
                 className="relative flex items-center justify-between gap-3 overflow-hidden rounded-2xl bg-surface-container p-3 pl-5 text-sm text-on-surface shadow-sm"
               >
-                <div className="absolute inset-y-0 left-0 w-1.5 bg-warning" aria-hidden />
+                <div
+                  className={`absolute inset-y-0 left-0 w-1.5 ${chase ? "bg-error" : "bg-warning"}`}
+                  aria-hidden
+                />
                 <span>
                   {nameById.get(f.teacher_id) ?? "Unknown teacher"} · {f.school?.name ?? "—"} ·{" "}
                   {f.event?.summary ?? "Class"}
+                  <span
+                    className={`ml-2 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${
+                      chase
+                        ? "bg-error-container text-on-error-container"
+                        : "bg-warning-container text-on-warning-container"
+                    }`}
+                  >
+                    {tag}
+                  </span>
                 </span>
                 <span
                   className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-warning-container text-on-warning-container"
@@ -158,31 +212,45 @@ export default async function DashboardPage() {
 
       <section>
         <h2 className="mb-3 flex items-center gap-2 text-lg font-semibold text-on-surface">
-          <span className="material-symbols-outlined text-error" aria-hidden>flag</span>
-          Stuck feedback sessions
+          <span className="material-symbols-outlined text-primary" aria-hidden>rate_review</span>
+          Teachers with pending feedback
         </h2>
-        {stuckFeedback.length === 0 ? (
-          <Empty text="No sessions stuck waiting on a Zoho webhook." icon="check_circle" />
+        {pendingFeedback.length === 0 ? (
+          <Empty text="Everyone is up to date on their feedback." icon="check_circle" />
         ) : (
           <ul className="grid gap-3">
-            {stuckFeedback.map((f) => (
-              <li
-                key={f.id}
-                className="relative overflow-hidden rounded-2xl bg-surface-container p-3 pl-5 text-sm text-on-surface shadow-sm"
-              >
-                <div className="absolute inset-y-0 left-0 w-1.5 bg-error" aria-hidden />
-                {nameById.get(f.teacher_id) ?? "Unknown teacher"} · {f.school?.name ?? "—"} ·{" "}
-                {f.event?.summary ?? "Class"}
-                {f.session?.clock_in_at
-                  ? ` · open since ${formatDateTime(f.session.clock_in_at)}`
-                  : ""}
-              </li>
-            ))}
+            {/* Overdue first — those teachers are blocked from clocking in
+                again until they submit, so they are the ones to chase. */}
+            {[...pendingFeedback]
+              .sort(
+                (a, b) =>
+                  new Date(a.feedback_due_at).getTime() - new Date(b.feedback_due_at).getTime(),
+              )
+              .map((s) => {
+                const overdue = isOverdue(s.feedback_due_at);
+                return (
+                  <li
+                    key={s.id}
+                    className="relative overflow-hidden rounded-2xl bg-surface-container p-3 pl-5 text-sm text-on-surface shadow-sm"
+                  >
+                    <div
+                      className={`absolute inset-y-0 left-0 w-1.5 ${overdue ? "bg-error" : "bg-primary"}`}
+                      aria-hidden
+                    />
+                    {nameById.get(s.teacher_id) ?? "Unknown teacher"} · {s.school?.name ?? "—"} ·{" "}
+                    {s.event?.summary ?? "Class"}
+                    {" · due "}
+                    {formatDateTime(s.feedback_due_at)}
+                    {overdue && (
+                      <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-error-container px-2.5 py-1 text-xs font-semibold text-on-error-container">
+                        Overdue
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
           </ul>
         )}
-        <Link href="/flags" className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-primary hover:underline">
-          View all flags →
-        </Link>
       </section>
 
       <section>
@@ -271,24 +339,30 @@ export default async function DashboardPage() {
         )}
       </section>
 
-      {(profile.role === "operations_manager" || profile.role === "cpo") && (
-        <section>
-          <h2 className="mb-3 flex items-center gap-2 text-lg font-semibold text-on-surface">
-            <span className="material-symbols-outlined text-primary" aria-hidden>campaign</span>
-            PD relay feedback (this week)
-          </h2>
-          <p className="text-sm text-on-surface-variant">
-            Responses to the native in-app relay self-reflection form (temporary — see NEXT_STEPS.md).
-          </p>
-          <a
-            href="/api/relay-feedback/export"
-            className="mt-3 inline-flex items-center gap-1 rounded-full bg-primary px-5 py-2.5 text-sm font-bold text-on-primary shadow-sm active:scale-[0.98]"
-          >
-            <span className="material-symbols-outlined text-lg" aria-hidden>download</span>
-            Download CSV →
-          </a>
-        </section>
-      )}
+      <section>
+        <h2 className="mb-3 flex items-center gap-2 text-lg font-semibold text-on-surface">
+          <span className="material-symbols-outlined text-primary" aria-hidden>phonelink_off</span>
+          No app installed
+        </h2>
+        {noAppTeachers.length === 0 ? (
+          <Empty text="Every teacher can receive push reminders." icon="phonelink_ring" />
+        ) : (
+          <ul className="grid gap-3">
+            {noAppTeachers.map((t) => (
+              <li
+                key={t.teacher_id}
+                className="relative overflow-hidden rounded-2xl bg-surface-container p-3 pl-5 text-sm text-on-surface shadow-sm"
+              >
+                <div className="absolute inset-y-0 left-0 w-1.5 bg-primary" aria-hidden />
+                {t.full_name}
+                <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-surface-container-high px-2.5 py-1 text-xs font-semibold text-on-surface-variant">
+                  {t.has_upcoming_classes ? "Has classes coming up" : "Nothing scheduled"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </main>
   );
 }

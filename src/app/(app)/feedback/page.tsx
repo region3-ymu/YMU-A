@@ -3,6 +3,7 @@ import Link from "next/link";
 import { requireRole } from "@/lib/auth/dal";
 import { getFeedbackOwed, type OwedFeedback } from "@/lib/attendance/queries";
 import { getSubmittedFeedback, type SubmittedFeedback } from "@/lib/feedback/queries";
+import { ENGAGEMENT_LABELS } from "@/lib/feedback/program-match";
 import { describeDue, dueUrgency } from "@/lib/attendance/feedback-due";
 import { formatDate, formatTimeRange } from "@/lib/format/datetime";
 
@@ -96,12 +97,6 @@ export default async function FeedbackPage() {
   );
 }
 
-const ENGAGEMENT_LABELS: Record<string, string> = {
-  High: "High engagement",
-  Solid: "Solid / on target",
-  Low: "Low engagement",
-};
-
 // Collapsed by default: the list is a reference, not a feed. A teacher opens
 // the one class they are trying to remember, not all twenty-five.
 function SubmittedCard({ item }: { item: SubmittedFeedback }) {
@@ -122,10 +117,16 @@ function SubmittedCard({ item }: { item: SubmittedFeedback }) {
           label="Engagement"
           value={ENGAGEMENT_LABELS[item.engagement_level] ?? item.engagement_level}
         />
-        <Answer
-          label="Quarter goals"
-          value={item.quarter_goals_on_track ? "On track" : "Falling behind"}
-        />
+        {/* Null for a cancelled class: there was no session, so there is no
+            progress to report. "Falling behind" would be a claim the teacher
+            never made. */}
+        {item.quarter_goals_on_track !== null && (
+          <Answer
+            label="Quarter goals"
+            value={item.quarter_goals_on_track ? "On track" : "Falling behind"}
+          />
+        )}
+        {item.cancellation_notes && <Answer label="Cancellation" value={item.cancellation_notes} />}
         {item.objectives_worked.length > 0 && (
           <Answer label="Objectives" value={item.objectives_worked.join(", ")} />
         )}
