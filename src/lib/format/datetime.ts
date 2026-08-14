@@ -17,9 +17,10 @@
 // automatically (UTC-4 in summer, UTC-5 in winter).
 //
 // NOTE: this is deliberately separate from the UTC *day-bucketing* convention
-// used by reports/aggregate.ts and schedules/format.ts's dayKey — those key
-// rows into day/week buckets and intentionally use UTC day boundaries. This
-// module is only for rendering a human-readable clock time/date.
+// used by reports/aggregate.ts, which keys rows into day/week buckets on UTC
+// boundaries on purpose. Schedules' dayKey used to do the same and no longer
+// does: grouping a class by UTC day put an 8:30 PM Miami class under the next
+// day, so it now uses APP_TIME_ZONE like everything else a teacher reads.
 
 export const APP_TIME_ZONE = "America/New_York";
 
