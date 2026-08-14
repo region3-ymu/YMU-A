@@ -242,6 +242,18 @@ export function notificationCopy(row: Pick<QueueRow, "type" | "payload">): {
         url: ticketUrl(payload),
       };
 
+    // The announcements board (migration 0053). The payload also carries the
+    // title as `summary`, so on a build that predates this case the default
+    // below still shows the headline rather than an empty notification.
+    case "news_published": {
+      const postId = str(payload.post_id);
+      return {
+        title: "New announcement",
+        body: str(payload.title) ?? "Something new on the News board.",
+        url: postId ? `/news/${postId}` : "/news",
+      };
+    }
+
     default:
       return { title: "YMU-A", body: summary, url: "/" };
   }

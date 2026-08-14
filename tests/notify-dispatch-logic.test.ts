@@ -152,6 +152,29 @@ describe("notificationCopy", () => {
     expect(copy.title).toBeTruthy();
     expect(copy.body).toBeTruthy();
   });
+
+  // Announcements board, migration 0053.
+  it("deep-links a news announcement to the post", () => {
+    const copy = notificationCopy({
+      type: "news_published",
+      payload: { post_id: "9f1d0f4e-1c2b-4a3d-8e5f-6a7b8c9d0e1f", title: "Cover needed Thursday" },
+    });
+    expect(copy.title).toBe("New announcement");
+    expect(copy.body).toBe("Cover needed Thursday");
+    expect(copy.url).toBe("/news/9f1d0f4e-1c2b-4a3d-8e5f-6a7b8c9d0e1f");
+  });
+
+  it("still lands on the board when a news payload has no post id", () => {
+    expect(notificationCopy({ type: "news_published", payload: { title: "Hi" } }).url).toBe("/news");
+  });
+
+  // create_news_post() writes the headline into `summary` as well as `title`,
+  // so a notify-dispatch build that predates the case above still shows
+  // something meaningful instead of an empty push.
+  it("degrades to the headline on an older dispatcher build", () => {
+    const copy = notificationCopy({ type: "made_up_type", payload: { summary: "Cover needed" } });
+    expect(copy.body).toBe("Cover needed");
+  });
 });
 
 describe("notificationCopy — manager-facing detail (migration 0027)", () => {

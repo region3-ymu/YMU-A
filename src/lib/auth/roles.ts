@@ -59,6 +59,20 @@ export function canReadTeamFeedback(role: AppRole): boolean {
   return (FEEDBACK_READER_ROLES as readonly AppRole[]).includes(role);
 }
 
+// Who can post an announcement on the News board. Everyone signed in reads it;
+// only these four write, which is the "only admins can talk" shape YMU asked
+// for. Mirrors can_publish_news() in migration 0053 — SQL is authoritative.
+export const NEWS_AUTHOR_ROLES = [
+  "regional_manager",
+  "academic_manager",
+  "operations_manager",
+  "cpo",
+] as const satisfies readonly AppRole[];
+
+export function canPublishNews(role: AppRole): boolean {
+  return (NEWS_AUTHOR_ROLES as readonly AppRole[]).includes(role);
+}
+
 export function isAppRole(value: unknown): value is AppRole {
   return (
     typeof value === "string" && (APP_ROLES as readonly string[]).includes(value)
@@ -158,8 +172,9 @@ export function navForRole(role: AppRole, isAppAdmin: boolean = false): NavItem[
         icon: "confirmation_number",
       },
       { href: "/schedules", label: "Schedules", note: "Classes by school", icon: "calendar_month" },
-      // Fifth, so it lands on the Home grid rather than the bottom bar — it is
-      // a place you visit deliberately, not between classes.
+      // Fifth onwards land on the Home grid rather than the bottom bar —
+      // places you go deliberately, not between classes.
+      { href: "/news", label: "News", note: "Announcements & resources", icon: "campaign" },
       {
         href: "/classroom",
         label: "YMU Classroom",
@@ -198,6 +213,12 @@ export function navForRole(role: AppRole, isAppAdmin: boolean = false): NavItem[
         icon: "rate_review",
       });
     }
+    items.push({
+      href: "/news",
+      label: "News",
+      note: canPublishNews(role) ? "Post announcements" : "Announcements & resources",
+      icon: "campaign",
+    });
   }
 
   items.push(

@@ -4,6 +4,7 @@ import type { AppRole } from "@/lib/auth/roles";
 import { getFeedbackOwed } from "@/lib/attendance/queries";
 import { isOverdue } from "@/lib/attendance/feedback-due";
 import { getActionableTicketCount } from "@/lib/tickets/queries";
+import { getUnreadNewsCount } from "@/lib/news/queries";
 
 // The counts behind the little red numbers, in one place.
 //
@@ -24,21 +25,25 @@ export type NavBadges = {
   feedbackOwed: number;
   /** Of those, how many are past the 24-hour deadline. Drives the colour. */
   feedbackOverdue: number;
+  /** Announcements this reader has not opened yet. */
+  news: number;
 };
 
 export const getNavBadges = cache(async (role: AppRole): Promise<NavBadges> => {
   // Both reads are RLS-scoped, so a teacher counts their own owed feedback and
   // a Regional Manager counts their region's queue — no role branching needed
   // beyond skipping the query for roles that never owe feedback.
-  const [tickets, owed] = await Promise.all([
+  const [tickets, owed, news] = await Promise.all([
     getActionableTicketCount(),
     role === "teacher" ? getFeedbackOwed() : Promise.resolve([]),
+    getUnreadNewsCount(),
   ]);
 
   return {
     tickets,
     feedbackOwed: owed.length,
     feedbackOverdue: owed.filter((o) => isOverdue(o.feedback_due_at)).length,
+    news,
   };
 });
 
@@ -52,6 +57,8 @@ export const getNavBadges = cache(async (role: AppRole): Promise<NavBadges> => {
 export function applyNavBadges(items: NavItem[], badges: NavBadges): NavItem[] {
   return items.map((item) => {
     if (item.href === "/tickets") return { ...item, badge: badges.tickets };
+    // Unread announcements are news, not a problem — never the red treatment.
+    if (item.href === "/news") return { ...item, badge: badges.news, badgeUrgent: false };
     if (item.href === "/feedback") {
       return {
         ...item,
