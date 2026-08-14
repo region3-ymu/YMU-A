@@ -14,6 +14,7 @@
 // Pure and dependency-free, so the presets are unit-testable without a DB —
 // and `now` is injectable for the same reason.
 
+import { clampToDataStart, DATA_START_DATE } from "../app-data-window";
 import { findSchoolYearForDate } from "../school-years/derive";
 import type { SchoolYear } from "./types";
 
@@ -100,6 +101,35 @@ export function resolveRange(
   schoolYears: SchoolYear[],
   now: number = Date.now(),
 ): ReportRange {
+  return floorAtDataStart(resolveRangeUnclamped(key, schoolYears, now));
+}
+
+/**
+ * No range may reach behind the day the app's data starts.
+ *
+ * "Last 30 days" in August 2026 otherwise reaches into July, where 8,496
+ * swept-in calendar events sit with no attendance against them — so the report
+ * was mostly phantom missed classes. Applied to every preset including "All
+ * time", which here means "all the time this app has existed".
+ *
+ * attendance_period_rows enforces the same floor in SQL, so this is about
+ * honest labels and not fetching rows that would be discarded anyway.
+ */
+function floorAtDataStart(range: ReportRange): ReportRange {
+  const from = clampToDataStart(range.from);
+  const clamped = from !== range.from;
+  return {
+    ...range,
+    from,
+    label: clamped ? `${range.label} (from ${DATA_START_DATE})` : range.label,
+  };
+}
+
+function resolveRangeUnclamped(
+  key: string | undefined,
+  schoolYears: SchoolYear[],
+  now: number = Date.now(),
+): ReportRange {
   const effective = key ?? defaultRangeKey(schoolYears, now);
 
   if (effective === "all") return { key: "all", label: "All time" };
@@ -115,6 +145,6 @@ export function resolveRange(
   // Unknown key. Resolve the default, but only once — if the default is itself
   // unresolvable we would otherwise recurse forever.
   const fallback = defaultRangeKey(schoolYears, now);
-  if (fallback !== effective) return resolveRange(fallback, schoolYears, now);
+  if (fallback !== effective) return resolveRangeUnclamped(fallback, schoolYears, now);
   return { key: "all", label: "All time" };
 }

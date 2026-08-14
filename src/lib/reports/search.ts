@@ -12,6 +12,7 @@
 // (calendar_events -> schools.region), same fix as the dashboard and /flags.
 
 import { createClient } from "@/lib/supabase/server";
+import { DATA_START_ISO } from "@/lib/app-data-window";
 import { getReportRoster } from "./queries";
 
 export type EventResult = {
@@ -51,6 +52,10 @@ export async function searchAll(rawQuery: string): Promise<SearchResults> {
       .from("calendar_events")
       .select("id, summary, start_at, school:schools(name)")
       .neq("status", "cancelled")
+      // Same floor the reports view applies: everything earlier is pre-pilot
+      // calendar history swept in by the first Google sync, and a search that
+      // surfaces last year's classes alongside this week's is noise.
+      .gte("start_at", DATA_START_ISO)
       .or(`summary.ilike.${pattern},location_raw.ilike.${pattern}`)
       .order("start_at", { ascending: false })
       .limit(20),

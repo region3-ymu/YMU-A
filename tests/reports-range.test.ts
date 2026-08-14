@@ -10,6 +10,7 @@ import {
   rangeOptions,
   resolveRange,
 } from "../src/lib/reports/range";
+import { clampToDataStart, DATA_START_DATE, DATA_START_ISO } from "../src/lib/app-data-window";
 import type { SchoolYear } from "../src/lib/reports/types";
 
 const YEARS: SchoolYear[] = [
@@ -49,8 +50,17 @@ describe("defaultRangeKey", () => {
 });
 
 describe("resolveRange", () => {
-  it("gives all time no bounds at all", () => {
-    expect(resolveRange("all", YEARS, DURING_2026)).toEqual({ key: "all", label: "All time" });
+  // "All time" means all the time this app has existed. Everything in
+  // calendar_events before DATA_START_DATE is pre-pilot history swept in by
+  // the first Google sync — thousands of classes nobody could have clocked
+  // into, every one of which reads as a missed class.
+  it("floors all time at the day the data starts", () => {
+    expect(resolveRange("all", YEARS, DURING_2026)).toEqual({
+      key: "all",
+      label: `All time (from ${DATA_START_DATE})`,
+      from: DATA_START_ISO,
+      to: undefined,
+    });
   });
 
   // The window ends at TOMORROW's UTC midnight, not at `now`. Classes later
@@ -64,11 +74,34 @@ describe("resolveRange", () => {
 
   // school_years.end_date is inclusive, so the bound has to reach the
   // following midnight or every class on the last day of the year vanishes.
-  it("covers the final day of a school year", () => {
+  // The start is pulled forward to the data start — y26 begins 2026-08-12, one
+  // day before the pilot went live — and the label says so, because a total
+  // labelled "2026-27" that quietly omits a day would be worse than a longer
+  // label.
+  it("covers the final day of a school year, floored at the data start", () => {
     const r = resolveRange("sy:y26", YEARS, DURING_2026);
-    expect(r.from).toBe("2026-08-12T00:00:00.000Z");
+    expect(r.from).toBe(DATA_START_ISO);
     expect(r.to).toBe("2027-06-03T00:00:00.000Z");
-    expect(r.label).toBe("2026-27");
+    expect(r.label).toBe(`2026-27 (from ${DATA_START_DATE})`);
+  });
+
+  // A window entirely after the data start is left exactly as it was — the
+  // floor must not relabel or move a range it does not affect.
+  it("leaves a range that already starts later alone", () => {
+    const r = resolveRange("30d", YEARS, DURING_2026);
+    expect(r.from).toBe("2026-09-16T00:00:00.000Z");
+    expect(r.label).toBe("Last 30 days");
+  });
+
+  // The case that prompted this: in the first weeks of the pilot a rolling
+  // 30-day window reaches back into July, where 8,496 swept-in calendar events
+  // sit with no attendance against them.
+  it("clamps a rolling window that would reach behind the data start", () => {
+    const earlyPilot = Date.parse("2026-08-20T12:00:00Z");
+    const r = resolveRange("30d", YEARS, earlyPilot);
+    expect(r.from).toBe(DATA_START_ISO);
+    expect(r.to).toBe("2026-08-21T00:00:00.000Z");
+    expect(r.label).toBe(`Last 30 days (from ${DATA_START_DATE})`);
   });
 
   it("falls back to the default for an unknown key", () => {
@@ -100,5 +133,23 @@ describe("rangeOptions", () => {
 
   it("still offers the rolling windows with no school years", () => {
     expect(rangeOptions([]).map((o) => o.key)).toEqual(["30d", "90d", "all"]);
+  });
+});
+
+describe("clampToDataStart", () => {
+  it("treats no lower bound as the data start, not the beginning of time", () => {
+    expect(clampToDataStart(undefined)).toBe(DATA_START_ISO);
+  });
+
+  it("pulls an earlier bound forward", () => {
+    expect(clampToDataStart("2026-07-15T00:00:00.000Z")).toBe(DATA_START_ISO);
+  });
+
+  it("leaves a later bound untouched", () => {
+    expect(clampToDataStart("2026-09-01T00:00:00.000Z")).toBe("2026-09-01T00:00:00.000Z");
+  });
+
+  it("is a no-op exactly on the boundary", () => {
+    expect(clampToDataStart(DATA_START_ISO)).toBe(DATA_START_ISO);
   });
 });
