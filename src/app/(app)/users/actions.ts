@@ -113,3 +113,39 @@ export async function unarchiveTeacher(
   revalidatePath("/users");
   return { success: "Account unarchived." };
 }
+
+/**
+ * Excuse a teacher from clocking in — or put them back on it.
+ *
+ * Only ever meaningful for a teacher: managers do not clock in at all. The
+ * profiles_protect_privileged_columns trigger re-enforces the OM/CPO rule in
+ * SQL, which matters because profiles_update_own would otherwise let a teacher
+ * exempt themselves.
+ */
+export async function setClockInExempt(
+  _prev: ArchiveFormState,
+  formData: FormData,
+): Promise<ArchiveFormState> {
+  const caller = await requireRole("operations_manager", "cpo");
+  const targetId = String(formData.get("target_id") ?? "");
+  const exempt = String(formData.get("exempt") ?? "") === "yes";
+
+  const guardError = await guardArchiveTarget(caller.id, caller.role, targetId);
+  if (guardError) return guardError;
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("profiles")
+    .update({ clock_in_exempt: exempt })
+    .eq("id", targetId)
+    .eq("role", "teacher");
+  if (error) return { error: error.message };
+
+  revalidatePath("/users");
+  revalidatePath("/dashboard");
+  return {
+    success: exempt
+      ? "Excused from clocking in. Their classes will be recorded automatically once each one ends."
+      : "Back on the normal clock-in flow.",
+  };
+}

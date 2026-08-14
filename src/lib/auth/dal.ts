@@ -23,6 +23,9 @@ export type Profile = {
   // Grants app_feedback visibility regardless of role (see migration 0024) —
   // whoever's actually operating the app day-to-day, independent of org role.
   is_app_admin: boolean;
+  // Never expected to clock in; attendance is recorded automatically once each
+  // class ends (migration 0052). Only ever true for a teacher.
+  clock_in_exempt: boolean;
 };
 
 // Memoized per request/render pass. Returns null when signed out. Archived
@@ -40,7 +43,7 @@ export const getProfile = cache(async (): Promise<Profile | null> => {
   const { data: profile } = await supabase
     .from("profiles")
     .select(
-      "id, full_name, phone, role, job_title, region, subjects, emergency_contact, archived_at, is_app_admin",
+      "id, full_name, phone, role, job_title, region, subjects, emergency_contact, archived_at, is_app_admin, clock_in_exempt",
     )
     .eq("id", user.id)
     .single();

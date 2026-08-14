@@ -8,6 +8,7 @@ import {
 } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/server";
 import ArchiveButton from "./archive-button";
+import ClockInExemptButton from "./clock-in-exempt-button";
 import RowForm from "./row-form";
 
 export const metadata: Metadata = { title: "Team" };
@@ -19,6 +20,7 @@ type Row = {
   role: AppRole;
   region: Region | null;
   archived_at: string | null;
+  clock_in_exempt: boolean;
 };
 
 export default async function UsersPage() {
@@ -27,7 +29,7 @@ export default async function UsersPage() {
   const supabase = await createClient();
   const { data: rows, error } = await supabase
     .from("profiles")
-    .select("id, full_name, phone, role, job_title, region, archived_at")
+    .select("id, full_name, phone, role, job_title, region, archived_at, clock_in_exempt")
     .order("full_name");
 
   // Mirrors promote_user()'s rules so the UI doesn't offer doomed submits:
@@ -77,6 +79,11 @@ export default async function UsersPage() {
                       Archived
                     </span>
                   )}
+                  {row.clock_in_exempt && (
+                    <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-tertiary-container px-2.5 py-0.5 text-xs font-semibold text-on-tertiary-container">
+                      Auto-attendance
+                    </span>
+                  )}
                 </p>
                 <p className="text-xs text-on-surface-variant">
                   {displayRole({ role: row.role as AppRole, job_title: row.job_title })}
@@ -94,6 +101,12 @@ export default async function UsersPage() {
                     currentRegion={row.region as Region | null}
                     assignableRoles={assignable}
                   />
+                  {row.role === "teacher" && (
+                    <ClockInExemptButton
+                      targetId={row.id}
+                      exempt={Boolean(row.clock_in_exempt)}
+                    />
+                  )}
                   <ArchiveButton targetId={row.id} archived={row.archived_at != null} />
                 </div>
               )}

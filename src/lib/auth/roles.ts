@@ -158,6 +158,14 @@ export function navForRole(role: AppRole, isAppAdmin: boolean = false): NavItem[
         icon: "confirmation_number",
       },
       { href: "/schedules", label: "Schedules", note: "Classes by school", icon: "calendar_month" },
+      // Fifth, so it lands on the Home grid rather than the bottom bar — it is
+      // a place you visit deliberately, not between classes.
+      {
+        href: "/classroom",
+        label: "YMU Classroom",
+        note: "Courses & training",
+        icon: "school",
+      },
     );
   } else {
     // Dashboard and Flags are still scoped to MANAGER_ROLES at the query layer,
@@ -238,6 +246,7 @@ export const ROUTE_ROLES: Record<string, readonly AppRole[]> = {
   // renamed route away from doing so, and the failure would be silent.
   "/feedbacks": FEEDBACK_READER_ROLES,
   "/feedback": ["teacher"],
+  "/classroom": ["teacher"],
   // More specific than "/lists" below — must come first, since
   // rolesAllowedForPath() returns on the first matching prefix.
   "/lists/school-years": ["operations_manager", "cpo"],

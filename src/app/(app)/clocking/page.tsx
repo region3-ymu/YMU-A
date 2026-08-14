@@ -28,7 +28,46 @@ function formatWhen(startAt: string | null, endAt: string | null) {
 // regardless of what this page renders. Region 1 is a courtesy so the teacher
 // learns why before walking to a school, not the gate itself.
 export default async function ClockingPage() {
-  await requireRole("teacher");
+  const profile = await requireRole("teacher");
+
+  // Some teachers are excused from clocking in entirely (migration 0052) —
+  // their attendance is recorded for them once each class ends. Showing them a
+  // clock-in button, a deadline and a lock screen would be asking for
+  // something nobody expects them to do.
+  if (profile.clock_in_exempt) {
+    const upcoming = await getNextClass();
+    return (
+      <main className="mx-auto flex w-full max-w-xl flex-1 flex-col gap-4 p-6">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-on-surface">Clocking</h1>
+          <p className="text-sm text-on-surface-variant">Nothing for you to do here.</p>
+        </div>
+        <section className="rounded-2xl bg-tertiary-container p-5 text-on-tertiary-container">
+          <h2 className="flex items-center gap-2 text-lg font-semibold">
+            <span className="material-symbols-outlined filled" aria-hidden>task_alt</span>
+            Your attendance is recorded for you
+          </h2>
+          <p className="mt-1 text-sm opacity-90">
+            You don&apos;t need to clock in or fill in class feedback. Your classes are
+            marked as taught automatically once they finish. If something is wrong, tell
+            your Regional Manager and they can correct it.
+          </p>
+        </section>
+        {upcoming && (
+          <section className="rounded-2xl bg-surface-container p-5 shadow-sm">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-on-surface-variant">
+              Next class
+            </h2>
+            <p className="mt-1 font-semibold text-on-surface">{classTitle(upcoming.summary)}</p>
+            <p className="text-sm text-on-surface-variant">
+              {upcoming.school?.name ?? "Unmatched school"}
+            </p>
+          </section>
+        )}
+      </main>
+    );
+  }
+
   const [openSession, nextClass, owed] = await Promise.all([
     getOpenSession(),
     getNextClass(),
