@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireProfile } from "@/lib/auth/dal";
 import { navForRole } from "@/lib/auth/roles";
+import { applyNavBadges, getNavBadges } from "@/lib/nav/badges";
 import { getFeedbackOwed, getNextClass, getOpenSession } from "@/lib/attendance/queries";
 import { describeDue, dueUrgency } from "@/lib/attendance/feedback-due";
 import { getReportRows } from "@/lib/reports/queries";
@@ -69,7 +70,15 @@ export default async function Home() {
 
   // The Clocking tile just reflects state now — there is no clock-out step to
   // point at (YMU 2026-08-12).
-  const nav = navForRole(profile.role, profile.is_app_admin).map((item) =>
+  //
+  // Badges come from the same cached counts the bottom bar uses, so the number
+  // on the tile and the number on the bar can never disagree. getFeedbackOwed()
+  // above and the one inside getNavBadges() are the same call thanks to
+  // react.cache.
+  const nav = applyNavBadges(
+    navForRole(profile.role, profile.is_app_admin),
+    await getNavBadges(profile.role),
+  ).map((item) =>
     item.href === "/clocking" && openSession
       ? { ...item, label: "Clocking", note: "You're clocked in" }
       : item,
@@ -221,12 +230,28 @@ export default async function Home() {
               href={item.href}
               className="flex h-full flex-col gap-6 rounded-2xl bg-surface-container p-4 shadow-sm transition-transform active:scale-[0.98]"
             >
-              <span
-                className={`flex h-11 w-11 items-center justify-center rounded-full shadow-sm ${TILE_TINTS[i % TILE_TINTS.length]}`}
-              >
-                <span className="material-symbols-outlined" aria-hidden>
-                  {item.icon}
+              <span className="flex items-start justify-between gap-2">
+                <span
+                  className={`flex h-11 w-11 items-center justify-center rounded-full shadow-sm ${TILE_TINTS[i % TILE_TINTS.length]}`}
+                >
+                  <span className="material-symbols-outlined" aria-hidden>
+                    {item.icon}
+                  </span>
                 </span>
+                {/* Same count as the bottom bar, but here it has room to
+                    breathe. Red only when something is genuinely past its
+                    deadline; otherwise it is just a queue, not an alarm. */}
+                {item.badge != null && item.badge > 0 && (
+                  <span
+                    className={`rounded-full px-2.5 py-1 text-xs font-bold ${
+                      item.badgeUrgent
+                        ? "bg-error text-on-error"
+                        : "bg-surface-container-high text-on-surface"
+                    }`}
+                  >
+                    {item.badge > 99 ? "99+" : item.badge}
+                  </span>
+                )}
               </span>
               <span className="mt-auto">
                 <span className="block font-bold text-on-surface">

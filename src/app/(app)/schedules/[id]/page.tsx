@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { requireProfile } from "@/lib/auth/dal";
 import { createClient } from "@/lib/supabase/server";
 import { eventTitle, formatEventTime } from "../format";
-import type { ScheduleAttendee, ScheduleEvent } from "../types";
+import { SCHEDULE_DETAIL_COLUMNS, type ScheduleAttendee, type ScheduleEventDetail } from "../types";
 
 export const metadata: Metadata = { title: "Schedule event" };
 
@@ -14,11 +14,11 @@ export default async function ScheduleEventPage({ params }: { params: Promise<{ 
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("calendar_events")
-    .select("id, summary, description, location_raw, start_at, end_at, all_day, status, html_link, organizer_email, attendees, teacher_ids, school_id, school_match_score, school_match_source, raw, school:schools(id, name, address, region)")
+    .select(SCHEDULE_DETAIL_COLUMNS)
     .eq("id", id)
     .maybeSingle();
   if (error || !data) notFound();
-  const event = data as unknown as ScheduleEvent;
+  const event = data as unknown as ScheduleEventDetail;
   const videoLink = readString(event.raw?.hangoutLink) ?? conferenceLink(event.raw?.conferenceData);
 
   return (

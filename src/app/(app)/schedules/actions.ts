@@ -54,6 +54,8 @@ export async function resolveCalendarIssue(
   return {
     success: schoolId
       ? "Calendar linked to that school. It will sync going forward and won't be re-matched automatically."
-      : "Dismissed — this calendar won't be flagged again unless it's rediscovered.",
+      // Genuinely permanent since 0050/0051. It used to wear off within five
+      // minutes, because every sync run rewrote resolved_at back to null.
+      : "Dismissed for good — this calendar won't be flagged again.",
   };
 }

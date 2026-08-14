@@ -1,18 +1,30 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { isManagerRole, REGION_LABELS, type Region } from "@/lib/auth/roles";
 import { dayHeading, dayKey, eventTitle, formatEventTime, isCurrentlyInShift } from "./format";
 import UnmatchedCalendarQueue from "./unmatched-calendar-queue";
 import UnmatchedEventQueue from "./unmatched-event-queue";
 import type { SchedulesExplorerProps, ScheduleEvent } from "./types";
 
-export default function SchedulesExplorer({ events, schools, calendarIssues, callerRole, now: initialNow }: SchedulesExplorerProps) {
+export default function SchedulesExplorer({
+  events,
+  schools,
+  calendarIssues,
+  callerRole,
+  now: initialNow,
+  range,
+  rangeOptions,
+}: SchedulesExplorerProps) {
   const managersView = isManagerRole(callerRole);
   const [now, setNow] = useState(() => new Date(initialNow));
   const [region, setRegion] = useState<Region | "all">("all");
   const [schoolId, setSchoolId] = useState("all");
+  const router = useRouter();
+  const pathname = usePathname();
+  const [rangePending, startRangeTransition] = useTransition();
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 60_000);
@@ -24,12 +36,40 @@ export default function SchedulesExplorer({ events, schools, calendarIssues, cal
     if (schoolId !== "all" && event.school_id !== schoolId) return false;
     return true;
   }), [events, region, schoolId]);
-  const groups = useMemo(() => groupByDay(visibleEvents, now), [visibleEvents, now]);
+  // Two steps on purpose. Which day a class belongs to never changes, so the
+  // bucketing survives the minute tick; only the in-shift/upcoming/over order
+  // within a day depends on `now`.
+  const days = useMemo(() => groupByDay(visibleEvents), [visibleEvents]);
+  const groups = useMemo(() => sortWithinDays(days, now), [days, now]);
   const unmatched = managersView ? events.filter((event) => !event.school_id && event.status !== "cancelled") : [];
   const schoolsWithoutCalendar = managersView ? schools.filter((school) => !school.google_calendar_id) : [];
 
+  function changeRange(key: string) {
+    const params = new URLSearchParams();
+    params.set("range", key);
+    startRangeTransition(() => router.push(`${pathname}?${params.toString()}`));
+  }
+
   return (
     <div className="grid gap-6">
+      {/* Everyone gets this one, teachers included — it bounds the server
+          query, so unlike the region/school filters below it has to round-trip
+          through the URL. Without it the page fetched every future class in
+          the system: 6,987 rows on the day this was added. */}
+      <label className="grid min-w-0 gap-1 text-sm font-medium text-on-surface">
+        Showing
+        <select
+          value={range}
+          disabled={rangePending}
+          onChange={(event) => changeRange(event.target.value)}
+          className="w-full min-w-0 truncate rounded-lg bg-surface-container px-3 py-2 font-normal text-on-surface shadow-sm outline-none focus:ring-2 focus:ring-primary disabled:opacity-60"
+        >
+          {rangeOptions.map((option) => (
+            <option key={option.key} value={option.key}>{option.label}</option>
+          ))}
+        </select>
+      </label>
+
       {/* grid, not flex-wrap, and every control min-w-0. A <select> sizes
           itself to its WIDEST OPTION, and the school picker holds 110 school
           names — left unconstrained it set the width of the whole page and
@@ -86,24 +126,30 @@ function shiftRank(event: ScheduleEvent, now: Date): 0 | 1 | 2 {
   return 1;
 }
 
-function groupByDay(events: ScheduleEvent[], now: Date) {
+function groupByDay(events: ScheduleEvent[]): [string, ScheduleEvent[]][] {
   const groups = new Map<string, ScheduleEvent[]>();
   for (const event of events) {
     const key = dayKey(event);
-    groups.set(key, [...(groups.get(key) ?? []), event]);
+    const bucket = groups.get(key);
+    if (bucket) bucket.push(event);
+    else groups.set(key, [event]);
   }
-  // Within a day: in-shift first, then upcoming, then finished — and
-  // chronological inside each bucket. On any day other than today every class
-  // falls in one bucket, so this is a no-op there and the ordering stays
-  // purely chronological, which is what a manager reading next week expects.
-  for (const [key, dayEvents] of groups) {
-    groups.set(key, [...dayEvents].sort((left, right) => {
+  return [...groups.entries()].sort(([left], [right]) => left.localeCompare(right));
+}
+
+// Within a day: in-shift first, then upcoming, then finished — and
+// chronological inside each bucket. On any day other than today every class
+// falls in one bucket, so this is a no-op there and the ordering stays purely
+// chronological, which is what a manager reading next week expects.
+function sortWithinDays(days: [string, ScheduleEvent[]][], now: Date): [string, ScheduleEvent[]][] {
+  return days.map(([key, dayEvents]) => [
+    key,
+    [...dayEvents].sort((left, right) => {
       const byRank = shiftRank(left, now) - shiftRank(right, now);
       if (byRank !== 0) return byRank;
       return (left.start_at ?? "").localeCompare(right.start_at ?? "");
-    }));
-  }
-  return [...groups.entries()].sort(([left], [right]) => left.localeCompare(right));
+    }),
+  ]);
 }
 
 function EventCard({ event, now, managersView }: { event: ScheduleEvent; now: Date; managersView: boolean }) {

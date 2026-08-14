@@ -654,10 +654,27 @@ export async function syncAllCalendars(
         .map((school) => school.id),
     );
 
+    // Calendars a manager has said are not schools at all -- an ops mailbox, a
+    // personal calendar. Pin-then-skip becomes pin-or-ignore-then-skip.
+    //
+    // This has to be a separate column from resolved_at, because the upsert
+    // below writes `resolved_at: null` on every run: dismissing an issue used
+    // to last about five minutes, which is why schedule@ymu.org kept coming
+    // back after being dismissed.
+    const { data: ignoredIssues, error: ignoredError } = await supabase
+      .from("calendar_sync_issues")
+      .select("calendar_id")
+      .not("ignored_at", "is", null);
+    if (ignoredError) throw new Error(`Could not load ignored calendars: ${ignoredError.message}`);
+    const ignoredCalendarIds = new Set(
+      ((ignoredIssues as Array<{ calendar_id: string }>) ?? []).map((row) => row.calendar_id),
+    );
+
     let autoMatched = 0;
     let issuesRaised = 0;
     for (const calendar of calendars) {
       if (pinnedCalendarIds.has(calendar.id)) continue;
+      if (ignoredCalendarIds.has(calendar.id)) continue;
 
       const candidates = await matchSchoolCalendar(supabase, calendar.summary);
       const decision = classifyDiscoveredCalendar(

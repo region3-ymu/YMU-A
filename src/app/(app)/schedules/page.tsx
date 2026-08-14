@@ -2,16 +2,28 @@ import type { Metadata } from "next";
 import { requireProfile } from "@/lib/auth/dal";
 import { createClient } from "@/lib/supabase/server";
 import SchedulesExplorer from "./schedules-explorer";
-import type { CalendarSyncIssue, ScheduleEvent, ScheduleSchool } from "./types";
+import { resolveScheduleRange, scheduleRangeOptions } from "@/lib/schedules/range";
+import {
+  SCHEDULE_LIST_COLUMNS,
+  type CalendarSyncIssue,
+  type ScheduleEvent,
+  type ScheduleSchool,
+} from "./types";
 
 export const metadata: Metadata = { title: "Schedules" };
 
-export default async function SchedulesPage() {
+export default async function SchedulesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ range?: string }>;
+}) {
   const caller = await requireProfile();
   const supabase = await createClient();
   const now = new Date();
-  const todayStart = new Date(now);
-  todayStart.setHours(0, 0, 0, 0);
+  // The window lives in the URL because it bounds the server query — the same
+  // rule /reports follows. School and region stay client-side below, since
+  // those only filter rows already fetched.
+  const range = resolveScheduleRange((await searchParams).range, now.getTime());
 
   const [
     { data: events, error: eventsError },
@@ -20,9 +32,13 @@ export default async function SchedulesPage() {
   ] = await Promise.all([
     supabase
       .from("calendar_events")
-      .select("id, summary, description, location_raw, start_at, end_at, all_day, status, html_link, organizer_email, attendees, teacher_ids, school_id, school_match_score, school_match_source, raw, school:schools(id, name, address, region)")
+      .select(SCHEDULE_LIST_COLUMNS)
       .neq("status", "cancelled")
-      .gte("end_at", todayStart.toISOString())
+      // start_at, not end_at: it is the indexed column
+      // (calendar_events_start_at_idx), and filtering on end_at meant a
+      // sequential scan over every row in the table.
+      .gte("start_at", range.from)
+      .lt("start_at", range.to)
       .order("start_at"),
     supabase.from("schools").select("id, name, address, region, google_calendar_id").order("name"),
     supabase
@@ -44,6 +60,8 @@ export default async function SchedulesPage() {
           calendarIssues={(calendarIssues ?? []) as unknown as CalendarSyncIssue[]}
           callerRole={caller.role}
           now={now.toISOString()}
+          range={range.key}
+          rangeOptions={scheduleRangeOptions()}
         />
       </div>
     </main>

@@ -120,6 +120,11 @@ export type NavItem = {
   icon: string;
   /** Rendered as a badge on the tile and the bottom bar. Omitted when zero. */
   badge?: number;
+  /**
+   * Makes the badge read as a problem rather than a queue — currently "some of
+   * these are past their deadline". Set by applyNavBadges (lib/nav/badges.ts).
+   */
+  badgeUrgent?: boolean;
 };
 
 // operations_manager/cpo by role, OR profiles.is_app_admin regardless of role

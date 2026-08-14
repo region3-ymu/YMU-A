@@ -48,7 +48,13 @@ export default function BottomNav({ items }: { items: NavItem[] }) {
                       beside the label so it reads at a glance without the tab
                       widths shifting when the number changes. */}
                   {item.badge != null && item.badge > 0 && (
-                    <span className="absolute -right-0.5 -top-0.5 min-w-5 rounded-full bg-error px-1 text-center text-[10px] font-bold leading-5 text-on-error">
+                    <span
+                      className={`absolute -right-0.5 -top-0.5 min-w-5 rounded-full px-1 text-center text-[10px] font-bold leading-5 ${
+                        item.badgeUrgent === false
+                          ? "bg-primary text-on-primary"
+                          : "bg-error text-on-error"
+                      }`}
+                    >
                       {item.badge > 99 ? "99+" : item.badge}
                     </span>
                   )}
