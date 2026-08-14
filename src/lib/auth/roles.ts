@@ -129,73 +129,66 @@ export function canViewAppFeedback(role: AppRole, isAppAdmin: boolean): boolean 
   return role === "operations_manager" || role === "cpo" || isAppAdmin;
 }
 
-// PRD: teachers get Clocking; managers get Lists in its place. OM/CPO also
-// get Team (role promotion). isAppAdmin additionally unlocks "App feedback"
-// regardless of role (see canViewAppFeedback above).
+// ORDER IS THE INTERFACE, not a detail.
+//
+// The (app) layout puts Home plus only the FIRST FOUR of these in the bottom
+// bar; everything after that is reachable from the Home grid alone. So the
+// order below decides what a role can reach in one tap all day.
+//
+// Managers asked for Home · Dashboard · Flags · Tickets · Schedules
+// (YMU 2026-08-14), which is why Flags moved from the end of the list to
+// second, and Lists and Feedbacks moved behind Schedules — both are things
+// you go looking for, not things you check between classes.
 export function navForRole(role: AppRole, isAppAdmin: boolean = false): NavItem[] {
   const items: NavItem[] = [];
+
   if (role === "teacher") {
-    items.push({
-      href: "/clocking",
-      label: "Clocking",
-      note: "Next class & clock-in",
-      icon: "schedule",
-    });
-    items.push({
-      href: "/feedback",
-      label: "Feedbacks",
-      note: "Pending & past submissions",
-      icon: "rate_review",
-    });
-  } else if (role === "academic_manager") {
-    // No Dashboard or Lists tile: those routes are still scoped to
-    // MANAGER_ROLES at the query layer, so linking them would promise data the
-    // database will not return. Feedbacks below is different — its RLS names
-    // academic_manager explicitly.
+    items.push(
+      { href: "/clocking", label: "Clocking", note: "Next class & clock-in", icon: "schedule" },
+      { href: "/feedback", label: "Feedbacks", note: "Pending & past submissions", icon: "rate_review" },
+      {
+        href: "/tickets",
+        label: "Tickets",
+        note: "Support requests you raised",
+        icon: "confirmation_number",
+      },
+      { href: "/schedules", label: "Schedules", note: "Classes by school", icon: "calendar_month" },
+    );
   } else {
-    items.push({
-      href: "/dashboard",
-      label: "Dashboard",
-      note: "Today at a glance",
-      icon: "dashboard",
-    });
-    items.push({
-      href: "/lists",
-      label: "Lists",
-      note: "Schools & teachers",
-      icon: "groups",
-    });
+    // Dashboard and Flags are still scoped to MANAGER_ROLES at the query layer,
+    // and academic_manager is not in it — linking them for that role would
+    // promise data the database will not return. Feedbacks below is different:
+    // feedback_submissions_select names academic_manager explicitly.
+    if (isManagerRole(role)) {
+      items.push(
+        { href: "/dashboard", label: "Dashboard", note: "Today at a glance", icon: "dashboard" },
+        { href: "/flags", label: "Flags", note: "GPS & late clock-in escalations", icon: "flag" },
+      );
+    }
+    items.push(
+      {
+        href: "/tickets",
+        label: "Tickets",
+        note: "Support requests to resolve",
+        icon: "confirmation_number",
+      },
+      { href: "/schedules", label: "Schedules", note: "Classes by school", icon: "calendar_month" },
+    );
+    if (isManagerRole(role)) {
+      items.push({ href: "/lists", label: "Lists", note: "Schools & teachers", icon: "groups" });
+    }
+    if (canReadTeamFeedback(role)) {
+      items.push({
+        href: "/feedbacks",
+        label: "Feedbacks",
+        note: role === "regional_manager" ? "What your teachers reported" : "What teachers reported",
+        icon: "rate_review",
+      });
+    }
   }
-  if (canReadTeamFeedback(role)) {
-    // Placed before Tickets so it lands inside the bottom bar's first four
-    // items (see the (app) layout), not only on the Home grid: reading what
-    // teachers reported is a daily job, not an occasional one.
-    items.push({
-      href: "/feedbacks",
-      label: "Feedbacks",
-      note: role === "regional_manager" ? "What your teachers reported" : "What teachers reported",
-      icon: "rate_review",
-    });
-  }
+
   items.push(
-    {
-      href: "/tickets",
-      label: "Tickets",
-      note: role === "teacher" ? "Support requests you raised" : "Support requests to resolve",
-      icon: "confirmation_number",
-    },
-    {
-      href: "/schedules",
-      label: "Schedules",
-      note: "Classes by school",
-      icon: "calendar_month",
-    },
-    {
-      href: "/reports",
-      label: "Reports",
-      note: "Hours & attendance",
-      icon: "analytics",
-    },
+    { href: "/reports", label: "Reports", note: "Hours & attendance", icon: "analytics" },
     {
       href: "/settings",
       label: "Settings",
@@ -203,14 +196,6 @@ export function navForRole(role: AppRole, isAppAdmin: boolean = false): NavItem[
       icon: "settings",
     },
   );
-  if (isManagerRole(role)) {
-    items.push({
-      href: "/flags",
-      label: "Flags",
-      note: "GPS & late clock-in escalations",
-      icon: "flag",
-    });
-  }
   if (role === "operations_manager" || role === "cpo") {
     items.push({
       href: "/users",
