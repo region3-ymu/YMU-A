@@ -171,6 +171,37 @@ export async function getTodayAttendanceRows(): Promise<TodayAttendanceRow[]> {
   return (data as unknown as TodayAttendanceRow[]) ?? [];
 }
 
+/**
+ * The (event, teacher) pairs a manager has already closed out on /flags.
+ *
+ * "Missing clock-ins today" and the flags list describe the same events from
+ * two angles but had no connection at all: the missing list is derived purely
+ * from "no attendance_sessions row and the class has ended", so a flag
+ * resolved on /flags left the class sitting in the dashboard forever. Marking
+ * a flag resolved is a manager saying they have dealt with it; the dashboard
+ * should take them at their word.
+ *
+ * Returned as keys rather than filtered in SQL because the two come from
+ * different sources — a view and a table — and joining them would mean
+ * duplicating the view's authorization clause here.
+ */
+export async function getReviewedAttendanceKeys(): Promise<Set<string>> {
+  const supabase = await createClient();
+  const { startIso, endIso } = utcDayBounds(new Date());
+  const { data } = await supabase
+    .from("flags")
+    .select("event_id, teacher_id, event:calendar_events!inner(start_at)")
+    .eq("type", "late_clock_in")
+    .not("resolved_at", "is", null)
+    .gte("event.start_at", startIso)
+    .lt("event.start_at", endIso);
+  return new Set(
+    ((data as { event_id: string | null; teacher_id: string }[] | null) ?? [])
+      .filter((f) => f.event_id)
+      .map((f) => `${f.event_id}:${f.teacher_id}`),
+  );
+}
+
 export type CalendarSyncFailure = {
   calendar_id: string;
   last_error: string | null;

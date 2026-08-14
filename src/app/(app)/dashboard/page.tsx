@@ -14,6 +14,7 @@ import {
   getOpenSessions,
   getNotificationHealth,
   getPendingFeedback,
+  getReviewedAttendanceKeys,
   getTeachersWithoutApp,
   getTodayAttendanceRows,
   getUpcomingClasses,
@@ -32,6 +33,7 @@ export default async function DashboardPage() {
     notifications,
     noAppTeachers,
     todayRows,
+    reviewedKeys,
     upcoming,
     roster,
   ] = await Promise.all([
@@ -42,13 +44,20 @@ export default async function DashboardPage() {
     getNotificationHealth(),
     getTeachersWithoutApp(),
     getTodayAttendanceRows(),
+    getReviewedAttendanceKeys(),
     getUpcomingClasses(),
     getReportRoster(true),
   ]);
 
   const nameById = new Map(roster.map((t) => [t.id, t.full_name]));
   const scheduledTeacherIds = new Set(todayRows.map((r) => r.teacher_id));
-  const missing = todayRows.filter((r) => r.attendance_status === "missed");
+  // A class whose flag a manager has already resolved is not still asking for
+  // attention. Without this it stayed here for good, because this list is
+  // derived from "no session and the class has ended" and never looked at the
+  // flag at all — resolving on /flags and coming back here changed nothing.
+  const allMissed = todayRows.filter((r) => r.attendance_status === "missed");
+  const missing = allMissed.filter((r) => !reviewedKeys.has(`${r.event_id}:${r.teacher_id}`));
+  const reviewedCount = allMissed.length - missing.length;
 
   // Three states, not one: arrived-but-late, still-missing with the class
   // running, and never-showed with the class over. classifyLateFlag decides
@@ -283,6 +292,17 @@ export default async function DashboardPage() {
           <span className="material-symbols-outlined text-error" aria-hidden>event_busy</span>
           Missing clock-ins today
         </h2>
+        {/* Say so rather than letting them silently disappear — a manager who
+            resolved something should be able to see that it was counted. */}
+        {reviewedCount > 0 && (
+          <p className="mb-3 text-sm text-on-surface-variant">
+            {reviewedCount} already reviewed and resolved on{" "}
+            <Link href="/flags" className="font-semibold text-primary hover:underline">
+              Flags
+            </Link>
+            .
+          </p>
+        )}
         {missing.length === 0 ? (
           <Empty text="Nothing missing today." icon="check_circle" />
         ) : (

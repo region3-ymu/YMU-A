@@ -23,6 +23,10 @@ export async function resolveFlag(
   if (error) return { error: error.message };
 
   revalidatePath("/flags");
+  // The dashboard shows the same escalations from two angles (Late clock-ins,
+  // Missing clock-ins today). Resolving here has to clear both, or the item
+  // reappears the moment the manager navigates back.
+  revalidatePath("/dashboard");
   return undefined;
 }
 
@@ -49,5 +53,6 @@ export async function forceCloseStuckSession(
   if (error) return { error: error.message };
 
   revalidatePath("/flags");
+  revalidatePath("/dashboard");
   return undefined;
 }

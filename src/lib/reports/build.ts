@@ -86,8 +86,17 @@ export async function buildReportSections(
 
   // operations_manager / cpo — the master report.
   const [roster, allRows] = await Promise.all([getReportRoster(true), getReportRows(window)]);
-  const active = roster.filter((t) => !t.archived_at);
-  const archived = roster.filter((t) => t.archived_at);
+  // Only teachers who actually taught in the window get a section — the same
+  // rule the Regional Manager branch above has always used. Without it the
+  // master report rendered a full-size "No classes in range." card for every
+  // one of ~50 teachers, so the handful with real data were buried in a wall
+  // of identical empty cards. archivedStartIndex below is derived from the
+  // FILTERED active list for the same reason: it is an index into `sections`,
+  // and counting unfiltered teachers would put the "Archived teachers"
+  // heading in the wrong place.
+  const withRows = roster.filter((t) => allRows.some((r) => r.teacher_id === t.id));
+  const active = withRows.filter((t) => !t.archived_at);
+  const archived = withRows.filter((t) => t.archived_at);
 
   const sections: ReportSectionData[] = [
     { teacherId: "all", teacherName: "All teachers (combined)", rows: allRows, combineTeachers: true },

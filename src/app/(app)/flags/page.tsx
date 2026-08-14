@@ -52,6 +52,30 @@ export default async function FlagsPage() {
   ]);
   const flags = (data as unknown as FlagRow[]) ?? [];
   const teacherById = new Map(roster.map((t) => [t.id, t]));
+
+  // flags.session_id is ALWAYS null for late_clock_in — the flag is raised
+  // precisely because no session existed yet. So `flag.session` can never
+  // supply one, and AdminEditAttendanceForm, which picks create-vs-edit purely
+  // from whether it got a sessionId, always chose "record". For a teacher who
+  // has since clocked in themselves that hits admin_create_attendance's
+  // "An attendance record already exists for this class/teacher" guard and the
+  // flag can never be cleared from this card. 11 of 19 open flags were stuck
+  // that way. Look the session up by (event, teacher) instead.
+  const eventIds = [...new Set(flags.map((f) => f.event?.id).filter((id): id is string => Boolean(id)))];
+  const { data: sessions } = eventIds.length
+    ? await supabase
+        .from("attendance_sessions")
+        .select("id, event_id, teacher_id, clock_in_at")
+        .in("event_id", eventIds)
+    : { data: [] };
+  const sessionByKey = new Map(
+    ((sessions as { id: string; event_id: string; teacher_id: string; clock_in_at: string }[] | null) ?? []).map(
+      (s) => [`${s.event_id}:${s.teacher_id}`, s],
+    ),
+  );
+  function sessionFor(flag: FlagRow) {
+    return flag.session ?? (flag.event?.id ? sessionByKey.get(`${flag.event.id}:${flag.teacher_id}`) : undefined);
+  }
   const canForceClose = caller.role === "operations_manager" || caller.role === "cpo";
 
   return (
@@ -96,11 +120,11 @@ export default async function FlagsPage() {
               {flag.type === "late_clock_in" && caller.email ? (
                 <AdminEditAttendanceForm
                   callerEmail={caller.email}
-                  sessionId={flag.session?.id}
+                  sessionId={sessionFor(flag)?.id}
                   eventId={flag.event?.id}
                   teacherId={flag.teacher_id}
                   scheduledStartAt={(flag.details.scheduled_start_at as string | undefined) ?? flag.event?.start_at}
-                  currentClockInAt={flag.session?.clock_in_at}
+                  currentClockInAt={sessionFor(flag)?.clock_in_at}
                 />
               ) : null}
               {flag.type === "feedback_stuck" && flag.session_id ? (
