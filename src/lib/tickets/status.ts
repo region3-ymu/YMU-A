@@ -67,17 +67,35 @@ export const SLA_LABELS: Record<SlaState, string> = {
   missed: "Missed SLA",
 };
 
-// PRD 4.3's targets, restated for display only. The breach decision itself is
-// made in SQL (ticket_ttr_target_hours) so an agent and an Admin can never see
-// different verdicts on the same ticket.
+/**
+ * A working day, in hours — the 08:00-17:00 window business_minutes_between()
+ * counts in SQL. Every SLA duration in this app is measured in WORKING minutes
+ * since migration 0055, so this is what turns them into days a person reads.
+ */
+export const BUSINESS_DAY_HOURS = 9;
+
+// Targets in WORKING hours, restated for display only. The breach decision
+// itself is made in SQL (ticket_ttr_target_hours) so an agent and an Admin can
+// never see different verdicts on the same ticket — keep the two in step.
+//
+// Re-scaled in 0057: at nine hours a day these are same-day, one working day
+// and three working days. They were 4/24/72 when the clock was wall-time, and
+// leaving them there quietly turned Normal into eight working days.
 export const TTR_TARGET_HOURS: Record<string, number> = {
   Urgent: 4,
-  High: 24,
-  Normal: 72,
+  High: 9,
+  Normal: 27,
 };
 
 /**
- * Minutes as something a person reads at a glance: "3h", "2d 4h", "45m".
+ * Working minutes as something a person reads at a glance: "3h", "2d 4h", "45m".
+ *
+ * A "day" here is a NINE-hour working day, not 24 hours. Every caller feeds
+ * this a working-minutes figure from ticket_sla / agent_ticket_metrics /
+ * root_cause_report, so dividing by 24 would have printed a three-working-day
+ * ticket as "1d 3h" — technically the elapsed-hours arithmetic, but a
+ * meaningless number to anyone reading a queue.
+ *
  * Coarse on purpose — a support queue is not a stopwatch, and false precision
  * invites arguments about a number nobody should be optimising to the minute.
  */
@@ -86,11 +104,11 @@ export function formatDuration(minutes: number | null | undefined): string {
   if (minutes < 1) return "just now";
   if (minutes < 60) return `${Math.round(minutes)}m`;
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) {
+  if (hours < BUSINESS_DAY_HOURS) {
     const rem = Math.round(minutes % 60);
     return rem === 0 ? `${hours}h` : `${hours}h ${rem}m`;
   }
-  const days = Math.floor(hours / 24);
-  const remHours = hours % 24;
+  const days = Math.floor(hours / BUSINESS_DAY_HOURS);
+  const remHours = hours % BUSINESS_DAY_HOURS;
   return remHours === 0 ? `${days}d` : `${days}d ${remHours}h`;
 }

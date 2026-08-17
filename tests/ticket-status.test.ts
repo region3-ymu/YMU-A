@@ -10,6 +10,7 @@ import {
   SLA_LABELS,
   STATUS_LABELS,
   TICKET_STATUSES,
+  BUSINESS_DAY_HOURS,
   TTR_TARGET_HOURS,
 } from "../src/lib/tickets/status";
 
@@ -24,10 +25,19 @@ describe("formatDuration", () => {
     expect(formatDuration(150)).toBe("2h 30m");
   });
 
-  it("switches to days past 24 hours", () => {
-    expect(formatDuration(1440)).toBe("1d");
-    expect(formatDuration(1740)).toBe("1d 5h");
-    expect(formatDuration(4320)).toBe("3d");
+  // Every caller feeds this WORKING minutes (ticket_sla and friends, since
+  // migration 0055), so a "day" is the nine-hour working day — not 24 hours.
+  // Dividing by 24 printed a three-working-day ticket as "1d 3h", which is the
+  // right elapsed-hours arithmetic and a meaningless number in a queue.
+  it("switches to nine-hour working days", () => {
+    expect(formatDuration(9 * 60)).toBe("1d");
+    expect(formatDuration(14 * 60)).toBe("1d 5h");
+    // The Normal resolution target: 27 working hours = three working days.
+    expect(formatDuration(27 * 60)).toBe("3d");
+  });
+
+  it("still uses hours right up to the end of a working day", () => {
+    expect(formatDuration(8 * 60 + 59)).toBe("8h 59m");
   });
 
   // A ticket answered within seconds must not read "0m", which looks like a
@@ -81,12 +91,23 @@ describe("status vocabulary", () => {
     }
   });
 
-  // Mirrors ticket_ttr_target_hours() in migration 0031. If SQL changes and
-  // this doesn't, the screen would promise a deadline the database disagrees
-  // with.
-  it("mirrors the SQL resolution targets", () => {
+  // Mirrors ticket_ttr_target_hours(), re-scaled in migration 0057. If SQL
+  // changes and this doesn't, the screen would promise a deadline the database
+  // disagrees with.
+  //
+  // These are WORKING hours (0055), which is the whole reason they moved: at a
+  // nine-hour day the old 24/72 meant two and a half and eight working days.
+  it("mirrors the SQL resolution targets, in working hours", () => {
     expect(TTR_TARGET_HOURS.Urgent).toBe(4);
-    expect(TTR_TARGET_HOURS.High).toBe(24);
-    expect(TTR_TARGET_HOURS.Normal).toBe(72);
+    expect(TTR_TARGET_HOURS.High).toBe(9);
+    expect(TTR_TARGET_HOURS.Normal).toBe(27);
+  });
+
+  // The point of the re-scale: each target is a round number of working days.
+  it("expresses every target as whole working days", () => {
+    expect(TTR_TARGET_HOURS.High / BUSINESS_DAY_HOURS).toBe(1);
+    expect(TTR_TARGET_HOURS.Normal / BUSINESS_DAY_HOURS).toBe(3);
+    // Urgent is deliberately less than a day — same working day, not next.
+    expect(TTR_TARGET_HOURS.Urgent).toBeLessThan(BUSINESS_DAY_HOURS);
   });
 });
