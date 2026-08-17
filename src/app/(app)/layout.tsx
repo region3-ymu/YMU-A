@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireProfile } from "@/lib/auth/dal";
 import { displayRole, HOME_NAV_ITEM, navForRole } from "@/lib/auth/roles";
 import { applyNavBadges, getNavBadges } from "@/lib/nav/badges";
+import AppBadge from "@/components/app-badge";
 import AppFeedbackButton from "@/components/app-feedback-button";
 import BackButton from "@/components/back-button";
 import BottomNav from "@/components/bottom-nav";
@@ -65,6 +66,9 @@ export default async function AppLayout({
           all (RLS-scoped), so this is a no-op for managers. Mounted here
           (not per-page) so sampling continues across in-app navigation. */}
       {profile.role === "teacher" && <GpsCheckSampler />}
+      {/* Re-applied on every navigation, which is what keeps it honest: the
+          count follows the server's view rather than drifting on the device. */}
+      <AppBadge count={badges.appBadge} />
     </div>
   );
 }

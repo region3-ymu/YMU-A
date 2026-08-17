@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import NotificationDeviceHelp from "./notification-device-help";
 import ResponsibilityCheckDialog from "./responsibility-check-dialog";
 
 type PreferenceType = "be_there_soon" | "clock_in_reminder" | "clock_out_reminder" | "schedule_changed" | "class_cancelled";
@@ -19,7 +20,9 @@ const TYPE_META: { type: PreferenceType; label: string; note: string; hasLead: b
   {
     type: "clock_in_reminder",
     label: "Clock-in reminder",
-    note: "Around class start, if you haven't clocked in yet.",
+    // Three rungs since migration 0054. Saying so matters: a teacher who gets
+    // three notifications and was told to expect one assumes it is broken.
+    note: "At class start, then again after 5 and 10 minutes until you clock in. Lead time shifts all three.",
     hasLead: true,
     defaultLead: 0,
   },
@@ -153,6 +156,8 @@ export default function NotificationSettings({
           </div>
         );
       })}
+
+      <NotificationDeviceHelp />
 
       <ResponsibilityCheckDialog
         open={pendingDisable !== null}

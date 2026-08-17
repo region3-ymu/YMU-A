@@ -1,7 +1,7 @@
 import { cache } from "react";
 import type { NavItem } from "@/lib/auth/roles";
 import type { AppRole } from "@/lib/auth/roles";
-import { getFeedbackOwed } from "@/lib/attendance/queries";
+import { getFeedbackOwed, getUnclockedClassCount } from "@/lib/attendance/queries";
 import { isOverdue } from "@/lib/attendance/feedback-due";
 import { getActionableTicketCount } from "@/lib/tickets/queries";
 import { getUnreadNewsCount } from "@/lib/news/queries";
@@ -27,16 +27,24 @@ export type NavBadges = {
   feedbackOverdue: number;
   /** Announcements this reader has not opened yet. */
   news: number;
+  /**
+   * What the home-screen app badge shows: everything actually waiting on this
+   * person. Zero for anyone who is not a teacher — a manager's ticket queue is
+   * work, not a personal to-do, and a permanent red dot on the icon would stop
+   * meaning anything within a week.
+   */
+  appBadge: number;
 };
 
 export const getNavBadges = cache(async (role: AppRole): Promise<NavBadges> => {
   // Both reads are RLS-scoped, so a teacher counts their own owed feedback and
   // a Regional Manager counts their region's queue — no role branching needed
   // beyond skipping the query for roles that never owe feedback.
-  const [tickets, owed, news] = await Promise.all([
+  const [tickets, owed, news, unclocked] = await Promise.all([
     getActionableTicketCount(),
     role === "teacher" ? getFeedbackOwed() : Promise.resolve([]),
     getUnreadNewsCount(),
+    role === "teacher" ? getUnclockedClassCount() : Promise.resolve(0),
   ]);
 
   return {
@@ -44,6 +52,9 @@ export const getNavBadges = cache(async (role: AppRole): Promise<NavBadges> => {
     feedbackOwed: owed.length,
     feedbackOverdue: owed.filter((o) => isOverdue(o.feedback_due_at)).length,
     news,
+    // A class started and not clocked into, plus feedback still owed. Both are
+    // things only this teacher can clear, which is what a badge should mean.
+    appBadge: role === "teacher" ? unclocked + owed.length : 0,
   };
 });
 

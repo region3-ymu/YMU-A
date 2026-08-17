@@ -4,6 +4,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import type { AttendanceStatus } from "@/lib/attendance/status";
+import { startOfLocalDay } from "@/lib/schedules/range";
 
 export type ClockSchool = {
   id: string;
@@ -168,4 +169,35 @@ export async function getNextClass(): Promise<NextClass | null> {
     }).format(new Date(startAt)) === todayMiami;
 
   return candidates.find((event) => !attended.has(event.id) && isToday(event.start_at)) ?? null;
+}
+
+/**
+ * Classes today the caller should already have clocked into and hasn't.
+ *
+ * Counts a class from the moment it starts, not from the moment it ends —
+ * "you're in the room and haven't clocked in" is exactly the window where a
+ * reminder can still change the outcome, and attendance_period_rows only
+ * reports 'missed' once the class is over and it is too late to fix.
+ *
+ * Feeds the home-screen app badge, which is the one insistent channel iOS
+ * leaves open to a web app.
+ */
+export async function getUnclockedClassCount(): Promise<number> {
+  const supabase = await createClient();
+  // The Miami day, not the server's and not UTC's — a teacher opening this at
+  // 8pm should still be counted against today's classes.
+  const dayStart = startOfLocalDay();
+  const now = Date.now();
+  const { data, error } = await supabase
+    .from("attendance_period_rows")
+    .select("event_id")
+    .is("session_id", null)
+    .gte("start_at", new Date(dayStart).toISOString())
+    .lt("start_at", new Date(dayStart + 24 * 60 * 60 * 1000).toISOString())
+    .lte("start_at", new Date(now).toISOString());
+  if (error) {
+    console.error(`[attendance] unclocked class count failed: ${error.message}`);
+    return 0;
+  }
+  return (data ?? []).length;
 }

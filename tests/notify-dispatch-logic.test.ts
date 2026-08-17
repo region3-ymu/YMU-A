@@ -323,3 +323,47 @@ describe("notificationCopy — ticketing (migration 0030)", () => {
     expect(copy.body).not.toContain("undefined");
   });
 });
+
+// Escalating clock-in nudges, migration 0054. The whole point is that the
+// third reminder does not read like the first — identical repeats are what
+// teach people to ignore notifications.
+describe("notificationCopy — clock-in nudges", () => {
+  const base = { summary: "Modern Band", start_at: "2026-08-17T16:00:00.000Z" };
+
+  it("is gentle on the first nudge", () => {
+    const copy = notificationCopy({ type: "clock_in_reminder", payload: { ...base, nudge: "1" } });
+    expect(copy.title).toBe("Don't forget to clock in");
+    expect(copy.url).toBe("/clocking");
+  });
+
+  it("says how late they are on the second", () => {
+    const copy = notificationCopy({
+      type: "clock_in_reminder",
+      payload: { ...base, nudge: "2", minutes_late: 5 },
+    });
+    expect(copy.title).toBe("Still not clocked in");
+    expect(copy.body).toContain("5 minutes ago");
+  });
+
+  it("warns that the manager can see it on the last", () => {
+    const copy = notificationCopy({
+      type: "clock_in_reminder",
+      payload: { ...base, nudge: "3", minutes_late: 10 },
+    });
+    expect(copy.title).toBe("Last reminder — clock in");
+    expect(copy.body).toContain("manager");
+  });
+
+  // A row queued before 0054 has no nudge at all.
+  it("treats a missing nudge as the first", () => {
+    const copy = notificationCopy({ type: "clock_in_reminder", payload: base });
+    expect(copy.title).toBe("Don't forget to clock in");
+  });
+
+  it("never repeats the same wording across the ladder", () => {
+    const titles = ["1", "2", "3"].map(
+      (nudge) => notificationCopy({ type: "clock_in_reminder", payload: { ...base, nudge } }).title,
+    );
+    expect(new Set(titles).size).toBe(3);
+  });
+});

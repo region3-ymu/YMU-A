@@ -159,8 +159,29 @@ export function notificationCopy(row: Pick<QueueRow, "type" | "payload">): {
   switch (row.type) {
     case "be_there_soon":
       return { title: "Time to head over", body: `${summary} starts soon.`, url: "/clocking" };
-    case "clock_in_reminder":
+    // Three nudges, escalating (migration 0054). Same type, different rung —
+    // repeating the identical words is what teaches people to stop reading
+    // them. Every rung is skipped once they have clocked in, so a punctual
+    // teacher only ever sees the first.
+    case "clock_in_reminder": {
+      const nudge = Number(str(payload.nudge) ?? "1");
+      const late = num(payload.minutes_late);
+      if (nudge >= 3) {
+        return {
+          title: "Last reminder — clock in",
+          body: `${summary} started ${late ?? 10} minutes ago. Your manager can see this.`,
+          url: "/clocking",
+        };
+      }
+      if (nudge === 2) {
+        return {
+          title: "Still not clocked in",
+          body: `${summary} started ${late ?? 5} minutes ago.`,
+          url: "/clocking",
+        };
+      }
       return { title: "Don't forget to clock in", body: `${summary} has started.`, url: "/clocking" };
+    }
     case "clock_out_reminder":
       // Since 0026 clocking out and submitting feedback are separate, and this
       // reminder is about the feedback — the one with a deadline.
