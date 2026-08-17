@@ -8,10 +8,10 @@
 -- Two things would otherwise make a live demo impossible:
 --
 --   1. THE GEOFENCE. clock_in() refuses a clock-in more than
---      geofence_radius_m from the school. A demo happens in an office, not at
---      a school, so the demo site gets a deliberately absurd radius (see
---      below) — it is the only school in the table that does, and it is the
---      one thing that makes the demo work from anywhere.
+--      geofence_radius_m from the school. A demo happens at the office, not at
+--      a school, so the demo site is centred on the office with a 60 km radius
+--      — county-wide, so a demo works from anywhere in Miami-Dade, but still a
+--      real geofence rather than a disabled one.
 --   2. SAME-DAY DUPLICATES. clock_in() rejects a second session for the same
 --      class, so a second demo an hour later would dead-end. Every press
 --      therefore clears the previous demo's class and session first.
@@ -28,21 +28,24 @@ insert into public.schools (name, address, lat, lng, geocode_source, geofence_ra
 select
   'YMU Demo Site',
   'Demo only — not a real school',
-  -- Coordinates are required, not optional: clock_in() rejects a school with no
-  -- saved location BEFORE it ever looks at the radius, so a demo site without
-  -- them fails with "this school has no saved location yet". Downtown Miami is
-  -- just a plausible centre; the radius below is what actually matters.
-  25.7617, -80.1918, 'manual',
-  -- ~20,000 km: further than any two points on Earth are apart, so the
-  -- geofence can never reject a demo clock-in. Safe because nothing routes to
-  -- this school and no real class is ever attached to it.
-  20000000,
+  -- Centred on the YMU office (the same coordinates scripts/office-test-setup.ts
+  -- uses). Coordinates are required, not optional: clock_in() rejects a school
+  -- with no saved location BEFORE it ever looks at the radius, so a demo site
+  -- without them fails with "this school has no saved location yet" however
+  -- large the radius is.
+  25.80310681403, -80.222753138908, 'manual',
+  -- 60 km from the office: Miami-Dade, not the planet. Measured rather than
+  -- guessed — the furthest of the 110 real schools is Florida City Elementary
+  -- at 47.1 km, so this covers everywhere YMU works with room to spare while
+  -- still being a real geofence. A demo from anywhere in the county works; a
+  -- clock-in from another state does not.
+  60000,
   null,
   'Demo'
 where not exists (select 1 from public.schools where name = 'YMU Demo Site');
 
 comment on column public.schools.geofence_radius_m is
-  'Metres a teacher may be from the school and still clock in. Default 200. "YMU Demo Site" carries an intentionally planet-sized value so the demo works from an office — no other school should.';
+  'Metres a teacher may be from the school and still clock in. Default 200. "YMU Demo Site" is the one exception at 60 km, centred on the YMU office, so a demo works anywhere in Miami-Dade.';
 
 -- ---------------------------------------------------------------------------
 -- Provisioning a demo shift
