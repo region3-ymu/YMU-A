@@ -19,6 +19,29 @@ async function requestOrigin(): Promise<string> {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/**
+ * Turns an auth error into something worth reading.
+ *
+ * supabase-js falls back to JSON.stringify() when the auth server returns a
+ * shape it doesn't recognise, so `error.message` can arrive as the literal
+ * string "{}" — which we rendered verbatim, giving a teacher a sign-in screen
+ * that just said "{}". That happened for real: a demo account inserted straight
+ * into auth.users had NULL token columns, GoTrue failed with `converting NULL
+ * to string is unsupported`, and none of it reached the screen or the logs.
+ *
+ * The real error still goes to the server log, where it is diagnosable; the
+ * screen gets a sentence that tells the person what to do next.
+ */
+function readableAuthError(error: { message?: string; code?: string; status?: number }): string {
+  const raw = (error.message ?? "").trim();
+  const useless = raw === "" || raw === "{}" || raw === "[object Object]" || raw.startsWith("{");
+  console.error(
+    `[auth] sign-in failed (code=${error.code ?? "none"} status=${error.status ?? "none"}): ${raw || "(empty message)"}`,
+  );
+  if (!useless) return raw;
+  return "Something went wrong signing in. Please try again, and tell your manager if it keeps happening.";
+}
+
 export async function login(
   _prev: AuthFormState,
   formData: FormData,
@@ -44,7 +67,7 @@ export async function login(
     if (error.code === "invalid_credentials") {
       return { error: "Wrong email or password." };
     }
-    return { error: error.message };
+    return { error: readableAuthError(error) };
   }
 
   // Archived-account gate at the front door: never leave an archived user
@@ -103,7 +126,7 @@ export async function signup(
     },
   });
   if (error) {
-    return { error: error.message };
+    return { error: readableAuthError(error) };
   }
 
   redirect("/verify-email");
@@ -146,7 +169,7 @@ export async function updatePassword(
   const supabase = await createClient();
   const { error } = await supabase.auth.updateUser({ password });
   if (error) {
-    return { error: error.message };
+    return { error: readableAuthError(error) };
   }
 
   redirect("/");
@@ -168,7 +191,7 @@ export async function resendVerification(
     options: { emailRedirectTo: `${await requestOrigin()}/auth/confirm` },
   });
   if (error) {
-    return { error: error.message };
+    return { error: readableAuthError(error) };
   }
   return { success: "Verification email sent — check your inbox." };
 }
