@@ -69,11 +69,17 @@ export function currentSchoolYear(schoolYears: SchoolYear[], now: number = Date.
   return past[0] ?? null;
 }
 
-export function defaultRangeKey(schoolYears: SchoolYear[], now: number = Date.now()): string {
-  const year = currentSchoolYear(schoolYears, now);
-  // A school year is the better default when one exists: quarters are defined
-  // against it, so "9-week quarter" grouping is meaningless outside one.
-  return year ? `sy:${year.id}` : "90d";
+export function defaultRangeKey(): string {
+  // The reports people actually write are weekly, so the report opens on the
+  // week just gone rather than on a whole school year (YMU 2026-08-14).
+  //
+  // It used to default to the current school year, because quarters are defined
+  // against one and "9-week quarter" grouping is meaningless outside it. That
+  // is still true — but it is the wrong trade for the common case: a school
+  // year runs to next June, and with rows sorted newest-first the report opened
+  // on empty weeks months in the future. Pick the school year when you want
+  // quarters; it is one click away.
+  return "7d";
 }
 
 // No `now` parameter: the option LIST is the same whenever you ask. Only
@@ -84,6 +90,7 @@ export function rangeOptions(schoolYears: SchoolYear[]): { key: string; label: s
     .sort((a, b) => b.start_date.localeCompare(a.start_date))
     .map((y) => ({ key: `sy:${y.id}`, label: y.archived ? `${y.name} (archived)` : y.name }));
   return [
+    { key: "7d", label: "Last 7 days" },
     { key: "30d", label: "Last 30 days" },
     { key: "90d", label: "Last 90 days" },
     ...years,
@@ -101,7 +108,26 @@ export function resolveRange(
   schoolYears: SchoolYear[],
   now: number = Date.now(),
 ): ReportRange {
-  return floorAtDataStart(resolveRangeUnclamped(key, schoolYears, now));
+  return capAtToday(floorAtDataStart(resolveRangeUnclamped(key, schoolYears, now)), now);
+}
+
+/**
+ * No range may reach past the end of today.
+ *
+ * A school year runs to next June, so picking one used to produce a report
+ * whose newest rows — and rows are sorted newest-first — were empty weeks
+ * months away. Hours that have not been worked yet are not a report.
+ *
+ * The cap is tomorrow's UTC midnight, matching lastNDays: classes later today
+ * are still part of today.
+ */
+function capAtToday(range: ReportRange, now: number): ReportRange {
+  const cap = utcMidnight(now) + DAY_MS;
+  if (range.to === undefined) {
+    return { ...range, to: new Date(cap).toISOString() };
+  }
+  if (Date.parse(range.to) <= cap) return range;
+  return { ...range, to: new Date(cap).toISOString(), label: `${range.label} (to date)` };
 }
 
 /**
@@ -130,10 +156,11 @@ function resolveRangeUnclamped(
   schoolYears: SchoolYear[],
   now: number = Date.now(),
 ): ReportRange {
-  const effective = key ?? defaultRangeKey(schoolYears, now);
+  const effective = key ?? defaultRangeKey();
 
   if (effective === "all") return { key: "all", label: "All time" };
 
+  if (effective === "7d") return { key: "7d", label: "Last 7 days", ...lastNDays(7, now) };
   if (effective === "30d") return { key: "30d", label: "Last 30 days", ...lastNDays(30, now) };
   if (effective === "90d") return { key: "90d", label: "Last 90 days", ...lastNDays(90, now) };
 
@@ -144,7 +171,7 @@ function resolveRangeUnclamped(
 
   // Unknown key. Resolve the default, but only once — if the default is itself
   // unresolvable we would otherwise recurse forever.
-  const fallback = defaultRangeKey(schoolYears, now);
+  const fallback = defaultRangeKey();
   if (fallback !== effective) return resolveRangeUnclamped(fallback, schoolYears, now);
   return { key: "all", label: "All time" };
 }

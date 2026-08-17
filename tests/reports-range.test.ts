@@ -38,14 +38,30 @@ describe("currentSchoolYear", () => {
 });
 
 describe("defaultRangeKey", () => {
-  // Quarters are defined as 9-week blocks anchored to a school year's
-  // start_date, so "9-week quarter" grouping is meaningless outside one.
-  it("defaults to the current school year when one exists", () => {
-    expect(defaultRangeKey(YEARS, DURING_2026)).toBe("sy:y26");
+  // The reports people actually write are weekly (YMU 2026-08-14). This used to
+  // default to the current school year — which runs to next June, so with rows
+  // sorted newest-first the report opened on empty weeks months ahead.
+  it("defaults to the last 7 days", () => {
+    expect(defaultRangeKey()).toBe("7d");
+  });
+});
+
+describe("capAtToday (via resolveRange)", () => {
+  // Hours that have not been worked yet are not a report.
+  it("stops a school year at today rather than at next June", () => {
+    const range = resolveRange("sy:y26", YEARS, DURING_2026);
+    expect(range.to).toBe("2026-10-16T00:00:00.000Z");
+    expect(range.label).toContain("to date");
   });
 
-  it("falls back to a rolling window with no school years", () => {
-    expect(defaultRangeKey([], DURING_2026)).toBe("90d");
+  it("leaves a range that already ended in the past alone", () => {
+    const range = resolveRange("sy:y25", YEARS, DURING_2026);
+    expect(range.to).toBe("2026-06-04T00:00:00.000Z");
+    expect(range.label).not.toContain("to date");
+  });
+
+  it("bounds all time at today too", () => {
+    expect(resolveRange("all", YEARS, DURING_2026).to).toBe("2026-10-16T00:00:00.000Z");
   });
 });
 
@@ -59,7 +75,7 @@ describe("resolveRange", () => {
       key: "all",
       label: `All time (from ${DATA_START_DATE})`,
       from: DATA_START_ISO,
-      to: undefined,
+      to: "2026-10-16T00:00:00.000Z",
     });
   });
 
@@ -78,11 +94,18 @@ describe("resolveRange", () => {
   // day before the pilot went live — and the label says so, because a total
   // labelled "2026-27" that quietly omits a day would be worse than a longer
   // label.
-  it("covers the final day of a school year, floored at the data start", () => {
+  // Checked on a year that has already ended, so the today-cap cannot hide a
+  // regression here.
+  it("covers the final day of a school year", () => {
+    const r = resolveRange("sy:y25", YEARS, DURING_2026);
+    expect(r.to).toBe("2026-06-04T00:00:00.000Z");
+  });
+
+  // Still floors at the data start, and still says so in the label.
+  it("floors a school year that starts before the data does", () => {
     const r = resolveRange("sy:y26", YEARS, DURING_2026);
     expect(r.from).toBe(DATA_START_ISO);
-    expect(r.to).toBe("2027-06-03T00:00:00.000Z");
-    expect(r.label).toBe(`2026-27 (from ${DATA_START_DATE})`);
+    expect(r.label).toContain(`from ${DATA_START_DATE}`);
   });
 
   // A window entirely after the data start is left exactly as it was — the
@@ -105,24 +128,25 @@ describe("resolveRange", () => {
   });
 
   it("falls back to the default for an unknown key", () => {
-    expect(resolveRange("nonsense", YEARS, DURING_2026).key).toBe("sy:y26");
-    expect(resolveRange("sy:does-not-exist", YEARS, DURING_2026).key).toBe("sy:y26");
+    expect(resolveRange("nonsense", YEARS, DURING_2026).key).toBe("7d");
+    expect(resolveRange("sy:does-not-exist", YEARS, DURING_2026).key).toBe("7d");
   });
 
   it("uses the default when no key is supplied", () => {
-    expect(resolveRange(undefined, YEARS, DURING_2026).key).toBe("sy:y26");
+    expect(resolveRange(undefined, YEARS, DURING_2026).key).toBe("7d");
   });
 
   // The fallback path resolves the default, which could itself be unknown.
   // Guarding it is what stops that from recursing forever.
   it("terminates when even the default cannot resolve", () => {
-    expect(resolveRange("nonsense", [], DURING_2026).key).toBe("90d");
+    expect(resolveRange("nonsense", [], DURING_2026).key).toBe("7d");
   });
 });
 
 describe("rangeOptions", () => {
   it("lists rolling windows, then school years newest first, then all time", () => {
     expect(rangeOptions(YEARS)).toEqual([
+      { key: "7d", label: "Last 7 days" },
       { key: "30d", label: "Last 30 days" },
       { key: "90d", label: "Last 90 days" },
       { key: "sy:y26", label: "2026-27" },
@@ -132,7 +156,7 @@ describe("rangeOptions", () => {
   });
 
   it("still offers the rolling windows with no school years", () => {
-    expect(rangeOptions([]).map((o) => o.key)).toEqual(["30d", "90d", "all"]);
+    expect(rangeOptions([]).map((o) => o.key)).toEqual(["7d", "30d", "90d", "all"]);
   });
 });
 
