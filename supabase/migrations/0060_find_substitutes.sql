@@ -47,8 +47,15 @@ declare
 begin
   -- A SECURITY DEFINER function bypasses RLS, so it decides for itself who may
   -- call it. Teachers must never reach this: it exposes the whole staff roster.
-  if public.current_app_role() not in
-     ('regional_manager', 'academic_manager', 'operations_manager', 'cpo') then
+  --
+  -- Phrased as a positive allow-list ending in `is not true`, not as
+  -- `not in (...)`. For a caller with no profile row current_app_role() is
+  -- null, and `null not in (...)` evaluates to null rather than true — so that
+  -- form let the guard fall through silently and returned every teacher's name,
+  -- email and phone. `is not true` makes null fail closed.
+  if (public.current_app_role() = any (
+        array['regional_manager', 'academic_manager', 'operations_manager', 'cpo']::public.app_role[]
+      )) is not true then
     raise exception 'finding substitutes requires a manager role';
   end if;
 
