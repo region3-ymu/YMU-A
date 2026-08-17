@@ -206,6 +206,15 @@ function TicketCard({
               {SLA_LABELS[sla.sla_state]}
             </span>
           )}
+          {/* The SLA clock stops while a ticket is Escalated or On Hold, which
+              is right — we can't resolve what the school hasn't. But a stopped
+              clock means the card would otherwise look as healthy on day 21 as
+              on day 1, so the real wait is shown as its own number. */}
+          {sla?.waiting_days != null && sla.waiting_days >= 1 && (
+            <span className="rounded-full bg-surface-container-high px-2 py-0.5 text-[10px] font-semibold text-on-surface-variant">
+              Waiting {sla.waiting_days}d
+            </span>
+          )}
         </div>
       </div>
     </Link>

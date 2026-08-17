@@ -124,6 +124,13 @@ export type TicketSla = {
   unanswered_overdue: boolean;
   awaiting_response_minutes: number | null;
   open_active_minutes: number | null;
+  /**
+   * Real days the ticket has been paused — waiting on the school, or on the
+   * teacher. Not part of the SLA (the clock is stopped) precisely so it has to
+   * be shown separately: without it, a ticket parked in Escalated for three
+   * weeks looks exactly as healthy as one raised this morning.
+   */
+  waiting_days: number | null;
   frt_minutes: number | null;
   effective_ttr_minutes: number | null;
   paused_minutes: number;
@@ -141,7 +148,7 @@ export async function getTicketSlaMap(): Promise<Map<string, TicketSla>> {
   const { data } = await supabase
     .from("ticket_sla")
     .select(
-      "id, sla_state, unanswered_overdue, awaiting_response_minutes, open_active_minutes, frt_minutes, effective_ttr_minutes, paused_minutes, ttr_target_hours",
+      "id, sla_state, unanswered_overdue, awaiting_response_minutes, open_active_minutes, frt_minutes, effective_ttr_minutes, paused_minutes, ttr_target_hours, waiting_days",
     );
   return new Map(((data as unknown as TicketSla[]) ?? []).map((s) => [s.id, s]));
 }

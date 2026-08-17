@@ -24,10 +24,16 @@ export type TicketStatus = (typeof TICKET_STATUSES)[number];
 export const STATUS_LABELS: Record<TicketStatus, string> = {
   Open: "Open",
   In_Progress: "In progress",
-  Escalated: "Escalated",
-  On_Hold: "On hold",
+  // Both of these stop the SLA clock (migration 0055), so the labels say who
+  // is being waited on rather than just naming the state — a manager choosing
+  // between them is really choosing "not my move any more, and here is why".
+  Escalated: "Escalated — waiting on school",
+  On_Hold: "On hold — waiting on teacher",
   Closed: "Closed",
 };
+
+/** Statuses where the SLA clock is stopped because someone else has to act. */
+export const SLA_PAUSED_STATUSES: TicketStatus[] = ["Escalated", "On_Hold"];
 
 // Statuses that still need someone to act. Drives the default inbox filter —
 // a manager opening /tickets wants their queue, not an archive.
