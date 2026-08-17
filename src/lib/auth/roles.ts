@@ -59,6 +59,25 @@ export function canReadTeamFeedback(role: AppRole): boolean {
   return (FEEDBACK_READER_ROLES as readonly AppRole[]).includes(role);
 }
 
+// Who can look for a substitute teacher. Mirrors the guard inside
+// find_substitutes() in migration 0060 — SQL is authoritative, and it has to be:
+// the function is SECURITY DEFINER and reads across every region, so this list
+// existing here is only about what the nav offers.
+//
+// This is the Operations Manager's job. Until that role is filled, Regional
+// Managers do it too, and they need every region's teachers — a substitute from
+// the next region over beats no substitute (YMU 2026-08-14).
+export const SUBSTITUTE_FINDER_ROLES = [
+  "regional_manager",
+  "academic_manager",
+  "operations_manager",
+  "cpo",
+] as const satisfies readonly AppRole[];
+
+export function canFindSubstitutes(role: AppRole): boolean {
+  return (SUBSTITUTE_FINDER_ROLES as readonly AppRole[]).includes(role);
+}
+
 // Who can post an announcement on the News board. Everyone signed in reads it;
 // only these four write, which is the "only admins can talk" shape YMU asked
 // for. Mirrors can_publish_news() in migration 0053 — SQL is authoritative.
@@ -205,6 +224,16 @@ export function navForRole(role: AppRole, isAppAdmin: boolean = false): NavItem[
     if (isManagerRole(role)) {
       items.push({ href: "/lists", label: "Lists", note: "Schools & teachers", icon: "groups" });
     }
+    if (canFindSubstitutes(role)) {
+      // Deliberately after the first four: covering an absence is something you
+      // go looking for, not something you check between classes.
+      items.push({
+        href: "/substitutes",
+        label: "Substitutes",
+        note: "Cover a class when a teacher is out",
+        icon: "person_search",
+      });
+    }
     if (canReadTeamFeedback(role)) {
       items.push({
         href: "/feedbacks",
@@ -285,6 +314,7 @@ export const ROUTE_ROLES: Record<string, readonly AppRole[]> = {
   "/flags": MANAGER_ROLES,
   "/dashboard": MANAGER_ROLES,
   "/users": ["operations_manager", "cpo"],
+  "/substitutes": SUBSTITUTE_FINDER_ROLES,
   // Teachers reach their own tickets through /tickets too — the RLS policy is
   // what scopes them to their own rows, not the route.
   "/tickets": APP_ROLES,
