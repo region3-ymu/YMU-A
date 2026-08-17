@@ -237,6 +237,15 @@ export function navForRole(role: AppRole, isAppAdmin: boolean = false): NavItem[
       note: "Roles & regions",
       icon: "badge",
     });
+    // Sits on the Home grid, not the bottom bar: it is for showing the app to
+    // other people, which is a thing you plan, not a thing you do between
+    // classes.
+    items.push({
+      href: "/demo",
+      label: "Demo",
+      note: "Walk someone through the app",
+      icon: "play_circle",
+    });
   }
   if (canViewAppFeedback(role, isAppAdmin)) {
     items.push({
@@ -268,6 +277,7 @@ export const ROUTE_ROLES: Record<string, readonly AppRole[]> = {
   "/feedbacks": FEEDBACK_READER_ROLES,
   "/feedback": ["teacher"],
   "/classroom": ["teacher"],
+  "/demo": ["operations_manager", "cpo"],
   // More specific than "/lists" below — must come first, since
   // rolesAllowedForPath() returns on the first matching prefix.
   "/lists/school-years": ["operations_manager", "cpo"],
