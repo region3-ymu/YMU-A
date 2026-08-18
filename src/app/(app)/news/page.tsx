@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { requireProfile } from "@/lib/auth/dal";
 import { canPublishNews, displayRole } from "@/lib/auth/roles";
+import { newsAudienceLabel } from "@/lib/news/queries";
 import { getNewsFeed } from "@/lib/news/queries";
 import { formatDateTime } from "@/lib/format/datetime";
 
@@ -77,6 +78,12 @@ export default async function NewsPage() {
                     {unread && (
                       <span className="rounded-full bg-primary px-2.5 py-1 text-xs font-bold text-on-primary">
                         New
+                      </span>
+                    )}
+                    {canPost && newsAudienceLabel(post) && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-surface-container-high px-2.5 py-1 text-xs font-semibold text-on-surface-variant">
+                        <span className="material-symbols-outlined text-sm" aria-hidden>group</span>
+                        {newsAudienceLabel(post)}
                       </span>
                     )}
                     {post.attachments.length > 0 && (

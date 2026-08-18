@@ -19,10 +19,17 @@ const MAX_BYTES = 15 * 1024 * 1024;
 export default function NewsPostForm({
   userId,
   post,
+  ownTeachersOption,
 }: {
   userId: string;
   /** Present when editing. Attachments are add-at-publish only, so editing leaves them alone. */
   post?: { id: string; title: string; body: string; pinned: boolean };
+  /**
+   * The label for "my teachers", or null for a role whose own teachers are
+   * everybody. Resolved on the server so this component never has to know what
+   * region the author is in — see can_target_own_teachers() in 0071.
+   */
+  ownTeachersOption?: string | null;
 }) {
   const editing = post != null;
   const [state, dispatch, pending] = useActionState<NewsFormState, FormData>(
@@ -152,6 +159,42 @@ export default function NewsPostForm({
         </div>
       )}
 
+      {!editing && ownTeachersOption && (
+        <fieldset className="rounded-lg bg-surface-container-low px-3 py-2 text-sm">
+          <legend className="font-medium text-on-surface">Who is this for?</legend>
+          <label className="mt-1 flex items-start gap-3">
+            <input
+              type="radio"
+              name="audience"
+              value="everyone"
+              defaultChecked
+              className="mt-0.5 size-4 accent-current"
+            />
+            <span>
+              <span className="block text-on-surface">Everyone</span>
+              <span className="block text-xs text-on-surface-variant">
+                Every teacher in YMU.
+              </span>
+            </span>
+          </label>
+          <label className="mt-2 flex items-start gap-3">
+            <input
+              type="radio"
+              name="audience"
+              value="own_teachers"
+              className="mt-0.5 size-4 accent-current"
+            />
+            <span>
+              <span className="block text-on-surface">{ownTeachersOption}</span>
+              <span className="block text-xs text-on-surface-variant">
+                Only they get the push and see it on their board. Managers still
+                see every announcement.
+              </span>
+            </span>
+          </label>
+        </fieldset>
+      )}
+
       <label className="flex items-start gap-3 rounded-lg bg-surface-container-low px-3 py-2 text-sm">
         <input
           type="checkbox"
@@ -180,7 +223,7 @@ export default function NewsPostForm({
           <span>
             <span className="block font-medium text-on-surface">Notify teachers</span>
             <span className="block text-xs text-on-surface-variant">
-              Sends a push to every teacher with the app. Untick for something minor.
+              Sends a push to the teachers this is for. Untick for something minor.
             </span>
           </span>
         </label>

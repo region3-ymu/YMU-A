@@ -1,7 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requireRole } from "@/lib/auth/dal";
-import { NEWS_AUTHOR_ROLES } from "@/lib/auth/roles";
+import {
+  NEWS_AUTHOR_ROLES,
+  canTargetOwnTeachers,
+  ownTeachersLabel,
+} from "@/lib/auth/roles";
 import NewsPostForm from "../post-form";
 
 export const metadata: Metadata = { title: "New announcement" };
@@ -21,10 +25,19 @@ export default async function NewNewsPostPage() {
         </Link>
         <h1 className="mt-2 text-2xl font-bold tracking-tight text-on-surface">New announcement</h1>
         <p className="mt-1 text-sm text-on-surface-variant">
-          Everyone in YMU can read this. Only managers can post.
+          {canTargetOwnTeachers(profile.role)
+            ? "Choose whether this goes to everyone or only to your own teachers."
+            : "Everyone in YMU can read this. Only managers can post."}
         </p>
       </div>
-      <NewsPostForm userId={profile.id} />
+      <NewsPostForm
+        userId={profile.id}
+        ownTeachersOption={
+          canTargetOwnTeachers(profile.role)
+            ? ownTeachersLabel(profile.role, profile.region)
+            : null
+        }
+      />
     </main>
   );
 }

@@ -66,6 +66,10 @@ export async function publishNewsPost(
     p_pinned: formData.get("pinned") === "yes",
     // Unticked box means "don't buzz everyone" — a typo fix or a minor note.
     p_notify: formData.get("notify") === "yes",
+    // Absent means everyone: the radio only renders for a role that has an
+    // "own teachers", and create_news_post() raises rather than widening if a
+    // hand-crafted call sends own_teachers from a role without one.
+    p_audience: formData.get("audience") === "own_teachers" ? "own_teachers" : "everyone",
     p_attachments: readAttachments(formData),
   });
   if (error) return { error: error.message };

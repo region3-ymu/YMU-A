@@ -104,13 +104,37 @@ export function canFindSubstitutes(role: AppRole): boolean {
 // for. Mirrors can_publish_news() in migration 0053 — SQL is authoritative.
 export const NEWS_AUTHOR_ROLES = [
   "regional_manager",
+  "afterschool_manager",
   "academic_manager",
   "operations_manager",
+  "administrator",
   "cpo",
 ] as const satisfies readonly AppRole[];
 
 export function canPublishNews(role: AppRole): boolean {
   return (NEWS_AUTHOR_ROLES as readonly AppRole[]).includes(role);
+}
+
+/**
+ * Who has an "own teachers" to aim an announcement at.
+ *
+ * Mirrors can_target_own_teachers() in migration 0071. Deliberately just these
+ * two: a CPO's or an Operations Manager's own teachers are everybody, so
+ * offering them the choice would be offering the same option twice.
+ */
+export const OWN_TEACHERS_AUDIENCE_ROLES = [
+  "regional_manager",
+  "afterschool_manager",
+] as const satisfies readonly AppRole[];
+
+export function canTargetOwnTeachers(role: AppRole): boolean {
+  return (OWN_TEACHERS_AUDIENCE_ROLES as readonly AppRole[]).includes(role);
+}
+
+/** What "my teachers" means on screen, for the one role it differs for. */
+export function ownTeachersLabel(role: AppRole, region: Region | null): string {
+  if (role === "afterschool_manager") return "My afterschool teachers";
+  return region ? `My teachers (${REGION_LABELS[region]})` : "My teachers";
 }
 
 // Who can create and edit other people's accounts at /users. Mirrors

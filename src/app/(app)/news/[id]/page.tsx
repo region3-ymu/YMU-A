@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireProfile } from "@/lib/auth/dal";
 import { canPublishNews, displayRole } from "@/lib/auth/roles";
-import { getNewsPost, signAttachments } from "@/lib/news/queries";
+import { getNewsPost, newsAudienceLabel, signAttachments } from "@/lib/news/queries";
 import { formatDateTime } from "@/lib/format/datetime";
 import { markNewsRead } from "../actions";
 import DeletePostButton from "./delete-post-button";
@@ -55,6 +55,12 @@ export default async function NewsPostPage({ params }: { params: Promise<{ id: s
             <span className="inline-flex items-center gap-1 rounded-full bg-warning-container px-2.5 py-1 text-xs font-semibold text-on-warning-container">
               <span className="material-symbols-outlined text-sm" aria-hidden>push_pin</span>
               Pinned
+            </span>
+          )}
+          {canPublishNews(profile.role) && newsAudienceLabel(post) && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-surface-container-high px-2.5 py-1 text-xs font-semibold text-on-surface-variant">
+              <span className="material-symbols-outlined text-sm" aria-hidden>group</span>
+              {newsAudienceLabel(post)}
             </span>
           )}
         </div>
