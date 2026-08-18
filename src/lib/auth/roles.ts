@@ -13,6 +13,11 @@ export const APP_ROLES = [
   "afterschool_manager",
   "academic_manager",
   "operations_manager",
+  // A peer of the CPO for administering accounts (YMU 2026-08-18). Replaces
+  // reaching the app admin through profiles.is_app_admin, which is the
+  // /app-feedback inbox flag (migration 0024) and was never meant to be a
+  // permission level. Mirrors app_role in migration 0068.
+  "administrator",
   "cpo",
 ] as const;
 
@@ -106,6 +111,54 @@ export function canPublishNews(role: AppRole): boolean {
   return (NEWS_AUTHOR_ROLES as readonly AppRole[]).includes(role);
 }
 
+// Who can create and edit other people's accounts at /users. Mirrors
+// current_can_manage_team() in migration 0069 — SQL is authoritative, and it
+// has to be: creating an auth user needs the service-role key, so the server
+// action is the only place that check can live on the way in.
+//
+// Deliberately a role list and not a flag. 0067 briefly read
+// profiles.is_app_admin here; YMU replaced that with the administrator role so
+// the answer comes from the same column every other guard reads.
+export const TEAM_ADMIN_ROLES = [
+  "administrator",
+  "academic_manager",
+  "operations_manager",
+  "cpo",
+] as const satisfies readonly AppRole[];
+
+export function canManageTeam(role: AppRole, isAppAdmin: boolean = false): boolean {
+  // isAppAdmin is a TEMPORARY BRIDGE, matching current_can_manage_team() in
+  // migration 0069. region3@ymu.org is regional_manager + is_app_admin, and
+  // administrator cannot read the app yet — 21 policies still enumerate
+  // ('operations_manager','cpo'). Without this the page redirects the one
+  // person maintaining it straight back to Home. Removed together with the SQL
+  // branch once administrator is a real peer of cpo.
+  return (TEAM_ADMIN_ROLES as readonly AppRole[]).includes(role) || isAppAdmin;
+}
+
+/** Peers of the CPO for handing out Operations Manager. Mirrors 0069. */
+export function canAssignOperationsManager(role: AppRole): boolean {
+  return role === "cpo" || role === "administrator";
+}
+
+/**
+ * The roles a team admin may hand out when creating or editing an account.
+ *
+ * The CPO role is never in here — 0003 seeds it by hand and promote_user()
+ * raises on it. Operations Manager is CPO/administrator only, which is the one
+ * rule that differs between the four admin roles.
+ */
+export function assignableRoles(callerRole: AppRole): AppRole[] {
+  const base: AppRole[] = [
+    "teacher",
+    "regional_manager",
+    "afterschool_manager",
+    "academic_manager",
+    "administrator",
+  ];
+  return canAssignOperationsManager(callerRole) ? [...base, "operations_manager"] : base;
+}
+
 export function isAppRole(value: unknown): value is AppRole {
   return (
     typeof value === "string" && (APP_ROLES as readonly string[]).includes(value)
@@ -127,6 +180,7 @@ export const ROLE_LABELS: Record<AppRole, string> = {
   regional_manager: "Regional Manager",
   afterschool_manager: "Afterschool Manager",
   academic_manager: "Academic Manager",
+  administrator: "Administrator",
   operations_manager: "Operations Manager",
   cpo: "CPO",
 };
@@ -283,13 +337,15 @@ export function navForRole(role: AppRole, isAppAdmin: boolean = false): NavItem[
       icon: "settings",
     },
   );
-  if (role === "operations_manager" || role === "cpo") {
+  if (canManageTeam(role, isAppAdmin)) {
     items.push({
       href: "/users",
       label: "Team",
-      note: "Roles & regions",
+      note: "Add people, roles & regions",
       icon: "badge",
     });
+  }
+  if (role === "operations_manager" || role === "cpo" || role === "administrator") {
     // Sits on the Home grid, not the bottom bar: it is for showing the app to
     // other people, which is a thing you plan, not a thing you do between
     // classes.

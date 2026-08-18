@@ -1,7 +1,11 @@
 import type { Metadata } from "next";
-import { requireRole } from "@/lib/auth/dal";
+import { redirect } from "next/navigation";
+import { requireProfile } from "@/lib/auth/dal";
 import {
   REGION_LABELS,
+  assignableRoles as rolesAssignableBy,
+  canAssignOperationsManager,
+  canManageTeam,
   displayRole,
   type AppRole,
   type Region,
@@ -9,6 +13,7 @@ import {
 import { createClient } from "@/lib/supabase/server";
 import ArchiveButton from "./archive-button";
 import ClockInExemptButton from "./clock-in-exempt-button";
+import CreateAccountForm from "./create-account-form";
 import RowForm from "./row-form";
 
 export const metadata: Metadata = { title: "Team" };
@@ -24,7 +29,10 @@ type Row = {
 };
 
 export default async function UsersPage() {
-  const caller = await requireRole("operations_manager", "cpo");
+  const caller = await requireProfile();
+  // Not requireRole: the set is four roles wide now and mirrored by
+  // canManageTeam() / current_can_manage_team() (migration 0069).
+  if (!canManageTeam(caller.role, caller.is_app_admin)) redirect("/");
 
   const supabase = await createClient();
   const { data: rows, error } = await supabase
@@ -33,16 +41,13 @@ export default async function UsersPage() {
     .order("full_name");
 
   // Mirrors promote_user()'s rules so the UI doesn't offer doomed submits:
-  // cpo is never assignable; OMs can't touch other OMs or the CPO.
-  const assignableRoles = (row: Row): AppRole[] | null => {
+  // cpo is never assignable, nobody re-roles themselves here, and an existing
+  // Operations Manager is the CPO's or an administrator's to change.
+  const assignableFor = (row: Row): AppRole[] | null => {
     if (row.id === caller.id) return null;
     if (row.role === "cpo") return null;
-    if (row.role === "operations_manager" && caller.role !== "cpo") return null;
-    // afterschool_manager needs no region — promote_user() nulls it for every
-    // role but regional_manager, which is exactly the shape she wants.
-    return caller.role === "cpo"
-      ? ["teacher", "regional_manager", "afterschool_manager", "operations_manager"]
-      : ["teacher", "regional_manager", "afterschool_manager"];
+    if (row.role === "operations_manager" && !canAssignOperationsManager(caller.role)) return null;
+    return rolesAssignableBy(caller.role);
   };
 
   return (
@@ -54,9 +59,10 @@ export default async function UsersPage() {
         Team
       </h1>
       <p className="mt-1 text-sm text-on-surface-variant">
-        Promote teachers to Regional Manager and assign their region
-        {caller.role === "cpo" ? ", or appoint Operations Managers" : ""}.
+        Add people, change roles, and assign a Regional Manager&rsquo;s region
+        {canAssignOperationsManager(caller.role) ? ", or appoint Operations Managers" : ""}.
       </p>
+      <CreateAccountForm assignableRoles={rolesAssignableBy(caller.role)} />
       {error && (
         <p role="alert" className="mt-6 text-sm text-error">
           Couldn&rsquo;t load the team: {error.message}
@@ -64,7 +70,7 @@ export default async function UsersPage() {
       )}
       <ul className="mt-6 flex flex-col gap-3">
         {(rows ?? []).map((row) => {
-          const assignable = assignableRoles(row as Row);
+          const assignable = assignableFor(row as Row);
           return (
             <li
               key={row.id}
