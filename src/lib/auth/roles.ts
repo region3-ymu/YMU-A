@@ -5,6 +5,12 @@
 export const APP_ROLES = [
   "teacher",
   "regional_manager",
+  // Owns every afterschool class in every region, and nothing else (YMU
+  // 2026-08-18). Not a regional_manager with region = null: the 48 uses of
+  // current_app_region() would each have to tell "no region yet" apart from
+  // "no region on purpose", and profiles.region is already nullable for the
+  // first reason. Mirrors app_role in migration 0062.
+  "afterschool_manager",
   "academic_manager",
   "operations_manager",
   "cpo",
@@ -24,6 +30,13 @@ export type Region = (typeof REGIONS)[number];
 // then the role's surface is tickets, which is what YMU actually asked for.
 export const MANAGER_ROLES = [
   "regional_manager",
+  // 0064 gave afterschool_manager a branch in flags_select,
+  // attendance_sessions_select and calendar_events_select, so /dashboard,
+  // /flags and the /schedules actions all have real rows to return for her.
+  // /lists is the exception and is kept out of her nav below — it leans on
+  // teacher_directory(), still region-only, which for a manager with no region
+  // returns nothing.
+  "afterschool_manager",
   "operations_manager",
   "cpo",
 ] as const satisfies readonly AppRole[];
@@ -50,6 +63,7 @@ export function seesAllTickets(role: AppRole): boolean {
 // as the policy, so a reader can check one against the other.
 export const FEEDBACK_READER_ROLES = [
   "regional_manager",
+  "afterschool_manager",
   "academic_manager",
   "operations_manager",
   "cpo",
@@ -111,6 +125,7 @@ export function isManagerRole(role: AppRole): boolean {
 export const ROLE_LABELS: Record<AppRole, string> = {
   teacher: "Teacher",
   regional_manager: "Regional Manager",
+  afterschool_manager: "Afterschool Manager",
   academic_manager: "Academic Manager",
   operations_manager: "Operations Manager",
   cpo: "CPO",
@@ -221,7 +236,11 @@ export function navForRole(role: AppRole, isAppAdmin: boolean = false): NavItem[
       },
       { href: "/schedules", label: "Schedules", note: "Classes by school", icon: "calendar_month" },
     );
-    if (isManagerRole(role)) {
+    // Not for the afterschool manager: /lists is built on teacher_directory()
+    // and the calendar-sync queue, both still scoped by current_app_region().
+    // With no region they return nothing — an empty page promising schools and
+    // teachers is worse than no link.
+    if (isManagerRole(role) && role !== "afterschool_manager") {
       items.push({ href: "/lists", label: "Lists", note: "Schools & teachers", icon: "groups" });
     }
     if (canFindSubstitutes(role)) {
@@ -238,7 +257,12 @@ export function navForRole(role: AppRole, isAppAdmin: boolean = false): NavItem[
       items.push({
         href: "/feedbacks",
         label: "Feedbacks",
-        note: role === "regional_manager" ? "What your teachers reported" : "What teachers reported",
+        note:
+          role === "regional_manager"
+            ? "What your teachers reported"
+            : role === "afterschool_manager"
+              ? "What your afterschool teachers reported"
+              : "What teachers reported",
         icon: "rate_review",
       });
     }

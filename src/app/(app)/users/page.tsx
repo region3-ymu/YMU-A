@@ -38,9 +38,11 @@ export default async function UsersPage() {
     if (row.id === caller.id) return null;
     if (row.role === "cpo") return null;
     if (row.role === "operations_manager" && caller.role !== "cpo") return null;
+    // afterschool_manager needs no region — promote_user() nulls it for every
+    // role but regional_manager, which is exactly the shape she wants.
     return caller.role === "cpo"
-      ? ["teacher", "regional_manager", "operations_manager"]
-      : ["teacher", "regional_manager"];
+      ? ["teacher", "regional_manager", "afterschool_manager", "operations_manager"]
+      : ["teacher", "regional_manager", "afterschool_manager"];
   };
 
   return (
