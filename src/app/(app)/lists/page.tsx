@@ -33,15 +33,21 @@ export default async function ListsPage() {
       </h1>
       <p className="text-sm text-on-surface-variant">Schools &amp; teachers by region</p>
       <div className="flex flex-wrap gap-x-4 gap-y-1">
-        <Link
-          href="/lists/calendar-sync"
-          className="mt-1 inline-flex items-center gap-1 text-sm font-medium text-primary"
-        >
-          <span className="material-symbols-outlined text-base" aria-hidden>
-            calendar_month
-          </span>
-          Sync calendars →
-        </Link>
+        {/* Mapping a Google calendar onto a school is school-level work and
+            resolve_calendar_issue() is still (regional_manager,
+            operations_manager, cpo) — the afterschool manager gets /lists for
+            the roster, not for this. */}
+        {caller.role !== "afterschool_manager" && (
+          <Link
+            href="/lists/calendar-sync"
+            className="mt-1 inline-flex items-center gap-1 text-sm font-medium text-primary"
+          >
+            <span className="material-symbols-outlined text-base" aria-hidden>
+              calendar_month
+            </span>
+            Sync calendars →
+          </Link>
+        )}
         {(caller.role === "operations_manager" || caller.role === "cpo") && (
           <Link
             href="/lists/school-years"

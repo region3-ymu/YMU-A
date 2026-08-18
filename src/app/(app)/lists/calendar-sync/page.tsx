@@ -1,14 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requireRole } from "@/lib/auth/dal";
-import { MANAGER_ROLES } from "@/lib/auth/roles";
+import { CALENDAR_SYNC_ROLES } from "@/lib/auth/roles";
 import { getSyncableSchools } from "./actions";
 import SyncForm from "./sync-form";
 
 export const metadata: Metadata = { title: "Sync calendars" };
 
 export default async function CalendarSyncPage() {
-  await requireRole(...MANAGER_ROLES);
+  await requireRole(...CALENDAR_SYNC_ROLES);
   const schools = await getSyncableSchools();
 
   return (

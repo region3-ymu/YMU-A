@@ -36,11 +36,12 @@ export type Region = (typeof REGIONS)[number];
 export const MANAGER_ROLES = [
   "regional_manager",
   // 0064 gave afterschool_manager a branch in flags_select,
-  // attendance_sessions_select and calendar_events_select, so /dashboard,
-  // /flags and the /schedules actions all have real rows to return for her.
-  // /lists is the exception and is kept out of her nav below — it leans on
-  // teacher_directory(), still region-only, which for a manager with no region
-  // returns nothing.
+  // attendance_sessions_select and calendar_events_select; 0070 did the same
+  // for the definer functions that bypass RLS and re-check the region
+  // themselves. So /dashboard, /flags, /lists, /reports and /substitutes all
+  // have real rows to return for her. The one thing still region-only is
+  // resolve_calendar_issue(), whose queue is hidden from her in
+  // schedules-explorer.
   "afterschool_manager",
   "operations_manager",
   "cpo",
@@ -88,6 +89,7 @@ export function canReadTeamFeedback(role: AppRole): boolean {
 // the next region over beats no substitute (YMU 2026-08-14).
 export const SUBSTITUTE_FINDER_ROLES = [
   "regional_manager",
+  "afterschool_manager",
   "academic_manager",
   "operations_manager",
   "cpo",
@@ -170,6 +172,17 @@ export function isRegion(value: unknown): value is Region {
     typeof value === "string" && (REGIONS as readonly string[]).includes(value)
   );
 }
+
+// MANAGER_ROLES minus the afterschool manager. resolve_calendar_issue() maps a
+// whole Google calendar onto a school — school-level work, still
+// (regional_manager, operations_manager, cpo) in SQL — so /lists/calendar-sync
+// has to refuse her rather than merely hide its link. Kept as a constant so the
+// route guard and the SQL guard can be read against each other.
+export const CALENDAR_SYNC_ROLES = [
+  "regional_manager",
+  "operations_manager",
+  "cpo",
+] as const satisfies readonly AppRole[];
 
 export function isManagerRole(role: AppRole): boolean {
   return (MANAGER_ROLES as readonly AppRole[]).includes(role);
@@ -290,11 +303,7 @@ export function navForRole(role: AppRole, isAppAdmin: boolean = false): NavItem[
       },
       { href: "/schedules", label: "Schedules", note: "Classes by school", icon: "calendar_month" },
     );
-    // Not for the afterschool manager: /lists is built on teacher_directory()
-    // and the calendar-sync queue, both still scoped by current_app_region().
-    // With no region they return nothing — an empty page promising schools and
-    // teachers is worse than no link.
-    if (isManagerRole(role) && role !== "afterschool_manager") {
+    if (isManagerRole(role)) {
       items.push({ href: "/lists", label: "Lists", note: "Schools & teachers", icon: "groups" });
     }
     if (canFindSubstitutes(role)) {

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth/dal";
-import { MANAGER_ROLES } from "@/lib/auth/roles";
+import { CALENDAR_SYNC_ROLES } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/server";
 import type { CalendarSyncSummary } from "./types";
 
@@ -12,7 +12,7 @@ export type CalendarSyncActionState =
   | undefined;
 
 export async function getSyncableSchools(): Promise<{ id: string; name: string }[]> {
-  await requireRole(...MANAGER_ROLES);
+  await requireRole(...CALENDAR_SYNC_ROLES);
   const supabase = await createClient();
   const { data } = await supabase
     .from("schools")
@@ -32,7 +32,7 @@ export async function triggerCalendarSync(
   _prev: CalendarSyncActionState,
   formData: FormData,
 ): Promise<CalendarSyncActionState> {
-  await requireRole(...MANAGER_ROLES);
+  await requireRole(...CALENDAR_SYNC_ROLES);
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const secret = process.env.CALENDAR_SYNC_SECRET;

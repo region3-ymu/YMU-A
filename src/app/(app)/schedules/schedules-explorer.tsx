@@ -91,7 +91,16 @@ export default function SchedulesExplorer({
         </div>
       )}
 
-      {managersView && <UnmatchedCalendarQueue issues={calendarIssues} schools={schoolsWithoutCalendar} />}
+      {/* Not the afterschool manager's: resolve_calendar_issue() maps a whole
+          Google calendar onto a school, which is a school-level decision and
+          still (regional_manager, operations_manager, cpo) in SQL. Showing her
+          a queue whose only action raises is worse than not showing it. The
+          unmatched-EVENT queue below is hers — an unlinked afterschool class
+          has no school, so no region, so no RM can see it and 0070 gives her
+          assign_event_school() for exactly that case. */}
+      {managersView && callerRole !== "afterschool_manager" && (
+        <UnmatchedCalendarQueue issues={calendarIssues} schools={schoolsWithoutCalendar} />
+      )}
       {managersView && <UnmatchedEventQueue events={unmatched} schools={schools} />}
 
       {groups.length ? (

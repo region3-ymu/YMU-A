@@ -274,7 +274,19 @@ describe.runIf(configured)("afterschool manager scope", () => {
         .select("id, assigned_agent_id")
         .single();
       if (error) throw new Error(`ticket insert failed: ${error.message}`);
-      expect(data!.assigned_agent_id).toBe(asm.id);
+      // Not asm.id: route_afterschool_ticket() takes the OLDEST
+      // afterschool_manager, and YMU's real one (afterschool@ymu.org) predates
+      // this fixture. Asserting on the fixture made the test fail the moment
+      // the feature went live, which is the wrong thing to be sensitive to.
+      // The invariant is that it left the RM for an afterschool manager.
+      const { data: managers } = await admin
+        .from("profiles")
+        .select("id")
+        .eq("role", "afterschool_manager")
+        .is("archived_at", null);
+      const managerIds = (managers ?? []).map((m) => m.id);
+      expect(data!.assigned_agent_id).not.toBe(rm.id);
+      expect(managerIds).toContain(data!.assigned_agent_id);
     });
 
     it("leaves a regular ticket with the RM", async () => {
@@ -307,6 +319,81 @@ describe.runIf(configured)("afterschool manager scope", () => {
     it("lets her read the afterschool teacher's name", async () => {
       const { data } = await asm.client.from("profiles").select("id, full_name").eq("id", teacher.id);
       expect(data).toHaveLength(1);
+    });
+  });
+
+  // The definer functions bypass RLS and re-check the region themselves, so
+  // 0064 did not reach them. report_teacher_roster() is where that showed:
+  // the dashboard resolves every name through it, so "Clocked in now" and
+  // "Pending feedback" read "Unknown teacher" for her (YMU 2026-08-18).
+  describe("the definer functions (0070)", () => {
+    it("names the afterschool teacher in report_teacher_roster", async () => {
+      const { data, error } = await asm.client.rpc("report_teacher_roster", {
+        p_include_archived: true,
+      });
+      expect(error).toBeNull();
+      const row = (data as { id: string; full_name: string }[]).find((t) => t.id === teacher.id);
+      expect(row?.full_name).toBe("AS Suite Teacher");
+    });
+
+    it("names them in teacher_directory too, so /lists is not empty", async () => {
+      const { data, error } = await asm.client.rpc("teacher_directory");
+      expect(error).toBeNull();
+      expect((data as { id: string }[]).some((t) => t.id === teacher.id)).toBe(true);
+    });
+
+    it("lets her run find_substitutes on an afterschool class", async () => {
+      const { error } = await asm.client.rpc("find_substitutes", {
+        p_event_id: afterschoolEventId,
+      });
+      expect(error).toBeNull();
+    });
+
+    it("still refuses a teacher find_substitutes", async () => {
+      const { error } = await teacher.client.rpc("find_substitutes", {
+        p_event_id: afterschoolEventId,
+      });
+      expect(error?.message ?? "").toMatch(/requires a manager role/i);
+    });
+
+    // An unlinked afterschool class has no school, so no region, so no RM can
+    // see it — she is the only one who can file it.
+    it("lets her link an unmatched afterschool class to a school", async () => {
+      const { data: orphan } = await admin
+        .from("calendar_events")
+        .insert({
+          calendar_id: "as-suite-fixture@group.calendar.google.com",
+          google_event_id: `as-suite-orphan-${randomUUID()}`,
+          summary: "Afterschool",
+          teacher_ids: [teacher.id],
+          start_at: `${await currentSchoolYearStart()}T19:00:00Z`,
+          status: "confirmed",
+        })
+        .select("id")
+        .single();
+      createdEventIds.push(orphan!.id);
+
+      const { error } = await asm.client.rpc("assign_event_school", {
+        p_event_id: orphan!.id,
+        p_school_id: schoolId,
+      });
+      expect(error).toBeNull();
+    });
+
+    it("refuses her a regular class in assign_event_school", async () => {
+      const { error } = await asm.client.rpc("assign_event_school", {
+        p_event_id: regularEventId,
+        p_school_id: schoolId,
+      });
+      expect(error?.message ?? "").toMatch(/only assign a school to an afterschool class/i);
+    });
+
+    it("refuses the RM an afterschool class in assign_event_school", async () => {
+      const { error } = await rm.client.rpc("assign_event_school", {
+        p_event_id: afterschoolEventId,
+        p_school_id: schoolId,
+      });
+      expect(error?.message ?? "").toMatch(/afterschool manager/i);
     });
   });
 });
