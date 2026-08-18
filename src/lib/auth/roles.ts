@@ -27,14 +27,36 @@ export const REGIONS = ["central", "east", "west", "north", "south"] as const;
 
 export type Region = (typeof REGIONS)[number];
 
-// Deliberately NOT including academic_manager. MANAGER_ROLES gates /dashboard,
-// /lists and /flags, and the RLS behind all three still enumerates
-// regional_manager/operations_manager/cpo — an academic_manager admitted to
-// those routes would load a page and see nothing, which is worse than not
-// having the link. Widening those policies is its own piece of work; until
-// then the role's surface is tickets, which is what YMU actually asked for.
+// Everyone who administers rather than teaches. academic_manager and
+// administrator are in here as of 0072 — the reason they were not (the RLS
+// behind /dashboard, /flags and /lists enumerated
+// regional_manager/operations_manager/cpo, so they would have loaded a page and
+// seen nothing) is exactly what that migration removed.
+// The four org-wide roles. YMU 2026-08-18: cpo, operations_manager,
+// academic_manager and administrator are the same account with four different
+// names, and the only reason there are four is the org chart.
+//
+// Mirrors current_sees_all_regions() in migration 0072, which is the single
+// place the database asks the question. Before it, twenty-one policies and a
+// dozen functions each named these roles by hand — and had drifted:
+// academic_manager was global on tickets and feedback but absent from
+// attendance, flags, schedules and reports, so "sees everything" meant two
+// different things depending on the table.
+export const GLOBAL_ROLES = [
+  "cpo",
+  "operations_manager",
+  "academic_manager",
+  "administrator",
+] as const satisfies readonly AppRole[];
+
+export function seesAllRegions(role: AppRole): boolean {
+  return (GLOBAL_ROLES as readonly AppRole[]).includes(role);
+}
+
 export const MANAGER_ROLES = [
   "regional_manager",
+  "academic_manager",
+  "administrator",
   // 0064 gave afterschool_manager a branch in flags_select,
   // attendance_sessions_select and calendar_events_select; 0070 did the same
   // for the definer functions that bypass RLS and re-check the region
@@ -51,14 +73,11 @@ export const MANAGER_ROLES = [
 // academic_manager exists for exactly this (YMU 2026-08-12): it reads every
 // ticket but is only ever an *assignee* as the fallback for a region with no
 // Regional Manager.
-export const TICKET_GLOBAL_ROLES = [
-  "academic_manager",
-  "operations_manager",
-  "cpo",
-] as const satisfies readonly AppRole[];
-
 export function seesAllTickets(role: AppRole): boolean {
-  return (TICKET_GLOBAL_ROLES as readonly AppRole[]).includes(role);
+  // Was its own list of three. Since 0072 "reads every ticket" and "reads every
+  // region" are the same question, and keeping two lists in step was the bug
+  // waiting to happen.
+  return seesAllRegions(role);
 }
 
 // Everyone who can read other people's class feedback at /feedbacks. This is
@@ -70,9 +89,7 @@ export function seesAllTickets(role: AppRole): boolean {
 export const FEEDBACK_READER_ROLES = [
   "regional_manager",
   "afterschool_manager",
-  "academic_manager",
-  "operations_manager",
-  "cpo",
+  ...GLOBAL_ROLES,
 ] as const satisfies readonly AppRole[];
 
 export function canReadTeamFeedback(role: AppRole): boolean {
@@ -90,9 +107,7 @@ export function canReadTeamFeedback(role: AppRole): boolean {
 export const SUBSTITUTE_FINDER_ROLES = [
   "regional_manager",
   "afterschool_manager",
-  "academic_manager",
-  "operations_manager",
-  "cpo",
+  ...GLOBAL_ROLES,
 ] as const satisfies readonly AppRole[];
 
 export function canFindSubstitutes(role: AppRole): boolean {
@@ -105,10 +120,7 @@ export function canFindSubstitutes(role: AppRole): boolean {
 export const NEWS_AUTHOR_ROLES = [
   "regional_manager",
   "afterschool_manager",
-  "academic_manager",
-  "operations_manager",
-  "administrator",
-  "cpo",
+  ...GLOBAL_ROLES,
 ] as const satisfies readonly AppRole[];
 
 export function canPublishNews(role: AppRole): boolean {
@@ -145,12 +157,7 @@ export function ownTeachersLabel(role: AppRole, region: Region | null): string {
 // Deliberately a role list and not a flag. 0067 briefly read
 // profiles.is_app_admin here; YMU replaced that with the administrator role so
 // the answer comes from the same column every other guard reads.
-export const TEAM_ADMIN_ROLES = [
-  "administrator",
-  "academic_manager",
-  "operations_manager",
-  "cpo",
-] as const satisfies readonly AppRole[];
+export const TEAM_ADMIN_ROLES = GLOBAL_ROLES;
 
 export function canManageTeam(role: AppRole, isAppAdmin: boolean = false): boolean {
   // isAppAdmin is a TEMPORARY BRIDGE, matching current_can_manage_team() in
@@ -164,7 +171,9 @@ export function canManageTeam(role: AppRole, isAppAdmin: boolean = false): boole
 
 /** Peers of the CPO for handing out Operations Manager. Mirrors 0069. */
 export function canAssignOperationsManager(role: AppRole): boolean {
-  return role === "cpo" || role === "administrator";
+  // Was CPO-only, then CPO-or-administrator. Four identical accounts leave no
+  // reason for one to out-rank another. Mirrors 0072.
+  return seesAllRegions(role);
 }
 
 /**
@@ -378,7 +387,7 @@ export function navForRole(role: AppRole, isAppAdmin: boolean = false): NavItem[
       icon: "badge",
     });
   }
-  if (role === "operations_manager" || role === "cpo" || role === "administrator") {
+  if (seesAllRegions(role)) {
     // Sits on the Home grid, not the bottom bar: it is for showing the app to
     // other people, which is a thing you plan, not a thing you do between
     // classes.

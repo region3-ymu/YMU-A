@@ -163,22 +163,32 @@ describe.runIf(configured)("team administration", () => {
       expect(await currentRole(target.id)).toBe("teacher");
     });
 
-    it("lets an administrator hand out Operations Manager but not an academic manager", async () => {
-      await resetTarget();
-      const { error: asAdministrator } = await administrator.client.rpc("promote_user", {
-        target_id: target.id,
-        new_role: "operations_manager",
-        new_region: null,
-      });
-      expect(asAdministrator).toBeNull();
+    // Was "administrator yes, academic manager no". 0072 made the four org-wide
+    // roles identical (YMU 2026-08-18), so there is no longer a reason for one
+    // to out-rank another — current_can_assign_operations_manager() is just
+    // current_sees_all_regions() now.
+    it("lets any org-wide role hand out Operations Manager", async () => {
+      for (const caller of [administrator, academic]) {
+        await resetTarget();
+        const { error } = await caller.client.rpc("promote_user", {
+          target_id: target.id,
+          new_role: "operations_manager",
+          new_region: null,
+        });
+        expect(error).toBeNull();
+        expect(await currentRole(target.id)).toBe("operations_manager");
+      }
+    });
 
+    it("still refuses a plain regional manager that promotion", async () => {
       await resetTarget();
-      const { error: asAcademic } = await academic.client.rpc("promote_user", {
+      const { error } = await plainRm.client.rpc("promote_user", {
         target_id: target.id,
         new_role: "operations_manager",
         new_region: null,
       });
-      expect(asAcademic?.message ?? "").toMatch(/CPO or an administrator/i);
+      expect(error?.message ?? "").toMatch(/team administrator/i);
+      expect(await currentRole(target.id)).toBe("teacher");
     });
   });
 
