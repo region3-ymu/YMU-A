@@ -1,18 +1,24 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
 import { editAttendanceAction, createAttendanceAction } from "./admin-edit-actions";
 
 // Either edit an existing session (sessionId set) or record one that never
-// happened (eventId/teacherId set, no session exists yet). Requires the
-// caller to re-enter their OWN password immediately before submitting — a
-// fresh supabase.auth.signInWithPassword() call, done here client-side
-// because it needs the caller's live email + a password they just typed;
-// the server actions trust this happened and re-check role/region only
-// (the same authorization split every other manager action here uses).
+// happened (eventId/teacherId set, no session exists yet).
+//
+// No password re-entry. It used to ask for one — a fresh
+// signInWithPassword() before dispatch — on the theory that rewriting
+// attendance deserved a second "are you really you". YMU asked for it gone
+// (2026-08-18): a manager reconciling a paper sign-in sheet does this many
+// times in a sitting, and typing a password each time was the slowest part
+// of the job.
+//
+// Nothing about accountability moved. It never lived here: admin_edit_attendance
+// and admin_create_attendance (migration 0023) stamp admin_edited_by from
+// auth.uid() and REJECT a blank admin_edit_reason, so every correction still
+// names who made it and why. The server actions re-check role and region
+// regardless of what this form allows.
 export default function AdminEditAttendanceForm({
-  callerEmail,
   sessionId,
   eventId,
   teacherId,
@@ -20,7 +26,6 @@ export default function AdminEditAttendanceForm({
   currentStatus,
   currentClockInAt,
 }: {
-  callerEmail: string;
   sessionId?: string;
   eventId?: string;
   teacherId?: string;
@@ -32,9 +37,6 @@ export default function AdminEditAttendanceForm({
   const action = isCreate ? createAttendanceAction : editAttendanceAction;
   const [state, dispatch, pending] = useActionState(action, undefined);
   const [open, setOpen] = useState(false);
-  const [password, setPassword] = useState("");
-  const [authError, setAuthError] = useState<string | null>(null);
-  const [verifying, setVerifying] = useState(false);
 
   const defaultClockInAt = toLocalInputValue(currentClockInAt ?? scheduledStartAt ?? new Date().toISOString());
 
@@ -53,39 +55,13 @@ export default function AdminEditAttendanceForm({
     );
   }
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setAuthError(null);
-    if (!password) {
-      setAuthError("Enter your password to confirm this change.");
-      return;
-    }
-
-    // READ THE FORM BEFORE THE AWAIT. React clears the synthetic event once
-    // the handler yields, so `event.currentTarget` is null by the time an
-    // awaited call resolves — `new FormData(null)` then throws, inside a
-    // promise nobody is watching. The visible result was a manager typing a
-    // reason and a password, pressing the button, and having absolutely
-    // nothing happen: no save, no error, no clue.
-    const data = new FormData(event.currentTarget);
-
-    setVerifying(true);
-    const supabase = createClient();
-    const { error } = await supabase.auth.signInWithPassword({ email: callerEmail, password });
-    setVerifying(false);
-
-    if (error) {
-      setAuthError("Incorrect password.");
-      return;
-    }
-
-    setPassword("");
-    dispatch(data);
-  }
-
   return (
+    // Dispatched straight to the action now. The old onSubmit handler had to
+    // read FormData before awaiting the password check, because React nulls
+    // event.currentTarget once the handler yields; with no await there is no
+    // handler left to get that wrong.
     <form
-      onSubmit={handleSubmit}
+      action={dispatch}
       className="mt-2 flex flex-col gap-2 rounded-lg bg-surface-container-low p-3"
     >
       {isCreate ? (
@@ -120,6 +96,8 @@ export default function AdminEditAttendanceForm({
         </select>
       </label>
 
+      {/* The one remaining gate, and the only one that ever produced a record
+          worth reading later: 0023 raises if it arrives blank. */}
       <label className="text-xs font-medium text-on-surface-variant">
         Reason (required)
         <textarea
@@ -131,24 +109,13 @@ export default function AdminEditAttendanceForm({
         />
       </label>
 
-      <label className="text-xs font-medium text-on-surface-variant">
-        Your password (to confirm this change)
-        <input
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-          className="mt-1 w-full rounded-lg bg-surface-container px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary"
-        />
-      </label>
-
       <div className="mt-1 flex items-center gap-2">
         <button
           type="submit"
-          disabled={pending || verifying}
+          disabled={pending}
           className="rounded-full bg-primary px-4 py-2 text-xs font-bold text-on-primary shadow-sm transition-transform active:scale-[0.98] disabled:opacity-50"
         >
-          {verifying ? "Verifying…" : pending ? "Saving…" : "Confirm"}
+          {pending ? "Saving…" : "Confirm"}
         </button>
         <button
           type="button"
@@ -159,11 +126,6 @@ export default function AdminEditAttendanceForm({
         </button>
       </div>
 
-      {authError && (
-        <p role="alert" className="text-xs text-error">
-          {authError}
-        </p>
-      )}
       {state?.error && (
         <p role="alert" className="text-xs text-error">
           {state.error}

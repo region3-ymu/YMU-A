@@ -117,9 +117,8 @@ export default async function FlagsPage() {
               ) : (
                 <GpsOutOfFenceCard flag={flag} teacher={teacherById.get(flag.teacher_id)} />
               )}
-              {flag.type === "late_clock_in" && caller.email ? (
+              {flag.type === "late_clock_in" ? (
                 <AdminEditAttendanceForm
-                  callerEmail={caller.email}
                   sessionId={sessionFor(flag)?.id}
                   eventId={flag.event?.id}
                   teacherId={flag.teacher_id}

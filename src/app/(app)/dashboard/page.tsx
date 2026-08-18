@@ -23,7 +23,7 @@ import {
 export const metadata: Metadata = { title: "Dashboard" };
 
 export default async function DashboardPage() {
-  const profile = await requireRole(...MANAGER_ROLES);
+  await requireRole(...MANAGER_ROLES);
 
   const [
     openSessions,
@@ -315,14 +315,11 @@ export default async function DashboardPage() {
                 <div className="absolute inset-y-0 left-0 w-1.5 bg-error" aria-hidden />
                 {nameById.get(r.teacher_id) ?? "Unknown teacher"} · {r.summary ?? "Class"} ·{" "}
                 {formatTime(r.start_at)}
-                {profile.email && (
-                  <AdminEditAttendanceForm
-                    callerEmail={profile.email}
-                    eventId={r.event_id}
-                    teacherId={r.teacher_id}
-                    scheduledStartAt={r.start_at}
-                  />
-                )}
+                <AdminEditAttendanceForm
+                  eventId={r.event_id}
+                  teacherId={r.teacher_id}
+                  scheduledStartAt={r.start_at}
+                />
               </li>
             ))}
           </ul>

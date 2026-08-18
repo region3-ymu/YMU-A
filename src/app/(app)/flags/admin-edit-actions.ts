@@ -8,10 +8,11 @@ import { createClient } from "@/lib/supabase/server";
 export type AdminAttendanceState = { error?: string; success?: boolean } | undefined;
 
 // Correct an EXISTING session (wrong on_time/late status, or wrong clock-in
-// time). The client must have already re-verified the caller's own password
-// (a fresh supabase.auth.signInWithPassword() call) before invoking this —
-// see admin-edit-attendance-form.tsx. admin_edit_attendance() re-enforces
-// role/region regardless of what the UI allows.
+// time). The form no longer re-verifies the caller's password before calling
+// this (YMU 2026-08-18) — see admin-edit-attendance-form.tsx. Nothing here
+// relied on it: the gate that matters is admin_edit_attendance(), which
+// re-enforces role/region and stamps admin_edited_by from auth.uid()
+// regardless of what the UI allows.
 export async function editAttendanceAction(
   _prev: AdminAttendanceState,
   formData: FormData,
