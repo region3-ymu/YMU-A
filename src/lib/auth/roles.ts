@@ -170,28 +170,37 @@ export function canManageTeam(role: AppRole, isAppAdmin: boolean = false): boole
 }
 
 /** Peers of the CPO for handing out Operations Manager. Mirrors 0069. */
-export function canAssignOperationsManager(role: AppRole): boolean {
-  // Was CPO-only, then CPO-or-administrator. Four identical accounts leave no
-  // reason for one to out-rank another. Mirrors 0072.
-  return seesAllRegions(role);
+/**
+ * May this role hand out or take away a manager role?
+ *
+ * Mirrors current_can_assign_manager_roles() in migration 0074. Deliberately
+ * NOT seesAllRegions(): reading every region and deciding who holds power are
+ * different permissions, and 0072 briefly conflated them — which let an
+ * Operations Manager mint more Operations Managers, the one power here that
+ * compounds. YMU pulled it back to the CPO and the administrator.
+ */
+export function canAssignManagerRoles(role: AppRole): boolean {
+  return role === "cpo" || role === "administrator";
 }
 
 /**
  * The roles a team admin may hand out when creating or editing an account.
  *
  * The CPO role is never in here — 0003 seeds it by hand and promote_user()
- * raises on it. Operations Manager is CPO/administrator only, which is the one
- * rule that differs between the four admin roles.
+ * raises on it. Everything else is a manager role, so an Academic or Operations
+ * Manager gets "teacher" and nothing more: they can add people and maintain the
+ * roster, but not decide who is a manager (0074).
  */
 export function assignableRoles(callerRole: AppRole): AppRole[] {
-  const base: AppRole[] = [
+  if (!canAssignManagerRoles(callerRole)) return ["teacher"];
+  return [
     "teacher",
     "regional_manager",
     "afterschool_manager",
     "academic_manager",
+    "operations_manager",
     "administrator",
   ];
-  return canAssignOperationsManager(callerRole) ? [...base, "operations_manager"] : base;
 }
 
 export function isAppRole(value: unknown): value is AppRole {

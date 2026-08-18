@@ -223,28 +223,34 @@ describe.runIf(configured)("profiles RLS", () => {
     }
   });
 
-  it("an operations manager can promote a teacher to regional manager (with region)", async () => {
-    const { error } = await om.client.rpc("promote_user", {
+  // Was an Operations Manager's to do. 0074 moved appointing ANY manager to the
+  // CPO and the administrator, so this is now the administrator's test — the OM
+  // keeps the roster, not the power to staff it.
+  it("an administrator can promote a teacher to regional manager (with region)", async () => {
+    const administrator = await createUser("Suite Administrator");
+    await setRole(administrator.id, "administrator");
+    const { error } = await administrator.client.rpc("promote_user", {
       target_id: teacherB.id,
       new_role: "regional_manager",
       new_region: "east",
     });
     expect(error).toBeNull();
 
-    const { data } = await om.client
+    const { data } = await administrator.client
       .from("profiles")
       .select("role, region")
       .eq("id", teacherB.id)
       .single();
     expect(data).toMatchObject({ role: "regional_manager", region: "east" });
 
-    // Demote back; region must clear.
-    const { error: demoteError } = await om.client.rpc("promote_user", {
+    // Demote back; region must clear. Also the administrator's to do now —
+    // taking a manager role away is gated exactly like handing one out (0074).
+    const { error: demoteError } = await administrator.client.rpc("promote_user", {
       target_id: teacherB.id,
       new_role: "teacher",
     });
     expect(demoteError).toBeNull();
-    const { data: after } = await om.client
+    const { data: after } = await administrator.client
       .from("profiles")
       .select("role, region")
       .eq("id", teacherB.id)
@@ -253,19 +259,37 @@ describe.runIf(configured)("profiles RLS", () => {
   });
 
   it("promoting to regional manager without a region is rejected", async () => {
-    const { error } = await om.client.rpc("promote_user", {
+    // Via an administrator: an Operations Manager is now refused before the
+    // region check is ever reached (0074), so asking as one would pass this
+    // test for the wrong reason.
+    const administrator = await createUser("Region Check Administrator");
+    await setRole(administrator.id, "administrator");
+    const { error } = await administrator.client.rpc("promote_user", {
       target_id: teacherA.id,
       new_role: "regional_manager",
     });
     expect(error).not.toBeNull();
   });
 
-  it("an operations manager cannot appoint another operations manager (CPO only)", async () => {
+  // 0072 briefly widened this to every org-wide role and 0074 put it back —
+  // wider than it started, in fact: an Operations Manager may now assign no
+  // manager role at all, not just not this one. Reading every region and
+  // deciding who holds power are different permissions (YMU 2026-08-18).
+  it("an operations manager cannot appoint another operations manager", async () => {
     const { error } = await om.client.rpc("promote_user", {
       target_id: teacherA.id,
       new_role: "operations_manager",
     });
     expect(error).not.toBeNull();
+  });
+
+  it("an operations manager cannot appoint a regional manager either", async () => {
+    const { error } = await om.client.rpc("promote_user", {
+      target_id: teacherA.id,
+      new_role: "regional_manager",
+      new_region: "central",
+    });
+    expect(error?.message ?? "").toMatch(/CPO or an administrator/i);
   });
 
   it("nobody can be promoted to cpo through the RPC", async () => {

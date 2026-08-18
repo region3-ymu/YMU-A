@@ -106,15 +106,17 @@ describe.runIf(configured)("team administration", () => {
       expect(await currentRole(target.id)).toBe("afterschool_manager");
     });
 
-    it("lets an academic manager change a role", async () => {
+    // 0074: an Academic Manager runs the roster but does not decide who is a
+    // manager. Assigning 'teacher' is the only role change left to them.
+    it("refuses an academic manager a manager role", async () => {
       await resetTarget();
       const { error } = await academic.client.rpc("promote_user", {
         target_id: target.id,
         new_role: "regional_manager",
         new_region: "south",
       });
-      expect(error).toBeNull();
-      expect(await currentRole(target.id)).toBe("regional_manager");
+      expect(error?.message ?? "").toMatch(/CPO or an administrator/i);
+      expect(await currentRole(target.id)).toBe("teacher");
     });
 
     it("refuses a plain regional manager", async () => {
@@ -128,16 +130,27 @@ describe.runIf(configured)("team administration", () => {
       expect(await currentRole(target.id)).toBe("teacher");
     });
 
-    // The bridge in 0069. Delete this test in the change that removes it.
-    it("still lets the app admin through, via is_app_admin", async () => {
+    // The bridge in 0069 gets the app admin INTO Team, and that is all it does.
+    // Since 0074 it does not carry the manager-role power, so region3@ymu.org
+    // cannot appoint anyone while it is still a regional_manager + is_app_admin
+    // — it needs the administrator role for that. Delete this test with the
+    // bridge.
+    it("lets the app admin into Team but not into appointing managers", async () => {
       await resetTarget();
-      const { error } = await flaggedRm.client.rpc("promote_user", {
+      const { error: teacherChange } = await flaggedRm.client.rpc("promote_user", {
+        target_id: target.id,
+        new_role: "teacher",
+        new_region: null,
+      });
+      expect(teacherChange).toBeNull();
+
+      const { error: managerChange } = await flaggedRm.client.rpc("promote_user", {
         target_id: target.id,
         new_role: "afterschool_manager",
         new_region: null,
       });
-      expect(error).toBeNull();
-      expect(await currentRole(target.id)).toBe("afterschool_manager");
+      expect(managerChange?.message ?? "").toMatch(/CPO or an administrator/i);
+      expect(await currentRole(target.id)).toBe("teacher");
     });
   });
 
@@ -167,17 +180,36 @@ describe.runIf(configured)("team administration", () => {
     // roles identical (YMU 2026-08-18), so there is no longer a reason for one
     // to out-rank another — current_can_assign_operations_manager() is just
     // current_sees_all_regions() now.
-    it("lets any org-wide role hand out Operations Manager", async () => {
-      for (const caller of [administrator, academic]) {
-        await resetTarget();
-        const { error } = await caller.client.rpc("promote_user", {
-          target_id: target.id,
-          new_role: "operations_manager",
-          new_region: null,
-        });
-        expect(error).toBeNull();
-        expect(await currentRole(target.id)).toBe("operations_manager");
-      }
+    it("lets an administrator hand out Operations Manager, and refuses an academic manager", async () => {
+      await resetTarget();
+      const { error: asAdministrator } = await administrator.client.rpc("promote_user", {
+        target_id: target.id,
+        new_role: "operations_manager",
+        new_region: null,
+      });
+      expect(asAdministrator).toBeNull();
+
+      await resetTarget();
+      const { error: asAcademic } = await academic.client.rpc("promote_user", {
+        target_id: target.id,
+        new_role: "operations_manager",
+        new_region: null,
+      });
+      expect(asAcademic?.message ?? "").toMatch(/CPO or an administrator/i);
+    });
+
+    // Taking a role away is gated exactly like giving one out: demoting a
+    // Regional Manager is as consequential as appointing one.
+    it("refuses an academic manager the demotion of an existing manager", async () => {
+      await resetTarget();
+      await admin.from("profiles").update({ role: "afterschool_manager" }).eq("id", target.id);
+      const { error } = await academic.client.rpc("promote_user", {
+        target_id: target.id,
+        new_role: "teacher",
+        new_region: null,
+      });
+      expect(error?.message ?? "").toMatch(/CPO or an administrator/i);
+      expect(await currentRole(target.id)).toBe("afterschool_manager");
     });
 
     it("still refuses a plain regional manager that promotion", async () => {

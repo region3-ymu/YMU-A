@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { requireProfile } from "@/lib/auth/dal";
 import {
   assignableRoles,
-  canAssignOperationsManager,
+  canAssignManagerRoles,
   canManageTeam,
   isAppRole,
   isRegion,
@@ -39,8 +39,11 @@ async function guardArchiveTarget(
     .single();
   if (error || !target) return { error: "Teacher not found." };
   if (target.role === "cpo") return { error: "The CPO account can't be archived." };
-  if (target.role === "operations_manager" && !canAssignOperationsManager(callerRole)) {
-    return { error: "Only the CPO or an administrator can archive an Operations Manager." };
+  // Any manager, not just an Operations Manager: archiving a Regional Manager
+  // takes their region's inbox away, which is as consequential as appointing
+  // them. Same gate as promote_user()'s (0074).
+  if (target.role !== "teacher" && !canAssignManagerRoles(callerRole)) {
+    return { error: "Only the CPO or an administrator can archive a manager." };
   }
   return null;
 }
@@ -166,8 +169,8 @@ export async function promoteUser(
   if (!targetId || !isAppRole(role) || !assignableRoles(caller.role).includes(role)) {
     return { error: "Invalid role selection." };
   }
-  if (role === "operations_manager" && !canAssignOperationsManager(caller.role)) {
-    return { error: "Only the CPO or an administrator can promote to Operations Manager." };
+  if (role !== "teacher" && !canAssignManagerRoles(caller.role)) {
+    return { error: "Only the CPO or an administrator can assign a manager role." };
   }
   const region = role === "regional_manager" ? regionRaw : null;
   if (role === "regional_manager" && !isRegion(region)) {

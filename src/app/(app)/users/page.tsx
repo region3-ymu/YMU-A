@@ -4,7 +4,7 @@ import { requireProfile } from "@/lib/auth/dal";
 import {
   REGION_LABELS,
   assignableRoles as rolesAssignableBy,
-  canAssignOperationsManager,
+  canAssignManagerRoles,
   canManageTeam,
   displayRole,
   type AppRole,
@@ -46,7 +46,10 @@ export default async function UsersPage() {
   const assignableFor = (row: Row): AppRole[] | null => {
     if (row.id === caller.id) return null;
     if (row.role === "cpo") return null;
-    if (row.role === "operations_manager" && !canAssignOperationsManager(caller.role)) return null;
+    // A manager's row is only editable by someone who may change manager roles.
+    // Showing an Academic Manager a dropdown whose only option is "teacher" on a
+    // Regional Manager's row would be offering a demotion the RPC then refuses.
+    if (row.role !== "teacher" && !canAssignManagerRoles(caller.role)) return null;
     return rolesAssignableBy(caller.role);
   };
 
@@ -59,8 +62,9 @@ export default async function UsersPage() {
         Team
       </h1>
       <p className="mt-1 text-sm text-on-surface-variant">
-        Add people, change roles, and assign a Regional Manager&rsquo;s region
-        {canAssignOperationsManager(caller.role) ? ", or appoint Operations Managers" : ""}.
+        {canAssignManagerRoles(caller.role)
+          ? "Add people, appoint managers, and assign a Regional Manager’s region."
+          : "Add teachers and maintain the roster. Only the CPO or an administrator can appoint managers."}
       </p>
       <CreateAccountForm assignableRoles={rolesAssignableBy(caller.role)} />
       {error && (
