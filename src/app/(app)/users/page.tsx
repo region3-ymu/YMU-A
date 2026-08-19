@@ -14,6 +14,7 @@ import { createClient } from "@/lib/supabase/server";
 import ArchiveButton from "./archive-button";
 import ClockInExemptButton from "./clock-in-exempt-button";
 import CreateAccountForm from "./create-account-form";
+import CredentialsButton from "./credentials-button";
 import RowForm from "./row-form";
 
 export const metadata: Metadata = { title: "Team" };
@@ -50,7 +51,22 @@ export default async function UsersPage() {
     // Showing an Academic Manager a dropdown whose only option is "teacher" on a
     // Regional Manager's row would be offering a demotion the RPC then refuses.
     if (row.role !== "teacher" && !canAssignManagerRoles(caller.role)) return null;
-    return rolesAssignableBy(caller.role);
+    const roles = rolesAssignableBy(caller.role);
+    // An Academic Manager may assign only "teacher", so on a teacher's row the
+    // dropdown would hold exactly the role they already have. Nothing to offer.
+    if (roles.length === 1 && roles[0] === row.role) return null;
+    return roles;
+  };
+
+  // Sign-in help follows 0074's ladder, not `assignable`: any team admin can
+  // rescue a teacher, but only the CPO or an administrator can reset a
+  // manager's, because setting a password means being able to sign in as them.
+  // The CPO seat is nobody's to reset from here.
+  const canHelpSignIn = (row: Row): boolean => {
+    if (row.id === caller.id) return false;
+    if (row.role === "cpo") return false;
+    if (row.role !== "teacher" && !canAssignManagerRoles(caller.role)) return false;
+    return true;
   };
 
   return (
@@ -105,23 +121,28 @@ export default async function UsersPage() {
                   {row.phone ? ` · ${row.phone}` : ""}
                 </p>
               </div>
-              {assignable && (
-                <div className="flex flex-wrap items-center gap-2">
-                  <RowForm
-                    targetId={row.id}
-                    currentRole={row.role as AppRole}
-                    currentRegion={row.region as Region | null}
-                    assignableRoles={assignable}
-                  />
-                  {row.role === "teacher" && (
-                    <ClockInExemptButton
+              <div className="flex flex-wrap items-center gap-2">
+                {assignable && (
+                  <>
+                    <RowForm
                       targetId={row.id}
-                      exempt={Boolean(row.clock_in_exempt)}
+                      currentRole={row.role as AppRole}
+                      currentRegion={row.region as Region | null}
+                      assignableRoles={assignable}
                     />
-                  )}
-                  <ArchiveButton targetId={row.id} archived={row.archived_at != null} />
-                </div>
-              )}
+                    {row.role === "teacher" && (
+                      <ClockInExemptButton
+                        targetId={row.id}
+                        exempt={Boolean(row.clock_in_exempt)}
+                      />
+                    )}
+                    <ArchiveButton targetId={row.id} archived={row.archived_at != null} />
+                  </>
+                )}
+                {canHelpSignIn(row) && (
+                  <CredentialsButton targetId={row.id} targetName={row.full_name} />
+                )}
+              </div>
             </li>
           );
         })}

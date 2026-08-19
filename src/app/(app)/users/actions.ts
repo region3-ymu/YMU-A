@@ -11,6 +11,7 @@ import {
   isRegion,
   type AppRole,
 } from "@/lib/auth/roles";
+import { requestOrigin } from "@/lib/http/origin";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -153,6 +154,142 @@ export async function createAccount(
 
   revalidatePath("/users");
   return { success: `${fullName} can now sign in as ${email}.` };
+}
+
+export type CredentialsState =
+  | { error?: string; success?: string; link?: string }
+  | undefined;
+
+/**
+ * May this caller reset that person's sign-in?
+ *
+ * Resetting a password is the most powerful thing /users can do — more than
+ * changing a role, because it means being able to sign in AS somebody. So it
+ * follows 0074's ladder rather than plain team access: without that, an Academic
+ * Manager could set the CPO's password and log in as the CPO, which is the
+ * escalation path 0074 was written to close.
+ *
+ * The CPO seat is excluded outright, whoever is asking. If a CPO loses their
+ * password the Supabase dashboard is the way back in — a deliberate dead end
+ * rather than a button that hands over the top account.
+ */
+async function guardCredentialTarget(
+  caller: { id: string; role: AppRole },
+  targetId: string,
+): Promise<{ error: string } | { role: AppRole }> {
+  if (!targetId) return { error: "Invalid target." };
+  if (targetId === caller.id) {
+    return { error: "Change your own password in Settings." };
+  }
+
+  const supabase = await createClient();
+  const { data: target, error } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", targetId)
+    .single();
+  if (error || !target) return { error: "That person could not be found." };
+
+  const role = target.role as AppRole;
+  if (role === "cpo") {
+    return { error: "The CPO's password can't be reset from here." };
+  }
+  if (role !== "teacher" && !canAssignManagerRoles(caller.role)) {
+    return { error: "Only the CPO or an administrator can reset a manager's password." };
+  }
+  return { role };
+}
+
+async function recordReset(
+  actor: { id: string; role: AppRole },
+  targetId: string,
+  method: "recovery_link" | "temporary_password",
+) {
+  await createAdminClient().from("credential_resets").insert({
+    actor_id: actor.id,
+    target_id: targetId,
+    actor_role: actor.role,
+    method,
+  });
+}
+
+/**
+ * Produce a one-use recovery link for somebody, and hand it back to be copied.
+ *
+ * generateLink() rather than resetPasswordForEmail() because the mail does not
+ * arrive: ymu.org is still unverified in Resend (see DECISIONS.md), so Supabase
+ * falls back to its own sender, which is rate-limited to a couple of messages an
+ * hour and is very likely why James Perez has been stuck. Generating the link
+ * sends nothing — it comes back here, the admin passes it on by whatever channel
+ * actually reaches the person, and the link itself is what proves identity.
+ *
+ * Preferred over setting a password because nobody else ever learns it: the
+ * target picks their own on the other end.
+ */
+export async function sendPasswordResetLink(
+  _prev: CredentialsState,
+  formData: FormData,
+): Promise<CredentialsState> {
+  const caller = await requireTeamAdmin();
+  const targetId = String(formData.get("target_id") ?? "");
+
+  const guard = await guardCredentialTarget(caller, targetId);
+  if ("error" in guard) return guard;
+
+  const admin = createAdminClient();
+  const { data: target } = await admin.auth.admin.getUserById(targetId);
+  const email = target?.user?.email;
+  if (!email) return { error: "That account has no email address." };
+
+  const { data, error } = await admin.auth.admin.generateLink({
+    type: "recovery",
+    email,
+    options: { redirectTo: `${await requestOrigin()}/auth/confirm?next=/update-password` },
+  });
+  if (error || !data?.properties?.action_link) {
+    return { error: error?.message ?? "Could not generate a recovery link." };
+  }
+
+  await recordReset(caller, targetId, "recovery_link");
+  return {
+    success: `Recovery link for ${email} — send it to them, it can only be used once.`,
+    link: data.properties.action_link,
+  };
+}
+
+/**
+ * The fallback YMU asked for: set a temporary password outright.
+ *
+ * Second choice, not first. It means an admin knows somebody else's password
+ * until they change it, which the recovery link avoids entirely — so the UI
+ * leads with the link and keeps this behind it.
+ */
+export async function setTemporaryPassword(
+  _prev: CredentialsState,
+  formData: FormData,
+): Promise<CredentialsState> {
+  const caller = await requireTeamAdmin();
+  const targetId = String(formData.get("target_id") ?? "");
+  const password = String(formData.get("password") ?? "");
+
+  const guard = await guardCredentialTarget(caller, targetId);
+  if ("error" in guard) return guard;
+  if (password.length < MIN_TEMP_PASSWORD) {
+    return { error: `The password must be at least ${MIN_TEMP_PASSWORD} characters.` };
+  }
+
+  const admin = createAdminClient();
+  const { error } = await admin.auth.admin.updateUserById(targetId, {
+    password,
+    // Confirms the address as a side effect if it never was. An account that
+    // cannot sign in because it was never confirmed is the same problem from the
+    // person's side, and this is the screen for fixing it.
+    email_confirm: true,
+  });
+  if (error) return { error: error.message };
+
+  await recordReset(caller, targetId, "temporary_password");
+  return { success: "Password set. Ask them to change it in Settings." };
 }
 
 export async function promoteUser(

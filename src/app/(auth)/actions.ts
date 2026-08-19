@@ -1,7 +1,7 @@
 "use server";
 
-import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { requestOrigin } from "@/lib/http/origin";
 import { createClient } from "@/lib/supabase/server";
 
 export type AuthFormState =
@@ -11,11 +11,6 @@ export type AuthFormState =
       success?: string;
     }
   | undefined;
-
-async function requestOrigin(): Promise<string> {
-  const origin = (await headers()).get("origin");
-  return origin ?? "http://localhost:3000";
-}
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
