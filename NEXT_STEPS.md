@@ -1,5 +1,79 @@
 # NEXT_STEPS — YMU-A
 
+## 🟡 NOT APPLIED YET — migrations 0076–0080 (2026-08-21)
+
+Five migrations are written, committed and **not pushed**. Everything below is
+inert until `supabase db push` runs from a linked machine.
+
+```bash
+supabase db push
+```
+
+What they do, shortest first:
+
+- **0076** — late-clock-in resolutions become a reason CODE plus optional prose,
+  instead of free text. Also fixes `flags/actions.ts` dropping `p_notes`
+  entirely, which is why 44 of the first 93 resolved flags have no reason on
+  record. Also widens `admin_edit_attendance` / `admin_create_attendance` to the
+  same six roles the UI already lets through — an `academic_manager` or
+  `administrator` used to see the form and get a raw SQL exception on submit.
+- **0077** — back-to-back carryover. `auto_clock_in_rules` + 
+  `auto_clock_in_back_to_back()`, called from `late-detect` BEFORE
+  `detect_late_clockins()`. Seeds exactly two rules: Kevin Bodniza at Horace
+  Mann and Jose Heredia at South Dade Middle. The other 21 detected runs are
+  visible with a toggle at the foot of /schedules and stay OFF until YMU says
+  otherwise. Adds `'carryover'` to `attendance_sessions.origin`.
+- **0078** — spreadsheet gaps: the Flags tab's reason/lateness/auto-resolver
+  columns, the Attendance tab's manager-edit trail and afterschool flag, and
+  three new tabs. Moves the Attendance year window out of `sheet-tabs.ts` and
+  into `school_years` — hardcoded, it would have emptied the tab on 2027-07-01.
+- **0079** — `substitutions`. /substitutes can now record who covered a class
+  and why the assigned teacher was away.
+- **0080** — the missed-clock-in follow-ups: outcome, absence reason, notice
+  channel, excused, and a LINK to the substitution.
+
+### After the push, one command, in this order
+
+```bash
+npm run sync:sheet:full && npm run sync:sheet
+```
+
+The tab sync rewrites Flags and Attendance with their new columns and creates
+Substitutions, Clock-in attempts, GPS checks and Ticket messages. **The
+`*_summary` tabs reference columns positionally**, so check those pivots still
+resolve afterwards — Flags gained 10 columns and Attendance gained 4.
+
+### The Google Calendar write is built and switched OFF
+
+Confirming a substitute records it in the app and tells the manager the Google
+event still needs editing by hand. That is deliberate, and it is not a code
+problem:
+
+1. `src/lib/google/calendar.ts` requests `calendar.readonly`. The write path
+   uses `CALENDAR_WRITE_SCOPE` (`calendar.events`), which is already there.
+2. **The service account needs "Make changes to events" on all ~109 school
+   calendars.** It cannot grant itself that — a service account is not an
+   owner, so `acl.insert` is refused. Every calendar's owner has to re-share.
+   This is the actual blocker and it is a Google Workspace job.
+
+Once that access exists:
+
+```bash
+# in Vercel, then redeploy
+GOOGLE_CALENDAR_WRITE_ENABLED=true
+```
+
+`calendar-sync` already suppresses the `teacher_changed` notification when a
+confirmed substitution explains the swap, so turning this on will not email a
+class about a change the manager just arranged.
+
+Why this matters more than it sounds: `calendar_events.teacher_ids` comes from
+the Google event's attendees, so **a substitute who is not on the event cannot
+clock in.** Until the write is on, editing the attendee by hand is not optional
+bookkeeping — it is what makes the substitution work.
+
+---
+
 ## 🟡 ONE THING LEFT, AND IT IS YMU'S TO DO — Daniel Soto's 16 invites
 
 A teacher is attached to a class by matching the Google Calendar invite's
