@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth/dal";
 import { MANAGER_ROLES } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/server";
+import { describeReasonGap } from "@/lib/attendance/flag-reasons";
 
 export type AdminAttendanceState = { error?: string; success?: boolean } | undefined;
 
@@ -23,8 +24,12 @@ export async function editAttendanceAction(
   const status = String(formData.get("clock_in_status") ?? "") || null;
   const clockInAtRaw = String(formData.get("clock_in_at") ?? "");
   const reason = String(formData.get("reason") ?? "").trim();
+  const reasonNotes = String(formData.get("reason_notes") ?? "").trim();
   if (!sessionId) return { error: "No session selected." };
-  if (!reason) return { error: "A reason is required." };
+  // Shape only. admin_edit_attendance() re-runs the same two checks via
+  // flag_resolution_note(), which is what makes them true for every caller.
+  const gap = describeReasonGap(reason, reasonNotes);
+  if (gap) return { error: gap };
 
   const supabase = await createClient();
   const { error } = await supabase.rpc("admin_edit_attendance", {
@@ -32,6 +37,7 @@ export async function editAttendanceAction(
     p_clock_in_status: status,
     p_clock_in_at: clockInAtRaw ? new Date(clockInAtRaw).toISOString() : null,
     p_reason: reason,
+    p_reason_notes: reasonNotes || null,
   });
   if (error) return { error: error.message };
 
@@ -54,10 +60,12 @@ export async function createAttendanceAction(
   const status = String(formData.get("clock_in_status") ?? "");
   const clockInAtRaw = String(formData.get("clock_in_at") ?? "");
   const reason = String(formData.get("reason") ?? "").trim();
+  const reasonNotes = String(formData.get("reason_notes") ?? "").trim();
   if (!eventId || !teacherId) return { error: "Missing class or teacher." };
   if (!clockInAtRaw) return { error: "A clock-in time is required." };
   if (!status) return { error: "A status is required." };
-  if (!reason) return { error: "A reason is required." };
+  const gap = describeReasonGap(reason, reasonNotes);
+  if (gap) return { error: gap };
 
   const supabase = await createClient();
   const { error } = await supabase.rpc("admin_create_attendance", {
@@ -66,6 +74,7 @@ export async function createAttendanceAction(
     p_clock_in_at: new Date(clockInAtRaw).toISOString(),
     p_clock_in_status: status,
     p_reason: reason,
+    p_reason_notes: reasonNotes || null,
   });
   if (error) return { error: error.message };
 

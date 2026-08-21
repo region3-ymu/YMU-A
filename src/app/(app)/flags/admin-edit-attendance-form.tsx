@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { editAttendanceAction, createAttendanceAction } from "./admin-edit-actions";
+import ReasonPicker from "./reason-picker";
 
 // Either edit an existing session (sessionId set) or record one that never
 // happened (eventId/teacherId set, no session exists yet).
@@ -97,17 +98,9 @@ export default function AdminEditAttendanceForm({
       </label>
 
       {/* The one remaining gate, and the only one that ever produced a record
-          worth reading later: 0023 raises if it arrives blank. */}
-      <label className="text-xs font-medium text-on-surface-variant">
-        Reason (required)
-        <textarea
-          name="reason"
-          required
-          rows={2}
-          placeholder="e.g. confirmed on the paper sign-in sheet"
-          className="mt-1 w-full rounded-lg bg-surface-container px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary"
-        />
-      </label>
+          worth reading later: 0023 raises if it arrives blank, and since 0076
+          it also raises if the reason is not one of the eleven on the list. */}
+      <ReasonPicker notesPlaceholder="e.g. confirmed on the paper sign-in sheet" />
 
       <div className="mt-1 flex items-center gap-2">
         <button

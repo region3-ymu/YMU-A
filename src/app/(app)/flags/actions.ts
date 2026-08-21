@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth/dal";
 import { MANAGER_ROLES } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/server";
+import { describeReasonGap } from "@/lib/attendance/flag-reasons";
 
 export type ResolveFlagState = { error?: string } | undefined;
 export type ForceCloseState = { error?: string } | undefined;
@@ -16,10 +17,24 @@ export async function resolveFlag(
   await requireRole(...MANAGER_ROLES);
 
   const flagId = String(formData.get("flag_id") ?? "");
+  const reason = String(formData.get("reason") ?? "").trim();
+  const notes = String(formData.get("reason_notes") ?? "").trim();
   if (!flagId) return { error: "No flag selected." };
 
+  // This is the argument that used to go missing. resolve_flag has taken
+  // p_notes since 0012 and this action never passed it, so every "Mark
+  // resolved" wrote resolution_notes: null — 44 of the first 93 resolved flags
+  // have no reason on record because of these two lines, not because nobody
+  // typed one.
+  const gap = describeReasonGap(reason, notes);
+  if (gap) return { error: gap };
+
   const supabase = await createClient();
-  const { error } = await supabase.rpc("resolve_flag", { p_flag_id: flagId });
+  const { error } = await supabase.rpc("resolve_flag", {
+    p_flag_id: flagId,
+    p_reason: reason,
+    p_notes: notes || null,
+  });
   if (error) return { error: error.message };
 
   revalidatePath("/flags");
