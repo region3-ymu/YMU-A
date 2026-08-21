@@ -1,172 +1,71 @@
 # NEXT_STEPS — YMU-A
 
-## 🟡 NOT APPLIED YET — migrations 0076–0080 (2026-08-21)
+## 🔴 ONE COMMAND LEFT — redeploy late-detect (2026-08-21)
 
-Eight migrations are written, committed and **not pushed**. Everything below is
-inert until they are applied. There is a single pasteable file in
-`~/Downloads/YMU-A — migrations 0076-0083.sql`, wrapped in one transaction, or:
-
-```bash
-supabase db push
-```
-
-What they do, shortest first:
-
-- **0076** — late-clock-in resolutions become a reason CODE plus optional prose,
-  instead of free text. Also fixes `flags/actions.ts` dropping `p_notes`
-  entirely, which is why 44 of the first 93 resolved flags have no reason on
-  record. Also widens `admin_edit_attendance` / `admin_create_attendance` to the
-  same six roles the UI already lets through — an `academic_manager` or
-  `administrator` used to see the form and get a raw SQL exception on submit.
-- **0077** — back-to-back carryover. `auto_clock_in_rules` + 
-  `auto_clock_in_back_to_back()`, called from `late-detect` BEFORE
-  `detect_late_clockins()`. Seeds exactly two rules: Kevin Bodniza at Horace
-  Mann and Jose Heredia at South Dade Middle. The other 21 detected runs are
-  visible with a toggle at the foot of /schedules and stay OFF until YMU says
-  otherwise. Adds `'carryover'` to `attendance_sessions.origin`.
-- **0078** — spreadsheet gaps: the Flags tab's reason/lateness/auto-resolver
-  columns, the Attendance tab's manager-edit trail and afterschool flag, and
-  three new tabs. Moves the Attendance year window out of `sheet-tabs.ts` and
-  into `school_years` — hardcoded, it would have emptied the tab on 2027-07-01.
-- **0079** — `substitutions`. /substitutes can now record who covered a class
-  and why the assigned teacher was away.
-- **0080** — the missed-clock-in follow-ups: outcome, absence reason, notice
-  channel, excused, and a LINK to the substitution.
-- **0081** — Tutoring owes no feedback form. A patterns table plus a BEFORE
-  INSERT trigger, because five different functions create an attendance
-  session and a rule in one of five call sites will be wrong within a month.
-- **0082** — removes the mid-class GPS checks entirely. The clock-in is
-  untouched. See below.
-- **0083** — **the speed one.** Every RLS policy's identity lookups now run
-  once per query instead of once per row. See below.
-
-### After the push, one command, in this order
+Migrations 0076–0083 are **applied**, the code is **pushed** (origin/main = eb8343e),
+and the spreadsheet is **synced**. One thing is not done:
 
 ```bash
-npm run sync:sheet:full && npm run sync:sheet
+supabase functions deploy late-detect
 ```
 
-The tab sync rewrites Flags and Attendance with their new columns and creates
-Substitutions, Clock-in attempts, GPS checks and Ticket messages. **The
-`*_summary` tabs reference columns positionally**, so check those pivots still
-resolve afterwards — Flags gained 10 columns and Attendance gained 4.
+Until that runs, `auto_clock_in_back_to_back()` is never called. Verified: it
+does not appear in pg_stat_statements as an RPC, only as the DDL that created
+it.
 
-### Why the app was slow, and what 0083 does about it
+**Why this matters more than it sounds.** The suppression inside
+`detect_late_clockins()` is a database function, so it IS live — no flag is
+raised any more for the six carryover runs. But the *session* is only created
+by the sweep in the edge function. So right now a covered class produces
+**neither a flag nor an attendance record**, which reads as a missed class with
+nothing chasing it. That is worse than the noisy flags it replaced.
 
-Measured from `pg_stat_statements` on production, not guessed. The /schedules
-`calendar_events` query: **6,396 calls, 158 ms mean, 5.4 s worst, and 17,023
-shared blocks per call** — 136 MB of buffer reads to return a fortnight of
-classes from a 57 MB table. A second `calendar_events` query averaged 358 ms at
-23,985 blocks.
+Already visible today: Deion Hampton's 10:35 Beginning Band 2 at Carol City has
+no session and no new flag. The sweep has a 30-minute lookback and will not
+backfill it — that one needs recording by hand on /flags.
 
-The same query with RLS out of the way: **3.7 ms, 633 blocks, index scan.**
+## ✅ Verified after the migration (2026-08-21)
 
-It is not the policy's logic, it is when the policy runs. `calendar_events_select`
-calls `auth.uid()`, `current_sees_all_regions()`, `current_app_role()` and
-`current_app_region()` bare, so each lands in the row filter and runs PER ROW —
-and each does its own `select from profiles`. A Regional Manager opening two
-weeks of classes pays thousands of profile lookups to be told the same answer
-every time.
+Database:
+- All six sheet exporters carry their new shapes: flags_for_sheet 23 columns,
+  attendance_for_sheet 24, substitutions_for_sheet 20, clock_in_attempts 17,
+  ticket_messages 13, back_to_back_runs 15.
+- 16 new/changed RPCs, exactly one signature each — no ambiguous overloads, and
+  the old `resolve_flag(uuid, text)` is gone.
+- `gps_checks` and every function returning its row type are gone.
+  `clock_in()` keeps its geofence and same-day rule and creates no checks.
+- 6 carryover rules active, Reinaldo Velez's the only one scoped to a pair of
+  class titles (tutoring → afterschool).
+- 28 policies now resolve identity once per query. 0 still bare, 0 nested.
+- 1 feedback-exempt pattern (tutoring); the 4 existing Tutoring sessions are
+  settled and their real feedback was left alone.
+- `check-closeout-1min` unscheduled — last invocation 23:25, all 200s.
+- 9 crons running, 0 failures in 90 minutes. Zero Postgres ERROR/FATAL in 3.5h.
+- `auto_clock_in_back_to_back()` called by hand: 0 sessions, which is correct at
+  19:40 ET on a Friday. It executes.
+- No new advisories on the three new tables. The 4 that exist
+  (`calendar_sync_lock` policy-less, `haversine_meters` and
+  `normalize_location` search_path, `pg_net` in public) all predate this work.
 
-Wrapping each in a scalar subquery moves it into an InitPlan, evaluated once per
-statement. Measured on the same query in the same session: **52.6 ms bare vs
-25.7 ms wrapped**, and that is as `service_role`, where
-`current_sees_all_regions()` returns true immediately and short-circuits the
-rest. For a Regional Manager, where every branch is really evaluated, the gap is
-those 17,000 blocks.
+Spreadsheet — synced and read back, headers compared column by column:
+- 10 tabs, 8,730 rows. Substitutions, Clock-in attempts and Ticket messages
+  created. No GPS checks tab.
+- Every tab's headers match its column list exactly, so nothing landed under
+  the wrong heading.
+- The columns that were broken now carry data: "Minutes late" and "Metres from
+  school" are populated (the latter was empty in all 120 rows before).
+- "Reason" is empty on older rows, correctly — they were resolved before the
+  codes existed. New resolutions fill it.
 
-0083 rewrites all 36 affected expressions across 28 policies mechanically, then
-asserts three invariants or rolls back: no policy dropped, no policy changed in
-anything but its parenthesisation, and no bare identity call left. The
-transformation was dry-run read-only against all 35 live policies first — 0
-invariant violations, 0 broken schema prefixes, 0 double wraps.
+App: `tsc` clean, lint 0 errors, 355 unit tests pass. Production answers /login
+200, guarded routes 307, secret-guarded APIs 401.
 
-Shipped alongside it, and this is the part users will actually feel: the app had
-**no `loading.tsx` and no `Suspense` anywhere**. Every screen is server-rendered
-on demand and queries the database, so a tap on the bottom bar changed nothing
-on screen until the whole response came back — which is why people tapped three
-times. Worse, for a dynamic route `<Link>`'s default prefetch reaches only as
-far as the nearest loading boundary, so with none there was nothing to prefetch
-at all.
-
-There are now eight `loading.tsx` files over a shared `PageSkeleton`, plus a
-pending ring on the tapped bottom-nav tab via `useLinkStatus`. That covers both
-halves: the tab responds to the touch, and the page area shows its shape
-immediately.
-
-**Still open, not fixed here** (both are DB CPU, not page latency, but they tax
-everything else on a small instance):
-
-- `enqueue_reminder_notifications()` — 44,548 calls at **112.6 ms mean**, 5,016
-  seconds of total DB time. Runs every minute.
-- `detect_late_clockins()` — 45,164 calls at **95.5 ms mean**, 4,313 seconds.
-  Also every minute.
-
-So roughly 200 ms of database work every minute, forever, before any user asks
-for anything. Worth a look next.
-
-- `calendar_events.raw` is 24 MB of the table's 57 MB and is read by exactly one
-  page (`/schedules/[id]`). Moving it to a side table would shrink every other
-  query's working set.
-
-### GPS checks removed (0082)
-
-649 of 654 were `unverifiable` with no position ever recorded; 4 succeeded, all
-sampled 18–33 seconds after coming due. The sampler could only take a fix while
-the app was **foregrounded**, and no web API changes that — a service worker has
-no `navigator.geolocation`, and Periodic Background Sync is Chromium-only and
-grants no location. Nobody holds a phone open for eighty minutes while teaching.
-
-YMU's call (2026-08-21): remove it. A table that says "unverifiable" 649 times
-is worse than no table, because it looks like evidence.
-
-**The clock-in is deliberately untouched.** Every gate stays: geofence, archived
-check, overdue-feedback block, idempotent `client_key`, offline clamp, same-day
-rule, auto-close of the previous open session. A teacher can still clock in at
-any point during their class — that is the same-day rule with no upper bound,
-and 0082 changes nothing about it. The one line removed from `clock_in()` is the
-insert that created the three check rows.
-
-Gone with it: `gps_checks`, `record_gps_check`, `record_gps_check_offline`,
-`close_out_overdue_gps_checks`, `flags.gps_check_id`, the `check-closeout` Edge
-Function and its cron (unscheduled by the migration), the client sampler, the
-offline queue's `gps_check` kind, and the planned GPS-checks spreadsheet tab.
-
-If the "did they stay" question comes back, the buildable answers are a
-mid-class push the teacher taps (the push infrastructure already exists), or a
-GPS clock-OUT at the end of class — two verified points instead of five
-unverifiable ones.
-
-### The Google Calendar write is built and switched OFF
-
-Confirming a substitute records it in the app and tells the manager the Google
-event still needs editing by hand. That is deliberate, and it is not a code
-problem:
-
-1. `src/lib/google/calendar.ts` requests `calendar.readonly`. The write path
-   uses `CALENDAR_WRITE_SCOPE` (`calendar.events`), which is already there.
-2. **The service account needs "Make changes to events" on all ~109 school
-   calendars.** It cannot grant itself that — a service account is not an
-   owner, so `acl.insert` is refused. Every calendar's owner has to re-share.
-   This is the actual blocker and it is a Google Workspace job.
-
-Once that access exists:
-
-```bash
-# in Vercel, then redeploy
-GOOGLE_CALENDAR_WRITE_ENABLED=true
-```
-
-`calendar-sync` already suppresses the `teacher_changed` notification when a
-confirmed substitution explains the swap, so turning this on will not email a
-class about a change the manager just arranged.
-
-Why this matters more than it sounds: `calendar_events.teacher_ids` comes from
-the Google event's attendees, so **a substitute who is not on the event cannot
-clock in.** Until the write is on, editing the attendee by hand is not optional
-bookkeeping — it is what makes the substitution work.
-
----
+**Not verified, and it needs a signed-in session:** whether the Vercel build
+finished, and the new screens themselves — the reason dropdown, the
+missed-clock-in outcome fields, /substitutes confirm, and the back-to-back
+toggle at the foot of /schedules. If the deploy is stale, resolving a flag fails
+immediately: the deployed code would call `resolve_flag` with two arguments and
+that signature no longer exists.
 
 ## 🟡 ONE THING LEFT, AND IT IS YMU'S TO DO — Daniel Soto's 16 invites
 
