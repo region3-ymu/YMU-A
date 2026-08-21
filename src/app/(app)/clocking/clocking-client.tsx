@@ -206,8 +206,7 @@ export default function ClockingClient({
         <p className="font-semibold">Clocked in — saved offline</p>
         <p className="mt-1 text-sm opacity-90">
           You&apos;re clocked in to <span className="font-medium">{className}</span>. This is saved on your device
-          and will sync automatically the moment you&apos;re back online — no need to do anything. Your GPS checks
-          will be captured on this device in the meantime.
+          and will sync automatically the moment you&apos;re back online — no need to do anything.
         </p>
       </div>
     );

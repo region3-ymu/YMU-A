@@ -28,11 +28,15 @@
 --   4. Attendance has no afterschool dimension, though is_afterschool drives a
 --      whole module and a dedicated manager role.
 --
---   5. gps_checks (636 rows), clock_in_attempts (224) and ticket_messages (37)
---      have no representation anywhere. The first two are the only record of
---      whether a teacher stayed and whether the app ever refused them; the
---      third is the entire teacher-to-manager conversation, of which the
---      Tickets tab keeps only the SLA arithmetic.
+--   5. clock_in_attempts (224 rows) and ticket_messages (37) have no
+--      representation anywhere. The first is the only record of the app ever
+--      refusing a teacher; the second is the entire teacher-to-manager
+--      conversation, of which the Tickets tab keeps only the SLA arithmetic.
+--
+--      gps_checks was going to get a tab too. It does not, because 0082
+--      removes the feature: 649 of its 654 rows say 'unverifiable' with no
+--      position recorded, and a tab full of that reads as evidence of absence
+--      rather than absence of evidence.
 --
 -- Not touched here, at YMU's request: Attendance."Hours" is still the
 -- SCHEDULED class length, not clock-out minus clock-in, so a teacher who
@@ -365,82 +369,7 @@ revoke execute on function public.clock_in_attempts_for_sheet(timestamptz, times
 grant execute on function public.clock_in_attempts_for_sheet(timestamptz, timestamptz) to service_role;
 
 -- ---------------------------------------------------------------------------
--- 4. GPS checks — whether they stayed
--- ---------------------------------------------------------------------------
--- 5 checks per session at +5/10/15/20/25 minutes (0026), or 3 at +15/30/45
--- (0044). A session with clean check-ins is the strongest evidence the app
--- holds that a class actually happened, and it has never left the database.
-
-create or replace function public.gps_checks_for_sheet(
-  p_from timestamptz default null,
-  p_to   timestamptz default null
-)
-returns table (
-  class_date date,
-  class_time text,
-  class_title text,
-  teacher_name text,
-  school_name text,
-  region text,
-  due_at timestamptz,
-  minutes_after_clock_in integer,
-  status text,
-  sampled_at timestamptz,
-  distance_m integer,
-  accuracy_m integer,
-  inside_geofence text,
-  origin text,
-  session_id uuid
-)
-language sql
-stable
-security definer
-set search_path = ''
-as $$
-  select
-    (ce.start_at at time zone 'America/New_York')::date,
-    to_char(ce.start_at at time zone 'America/New_York', 'HH12:MI AM'),
-    ce.summary,
-    p.full_name,
-    s.name,
-    s.region::text,
-    g.due_at,
-    case
-      when asn.clock_in_at is not null
-      then (extract(epoch from (g.due_at - asn.clock_in_at)) / 60)::integer
-    end,
-    g.status,
-    g.sampled_at,
-    g.distance_m::integer,
-    g.accuracy_m::integer,
-    -- The verdict, not just the number. s.geofence_radius_m is per-school, so
-    -- 210 m is inside the fence at one site and outside it at another, and a
-    -- reader of the tab has no way to know which.
-    case
-      when g.distance_m is null then null
-      when g.distance_m <= s.geofence_radius_m then 'Yes'
-      else 'No'
-    end,
-    g.origin,
-    g.session_id
-  from public.gps_checks g
-  left join public.attendance_sessions asn on asn.id = g.session_id
-  left join public.calendar_events ce on ce.id = asn.event_id
-  left join public.profiles p on p.id = g.teacher_id
-  left join public.schools s on s.id = g.school_id
-  where (p_from is null or g.due_at >= p_from)
-    and (p_to   is null or g.due_at <  p_to)
-  order by g.due_at desc;
-$$;
-
-comment on function public.gps_checks_for_sheet(timestamptz, timestamptz) is
-  'The mid-class presence checks behind each attendance session, with the inside/outside verdict resolved against that school''s own geofence radius.';
-
-revoke execute on function public.gps_checks_for_sheet(timestamptz, timestamptz) from public, anon, authenticated;
-grant execute on function public.gps_checks_for_sheet(timestamptz, timestamptz) to service_role;
-
--- ---------------------------------------------------------------------------
--- 5. Ticket messages — what was actually said
+-- 4. Ticket messages — what was actually said
 -- ---------------------------------------------------------------------------
 -- The Tickets tab has first-response minutes, resolution minutes and paused
 -- minutes, and not one word of the conversation those minutes measure.

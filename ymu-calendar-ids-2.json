@@ -1,0 +1,446 @@
+[
+  {
+    "id": "schedule@ymu.org",
+    "name": "schedule@ymu.org"
+  },
+  {
+    "id": "c_e7d540cd382fd9524a77ca73b63e7dfc5bbf7f3241784357db2fed52b771aa22@group.calendar.google.com",
+    "name": "Alonzo Mourning High School"
+  },
+  {
+    "id": "c_4efd46c106cd5ef8ac27e5295aa4236fb59e2c57ada3d639ba29a054ca5b2f37@group.calendar.google.com",
+    "name": "Arcola Lake Elementary School"
+  },
+  {
+    "id": "c_dc0417337bb9cf3029e62cf7e48943960d162f5bf470260398fc0206de08ad34@group.calendar.google.com",
+    "name": "Andover Middle School"
+  },
+  {
+    "id": "c_4947621a79b82773c841221bd29532c38d1cdd16837576697e39c21a987a1781@group.calendar.google.com",
+    "name": "Arthur and Polly Mays Conservatory"
+  },
+  {
+    "id": "c_243c77394a0942e80be0368c833db6fcbeef88294aa5f6ddef902a8b0dd978d0@group.calendar.google.com",
+    "name": "Avocado Elementary"
+  },
+  {
+    "id": "c_ab04c46a088f6ea67eccb71116f127ae1bb4627afa6fcad953ea03e1e534953e@group.calendar.google.com",
+    "name": "Barbara Hawkins Elementary"
+  },
+  {
+    "id": "c_96c5e66a2aeb93f9c57ee13a3eba934b3ceab6c18e5eacefa1d30842ebca2b2a@group.calendar.google.com",
+    "name": "Beacon College Prep"
+  },
+  {
+    "id": "c_305b79607b96a7462c28304831bf79ca39d1c910e40be8c8545e1ef07ac70571@group.calendar.google.com",
+    "name": "Benjamin Franklin K-8 Center"
+  },
+  {
+    "id": "c_b855f1b09c47c26348bf801801476245c47eb8cb4ca1ad60d36c21ecc48a8293@group.calendar.google.com",
+    "name": "Bel-Aire Elementary School"
+  },
+  {
+    "id": "c_b7f8a2a0858f83156b677b4ab8b02d6679f26363c258dea7b0bcf48b1d2c773e@group.calendar.google.com",
+    "name": "Bent Tree Elementary School"
+  },
+  {
+    "id": "c_9c8b5e4d1b34ea7c3775c51bb41843a0531d96d9bb7688d5f60d379783ded7d2@group.calendar.google.com",
+    "name": "Bowman Ashe K-8"
+  },
+  {
+    "id": "c_e6583ef14458e68fd1bf24754f7348d5578cdd6fe61dfab5e97f1e026bedbdfe@group.calendar.google.com",
+    "name": "Brentwood Elementary"
+  },
+  {
+    "id": "c_6e964edc32afc1263a743beed7733497316633e948f8cffa88ffff1aed83342f@group.calendar.google.com",
+    "name": "Broadmoor Elementary School"
+  },
+  {
+    "id": "c_58c75b8203c38d32edab32e0150d0473ab94dd2e3d245eea5572790cffc3f37f@group.calendar.google.com",
+    "name": "Brownsville Middle School"
+  },
+  {
+    "id": "c_571cae641da6fe6028a56922829ac0441d3531a47678e17f2a873ddc4b7de9f5@group.calendar.google.com",
+    "name": "Carol City Elementary"
+  },
+  {
+    "id": "c_e59b15d08b57c665fcf215e0b66d78ab60f7f00a84ef95f6cf37e5602579bf20@group.calendar.google.com",
+    "name": "Carol City Middle School"
+  },
+  {
+    "id": "c_61e6203589bc084186f6301be09919c8e3b4ff831165e0774d087d01e97837c4@group.calendar.google.com",
+    "name": "Carrie P. Meek/Westview K-8"
+  },
+  {
+    "id": "c_9255818aea427e06cb4ae9e600606aab9e0f4b6cb9792c50fb9090d4450cffcd@group.calendar.google.com",
+    "name": "Cutler Bay Middle School"
+  },
+  {
+    "id": "c_5408b0254243c95b2e6f86681118efc69f4df92a5bd8fad27023bf5021ffa401@group.calendar.google.com",
+    "name": "Dante B. Fascell Elementary School"
+  },
+  {
+    "id": "c_f7663e34f8efa9ed826b966a62b9001d0f8731cd7943295f578f7109eb0912ba@group.calendar.google.com",
+    "name": "Dr Rolando Espinosa K-8"
+  },
+  {
+    "id": "c_7d0207e325d931587ed25c185b75429a64571db63799aff17c04a8c907858e45@group.calendar.google.com",
+    "name": "Dr. Manuel C. Barreiro Elementary School"
+  },
+  {
+    "id": "c_6da4718d75c1afbfa4cb558b8dcf4f733fb4d53dd85defb761612576306b41fd@group.calendar.google.com",
+    "name": "Dr. William Chapman Elementary"
+  },
+  {
+    "id": "c_1844bdb81b6a865eecb3093de4a8dd173e4a8806312f7064fc0db5b42e5a22fa@group.calendar.google.com",
+    "name": "Earlington Heights Elementary School"
+  },
+  {
+    "id": "c_adbb672deb2c2b064ecb5d62732388e4d2a6f78c678f3e42fa1313eaa5f5b9fe@group.calendar.google.com",
+    "name": "Ethel Koger Beckham Elementary School"
+  },
+  {
+    "id": "c_26620b07e6edda146ac3658065b45e7509598c23fa4bcf18007e6e8524613b76@group.calendar.google.com",
+    "name": "Fienberg Fisher K-8"
+  },
+  {
+    "id": "c_1f1f2c403cb3825919b3b15c2a029ab7edc345c9fc7ee9baf6d830f4f708aa22@group.calendar.google.com",
+    "name": "Florida City Elementary"
+  },
+  {
+    "id": "c_0b51fdf233b095301df61a6f35158ed1e7a01c4be4f75538d3f1d4186c6318d4@group.calendar.google.com",
+    "name": "G. Holmes Braddock Senior High School"
+  },
+  {
+    "id": "c_cbe59817b8f5e6537d19d682155ddcda6ed26faf715ad5115f0f22c83e5bdc9d@group.calendar.google.com",
+    "name": "Gateway Environmental K-8"
+  },
+  {
+    "id": "c_1007e23957d4130e3ebe7a0653639718ea036f199a0020067ee9233240066c0b@group.calendar.google.com",
+    "name": "Greenglade Elementary School"
+  },
+  {
+    "id": "c_6d55ddb4622fb1fd86a38808cab7e66695611da8c40f9f98cc7925fa2d5302c4@group.calendar.google.com",
+    "name": "Hebrew Academy (RASG)"
+  },
+  {
+    "id": "c_d69dfe9e65c51868ee037b6d5e5b9cf3c538f194795b9cb7619eef4d56e4511e@group.calendar.google.com",
+    "name": "Hialeah Miami Lakes Senior High"
+  },
+  {
+    "id": "c_037cf7ce232c01466a2a88247ee770457da6bdcd0ec9d84ee299ebc43f832e1f@group.calendar.google.com",
+    "name": "Hialeah Middle"
+  },
+  {
+    "id": "c_02730402ddfa4c2ad102067faa0df54e4dee1d22edda441eceb957dba9243bf4@group.calendar.google.com",
+    "name": "Hialeah Senior High School"
+  },
+  {
+    "id": "c_e213c7e4911830fdc14215acb74ac6f226e7030030f65495c1103169a32077c6@group.calendar.google.com",
+    "name": "Highland Oaks Middle School"
+  },
+  {
+    "id": "c_f962eca20e16472c8a7e0b7343a0732ff7280326f929571a8148a5d5dacbd032@group.calendar.google.com",
+    "name": "Holmes Elementary School"
+  },
+  {
+    "id": "c_7f169d81134f34346063f6b6272f7be633669186efc5b9b1c418ec30130a769d@group.calendar.google.com",
+    "name": "Howard D. McMillan Middle School"
+  },
+  {
+    "id": "c_929019ba812dbd06beb1c4d113b8b35825b432f7bf82d61427dae840363e39c6@group.calendar.google.com",
+    "name": "Jane S. Roberts K-8 Center"
+  },
+  {
+    "id": "c_7180c9b8ef48fa7ec40d6c226a308d6ca84f32f6670a2f26f73b3d61ea6294ab@group.calendar.google.com",
+    "name": "Joe Hall Elementary School"
+  },
+  {
+    "id": "c_c0f22ffa82ccb06882efbff9fd692f9a4fe3e482bef9b862e6e177e9b41012b3@group.calendar.google.com",
+    "name": "John Ferguson Senior High School"
+  },
+  {
+    "id": "c_5ca2d9bf1ff8551f50cc45fe2b7c31ef88cd47cbaf36fc9e715e88cf98faaa27@group.calendar.google.com",
+    "name": "Kelsey L. Pharr Elementary School"
+  },
+  {
+    "id": "c_fc926bdd5e767a982b1e5d8d08d72427719088e49001d5e74bc8e085b8498a33@group.calendar.google.com",
+    "name": "Lake Stevens Elementary"
+  },
+  {
+    "id": "c_d03e6b12e207d3fc6b8861d1969abd55c368ea2cfee25b83df7fea693ec28fd5@group.calendar.google.com",
+    "name": "Lake Stevens Middle School"
+  },
+  {
+    "id": "c_ff1ed65adf898c185de07ed3fc3a3c90a26a97cc1488372c9ce537c9c18bf868@group.calendar.google.com",
+    "name": "Lakeview Elementary School"
+  },
+  {
+    "id": "c_5e7405779b419502cd762530182eeec867db53ea28e48ada42c26a98095fb22b@group.calendar.google.com",
+    "name": "Lamar Louise Curry Middle School"
+  },
+  {
+    "id": "c_928729551cb0c3210c706737741323e614765c1cb0135400915ccfaf457df788@group.calendar.google.com",
+    "name": "Laura C. Saunders Elementary School"
+  },
+  {
+    "id": "c_b5fe5a5e41b155da44e95c180b8a60489841feee8665b49c8b43ee24569fb1ec@group.calendar.google.com",
+    "name": "Lehrman Community Day School"
+  },
+  {
+    "id": "c_2477ebb602a3bea46f95edc46615eea224935140a878a322e08813fe57e4eb0a@group.calendar.google.com",
+    "name": "Leisure City K-8"
+  },
+  {
+    "id": "c_3001c561a9ad6051b4b1fa0237be608bf8e3064f83de755df7fb4f49dd22877a@group.calendar.google.com",
+    "name": "Liberty City Elementary School"
+  },
+  {
+    "id": "c_7d1502187bbe11d7d9a1679d1b41daa6d235cf36454ef2f37dbffdfacf79220b@group.calendar.google.com",
+    "name": "Linda Lentin K-8"
+  },
+  {
+    "id": "c_e27b2f81e3959dfa875a1f4f936f7345cfba0dbe5c8002dbdbc9f84da9842912@group.calendar.google.com",
+    "name": "Little River K-8"
+  },
+  {
+    "id": "c_4a91ffd6b941f711b6a973a0bfe72df2c18e61de3dfcf556057d2ce47e8a96a6@group.calendar.google.com",
+    "name": "Madison Middle School"
+  },
+  {
+    "id": "c_b090ab8ea75e13089d3f603b72f046563adb95dd1931076ddcbfcdcad0541fab@group.calendar.google.com",
+    "name": "Mandarin Lakes K-8"
+  },
+  {
+    "id": "c_a8faa5df506c72a945e36f4d8d0b20efa3107ad57081e7ea8f48ecd8245f2d21@group.calendar.google.com",
+    "name": "Marjory Stoneman Douglas Elementary School"
+  },
+  {
+    "id": "c_e4bff4103d33bea73d84ad87be1c23275aad7373c3f5587c9d5223dba16bdacc@group.calendar.google.com",
+    "name": "Mast Academy"
+  },
+  {
+    "id": "c_e3881bfb1935a3f7f3fa08073d31a02d5473ca580b1fa34a8e4b0bd5a9720600@group.calendar.google.com",
+    "name": "Mater Beach Academy"
+  },
+  {
+    "id": "c_2389e82c5c6319ee600e4f538f2951c7ecdf33a54b5f20f0b1aec6695772e044@group.calendar.google.com",
+    "name": "Melrose Elementary School"
+  },
+  {
+    "id": "c_3d9cce3abdbccc90f63bb605a6638a9f2490f30457cf87fe6bef928bf98677bf@group.calendar.google.com",
+    "name": "Miami Carol City Senior High School"
+  },
+  {
+    "id": "c_898735ac5ae23fef3d4560978b179f68fdd4e9cba268129e1478c334d05bcdfc@group.calendar.google.com",
+    "name": "Miami Edison Senior High"
+  },
+  {
+    "id": "c_d3885dbecdc9adc5739583e7483c58dfa8eef9120764acea6b60393d7b64e098@group.calendar.google.com",
+    "name": "Miami Gardens Elementary"
+  },
+  {
+    "id": "c_e96c38f3c319a18298ecc6ba8e3df250417b3a9f9ae29583763b5e1d7ae21a04@group.calendar.google.com",
+    "name": "Myrtle Grove Elementary"
+  },
+  {
+    "id": "c_4ce1f1032eda24da1238e53cb426702ca9d7a02e5ce13509fa940f5073ba29af@group.calendar.google.com",
+    "name": "Norland Middle School"
+  },
+  {
+    "id": "c_7bf9640fe159f6a940fe6e10a8c7b290db0ab0f01c3e5dcdfae9227985b9a9da@group.calendar.google.com",
+    "name": "Norland Senior High School"
+  },
+  {
+    "id": "c_4eff3a4fefd012e8cb1a2d29719f83074ca1548d27547ce75da3d0d435e26e12@group.calendar.google.com",
+    "name": "North Beach Elementary"
+  },
+  {
+    "id": "c_a2533235ce23676da42d2d768dcdc4b929d7def0607d06a90a31a255bd3160b5@group.calendar.google.com",
+    "name": "North County K-8 Center"
+  },
+  {
+    "id": "c_3450b2ec67e92c8b824d6132572a3a0f8a6260498df5addcf43e8f5281a7da27@group.calendar.google.com",
+    "name": "North Dade Middle School"
+  },
+  {
+    "id": "c_53a1a12d9f1a764e3ced2169fa9fb466dae3cd9519b6ff260d7238bcac471fc5@group.calendar.google.com",
+    "name": "North Glade Elementary"
+  },
+  {
+    "id": "c_ddfd3ba1e2b4785072024c145dd3a5fee68a502da7a5efe51495a9b55cc58a27@group.calendar.google.com",
+    "name": "Olinda Elementary School"
+  },
+  {
+    "id": "c_fcb25c0a21dbc533377b65bdebad9a0bd4eac395169a0955ba45b47fb7a29601@group.calendar.google.com",
+    "name": "Orchard Villa Elementary School"
+  },
+  {
+    "id": "c_07d26a711db62844b06f1a34581fa1f268b74d8ea44771245c4ace226ef5b9bc@group.calendar.google.com",
+    "name": "Pine Villa Elementary"
+  },
+  {
+    "id": "c_0366a5f70f4a27a7977175eb5e2bb048ce82716684a63438546576cb399c0d66@group.calendar.google.com",
+    "name": "Redondo Elementary"
+  },
+  {
+    "id": "c_c63e7f0b96a9d46bcd56a0c93a5e47b09354fd7187307a3fc618c63f391a1c8b@group.calendar.google.com",
+    "name": "Richmond Heights Middle School"
+  },
+  {
+    "id": "c_e1c272a8db396069b46f3e1dd856fcd6debb89e4713153e193b69247ae517238@group.calendar.google.com",
+    "name": "Robert Renick Educational Center"
+  },
+  {
+    "id": "c_4414d50fef1153230dcd0c591109d92b5116a526280f363e56feefb43719ad3f@group.calendar.google.com",
+    "name": "Royal Green Elementary School"
+  },
+  {
+    "id": "c_8ff0aa3e74106277ce88ffdab3162fde398527e90c2fd8e019765b5b6be488be@group.calendar.google.com",
+    "name": "SEED School of Miami"
+  },
+  {
+    "id": "c_dc3a7d24eb2cf295f9414e97a6f300f69673c94881750a026c81834ce4fe00a9@group.calendar.google.com",
+    "name": "Skyway Elementary"
+  },
+  {
+    "id": "c_14f8ee6dee5a827b86aac3ae58c441e04861c8ac5568900b46a23d31212f8c6a@group.calendar.google.com",
+    "name": "Treasure Island Elementary"
+  },
+  {
+    "id": "c_de229d675a8735cf4893bae53cd4f76cecd17f112ed9a33ff4046bcd9438d818@group.calendar.google.com",
+    "name": "Van E. Blanton Elementary School"
+  },
+  {
+    "id": "c_231dce7cfa0b07be8182825b017e3a860e5d505c00a53e6f367b5338fd59802c@group.calendar.google.com",
+    "name": "Village Green Elementary School"
+  },
+  {
+    "id": "c_2a009c8443cf7ae62d122230a0b9ced2be6e7a9c9e07fa9a12a42535f78dada4@group.calendar.google.com",
+    "name": "W. R. Thomas Middle School"
+  },
+  {
+    "id": "c_37fc7c60e6de3db5cb26d62a80f0e58fc7a6fc0e53836b200b67933fc2452af3@group.calendar.google.com",
+    "name": "Zora Neale Hurston Elementary School"
+  },
+  {
+    "id": "c_33d4dca3e241b629b58cafe56797c1df76ea3305ae9280d630183861df57c3af@group.calendar.google.com",
+    "name": "North Miami Middle School"
+  },
+  {
+    "id": "c_444f65e2cf79af6c7a76e810a22da372ce10eb12396e03b8c3e207b3ad270468@group.calendar.google.com",
+    "name": "Miami Central High School"
+  },
+  {
+    "id": "c_2de72edb3ec04e5a2c4c881086f013a44f2009a081a90f394c30f7d1c5f50f74@group.calendar.google.com",
+    "name": "Miami Beach Senior High"
+  },
+  {
+    "id": "c_cec183be1a66676cdba1a35e13efefa8a7087fa39c79cc270960cdafdda8bcf7@group.calendar.google.com",
+    "name": "Young Men's Preparatory Academy"
+  },
+  {
+    "id": "c_172c688ce25e92855fc1bf3fe91ea2ad88e3ccc56c52970f30168ff7e5f08cac@group.calendar.google.com",
+    "name": "Paul L. Dunbar K-8"
+  },
+  {
+    "id": "c_96916db6f5ed2504bbf9bc3a1a29268e5b7822d38af82922db6f63fecb33a14d@group.calendar.google.com",
+    "name": "Paul W. Bell Middle School"
+  },
+  {
+    "id": "c_c7ce00a9e1c8dbd3ecbde49c16b4c86dad6f32aeaa3849f164c0f7ade18426c4@group.calendar.google.com",
+    "name": "Northwestern Senior High"
+  },
+  {
+    "id": "c_95521b20ad6b1e50e456a02134b64124689f5592db190e945255e74ff8226e7f@group.calendar.google.com",
+    "name": "Morningside K-8"
+  },
+  {
+    "id": "c_04195cb8683fa57aca17791f4b2f15fd4f273df6c389d6e504a6daeb896597f2@group.calendar.google.com",
+    "name": "Lillie C. Evans K-8 Center"
+  },
+  {
+    "id": "c_82b90a85f02bf25620bc91475cbf62369b347a262ac6617d48a7fb494dd328cd@group.calendar.google.com",
+    "name": "Henry Filer Middle School"
+  },
+  {
+    "id": "c_4ed3c7795867b6b853828c6782a7425788b52a1af8e4ca06e6f3e5928e7a4a02@group.calendar.google.com",
+    "name": "Henry E. S. Reeves K-8 Center"
+  },
+  {
+    "id": "c_f1817629409d5f42f5d6a9078053fde65e6cc3ef97924c7c90f0c2fa96a648d9@group.calendar.google.com",
+    "name": "Georgia Jones-Ayers Middle School"
+  },
+  {
+    "id": "c_27fc89d68c0d808bd5a899016a53f68919f83943b95eff637b57bcdc6cb0e855@group.calendar.google.com",
+    "name": "Edison Park K-8"
+  },
+  {
+    "id": "c_b0f0675652ef65d7f029b7870a9a32cd9e2ec16ac914ca6e051b771201ba11b1@group.calendar.google.com",
+    "name": "Dr. Charles R. Drew K-8 Center"
+  },
+  {
+    "id": "c_6d297198058a53eb0909aaaf2b8524afe5910a99e24b8893deea8076c7a6736f@group.calendar.google.com",
+    "name": "Citrus Grove Middle School"
+  },
+  {
+    "id": "c_13db1cd70c2f5769c38325b35696bfdd26d235cb4fa54e2a12f2cbe63677758d@group.calendar.google.com",
+    "name": "Coral Gables Senior High"
+  },
+  {
+    "id": "c_09b4312e1a00154aa5ae593a7fcaa365335a968d9d472a2638c214daa1777546@group.calendar.google.com",
+    "name": "Coconut Palm K-8"
+  },
+  {
+    "id": "c_108063cda99f7e2b6595dee178456f45a2043501764bd4ef432e7ac510c45e24@group.calendar.google.com",
+    "name": "Air Base K-8"
+  },
+  {
+    "id": "c_a7fe1b4d64e27899684a9deaf3e741acb65ef5e6057fbe2c1cc029aa8c84aebd@group.calendar.google.com",
+    "name": "Booker T. Washington Senior High"
+  },
+  {
+    "id": "c_d5d2d9a7c044dd10c30c0d3847f3830a84f6b2d25063b4820a83c01df05f126e@group.calendar.google.com",
+    "name": "Homestead Middle School"
+  },
+  {
+    "id": "c_65e1597258761074bc649b5fc569b1f0af759218c9a6062afc9340c3340a537d@group.calendar.google.com",
+    "name": "Homestead Senior High"
+  },
+  {
+    "id": "c_3c9213f20afe0b6bf7df0b5fe6975bd367452d83337b3db6b55c9d02303ccdc3@group.calendar.google.com",
+    "name": "Horace Mann Middle School"
+  },
+  {
+    "id": "c_6fc1975fd0144aaa5e4221e10540c094f6e6c0a5ec488c04db82051a3563de03@group.calendar.google.com",
+    "name": "Nautilus Middle School"
+  },
+  {
+    "id": "c_0c081ca4d3beae6e63b6c7c83ba88a2428101d34fd019c614a7ba51ba5497ab3@group.calendar.google.com",
+    "name": "Redland Elementary"
+  },
+  {
+    "id": "c_532f7e518d5ae827e838c9b92eaec28fd56049a0b92f024177f33e7d787c468b@group.calendar.google.com",
+    "name": "Redland Middle School"
+  },
+  {
+    "id": "c_9512ef3fa0b6aa7d3f99dda9f4be356b847c886fc7c80f23a63a639a860938fc@group.calendar.google.com",
+    "name": "South Dade Middle School"
+  },
+  {
+    "id": "c_ae135ff8164fe26ddadb831dbf29a4bf656387ee98949a95fcc95f1a51ebf8cb@group.calendar.google.com",
+    "name": "Southridge Senior High School"
+  },
+  {
+    "id": "c_9a487b2423b1a4c9422f1b8b2b09c8d661761d3016da182aea9669d665ad52b3@group.calendar.google.com",
+    "name": "West Homestead K-8"
+  },
+  {
+    "id": "c_8be68d95e3a6ea67b9e7db1c71475d3089c023d5e3b7f67b120f2abbcd72e65f@group.calendar.google.com",
+    "name": "South Dade Senior High"
+  },
+  {
+    "id": "c_a5db83509977ce2ee297523e732387ef060938082d3bf256a3bfdf83303b81aa@group.calendar.google.com",
+    "name": "Irving & Beatrice Peskoe K-8"
+  }
+]

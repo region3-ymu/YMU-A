@@ -17,7 +17,7 @@ import { createClient } from "@/lib/supabase/server";
 
 type IncomingItem = {
   client_key: string;
-  kind: "clock_in" | "gps_check";
+  kind: "clock_in";
   payload: Record<string, unknown>;
 };
 
@@ -104,28 +104,6 @@ export async function POST(request: Request) {
         } else {
           results.push({ client_key: item.client_key, status: "accepted" });
         }
-      } else if (item.kind === "gps_check") {
-        const sessionKey = payload.session_client_key;
-        const dueOffset = finite(payload.due_offset_min);
-        const lat = finite(payload.lat);
-        const lng = finite(payload.lng);
-        if (!isUuid(sessionKey) || dueOffset === null || lat === null || lng === null) {
-          results.push({ client_key: item.client_key, status: "rejected", error: "Invalid GPS-check payload." });
-          continue;
-        }
-        const { error } = await supabase.rpc("record_gps_check_offline", {
-          p_session_client_key: sessionKey,
-          p_due_offset_min: Math.round(dueOffset),
-          p_lat: lat,
-          p_lng: lng,
-          p_accuracy_m: finite(payload.accuracy),
-          p_sampled_at: isIsoDate(payload.sampled_at) ? payload.sampled_at : null,
-        });
-        results.push(
-          error
-            ? { client_key: item.client_key, status: "rejected", error: error.message }
-            : { client_key: item.client_key, status: "accepted" },
-        );
       } else {
         results.push({ client_key: item.client_key, status: "rejected", error: "Unknown item kind." });
       }

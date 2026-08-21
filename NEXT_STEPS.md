@@ -35,7 +35,8 @@ What they do, shortest first:
 - **0081** — Tutoring owes no feedback form. A patterns table plus a BEFORE
   INSERT trigger, because five different functions create an attendance
   session and a rule in one of five call sites will be wrong within a month.
-- **0082** — GPS checks were losing a race with their own closeout. See below.
+- **0082** — removes the mid-class GPS checks entirely. The clock-in is
+  untouched. See below.
 - **0083** — **the speed one.** Every RLS policy's identity lookups now run
   once per query instead of once per row. See below.
 
@@ -80,6 +81,19 @@ anything but its parenthesisation, and no bare identity call left. The
 transformation was dry-run read-only against all 35 live policies first — 0
 invariant violations, 0 broken schema prefixes, 0 double wraps.
 
+Shipped alongside it, and this is the part users will actually feel: the app had
+**no `loading.tsx` and no `Suspense` anywhere**. Every screen is server-rendered
+on demand and queries the database, so a tap on the bottom bar changed nothing
+on screen until the whole response came back — which is why people tapped three
+times. Worse, for a dynamic route `<Link>`'s default prefetch reaches only as
+far as the nearest loading boundary, so with none there was nothing to prefetch
+at all.
+
+There are now eight `loading.tsx` files over a shared `PageSkeleton`, plus a
+pending ring on the tapped bottom-nav tab via `useLinkStatus`. That covers both
+halves: the tab responds to the touch, and the page area shows its shape
+immediately.
+
 **Still open, not fixed here** (both are DB CPU, not page latency, but they tax
 everything else on a small instance):
 
@@ -95,24 +109,33 @@ for anything. Worth a look next.
   page (`/schedules/[id]`). Moving it to a side table would shrink every other
   query's working set.
 
-### GPS checks: why they never worked, and what 0082 changes
+### GPS checks removed (0082)
 
-649 of 654 checks are `unverifiable` with no position ever recorded.
-`close_out_overdue_gps_checks()` marked anything past due and its cron runs
-**every minute**, while the sampler polls every 30 s and waits up to 15 s for a
-fix. All four checks that ever succeeded were sampled **18–33 seconds** after
-coming due, because nothing later than about a minute could survive.
+649 of 654 were `unverifiable` with no position ever recorded; 4 succeeded, all
+sampled 18–33 seconds after coming due. The sampler could only take a fix while
+the app was **foregrounded**, and no web API changes that — a service worker has
+no `navigator.geolocation`, and Periodic Background Sync is Chromium-only and
+grants no location. Nobody holds a phone open for eighty minutes while teaching.
 
-0082 gives it ten minutes of grace, which turns a coin flip into a window.
+YMU's call (2026-08-21): remove it. A table that says "unverifiable" 649 times
+is worse than no table, because it looks like evidence.
 
-**It does not make the feature work**, and that needs saying: the sampler is
-foreground-only by design and stops the moment the phone locks. Nobody holds a
-phone open for eighty minutes while teaching. There is no web API that fixes
-this — a service worker has no `navigator.geolocation`, and Periodic Background
-Sync is Chromium-only and does not grant location. The real options are a
-mid-class push the teacher taps (which uses push infrastructure that already
-exists), replacing the checks with a GPS clock-OUT at the end of class, a native
-wrapper, or dropping the feature.
+**The clock-in is deliberately untouched.** Every gate stays: geofence, archived
+check, overdue-feedback block, idempotent `client_key`, offline clamp, same-day
+rule, auto-close of the previous open session. A teacher can still clock in at
+any point during their class — that is the same-day rule with no upper bound,
+and 0082 changes nothing about it. The one line removed from `clock_in()` is the
+insert that created the three check rows.
+
+Gone with it: `gps_checks`, `record_gps_check`, `record_gps_check_offline`,
+`close_out_overdue_gps_checks`, `flags.gps_check_id`, the `check-closeout` Edge
+Function and its cron (unscheduled by the migration), the client sampler, the
+offline queue's `gps_check` kind, and the planned GPS-checks spreadsheet tab.
+
+If the "did they stay" question comes back, the buildable answers are a
+mid-class push the teacher taps (the push infrastructure already exists), or a
+GPS clock-OUT at the end of class — two verified points instead of five
+unverifiable ones.
 
 ### The Google Calendar write is built and switched OFF
 

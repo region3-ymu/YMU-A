@@ -31,7 +31,7 @@ export default async function DemoPage() {
       <section className="rounded-2xl bg-surface-container p-5 shadow-sm">
         <p className="text-sm text-on-surface-variant">
           This gives <span className="font-semibold text-on-surface">Demo Teacher</span> a
-          class that is happening right now, so you can clock in, pass the GPS checks, send
+          class that is happening right now, so you can clock in, send
           class feedback and raise a ticket in front of an audience. Nothing here touches
           real attendance: the demo site is excluded from Reports and the dashboard, and it
           belongs to no region.

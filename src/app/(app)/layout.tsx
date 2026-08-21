@@ -6,7 +6,6 @@ import AppBadge from "@/components/app-badge";
 import AppFeedbackButton from "@/components/app-feedback-button";
 import BackButton from "@/components/back-button";
 import BottomNav from "@/components/bottom-nav";
-import GpsCheckSampler from "@/components/gps-check-sampler";
 import OfflineIndicator from "@/components/offline-indicator";
 import SignOutButton from "@/components/sign-out-button";
 import YmuMark from "@/components/ymu-mark";
@@ -62,10 +61,6 @@ export default async function AppLayout({
 
       <BottomNav items={navItems} />
 
-      {/* Silent, renders nothing — only teachers have gps_checks rows at
-          all (RLS-scoped), so this is a no-op for managers. Mounted here
-          (not per-page) so sampling continues across in-app navigation. */}
-      {profile.role === "teacher" && <GpsCheckSampler />}
       {/* Re-applied on every navigation, which is what keeps it honest: the
           count follows the server's view rather than drifting on the device. */}
       <AppBadge count={badges.appBadge} />

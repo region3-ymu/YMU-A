@@ -197,7 +197,7 @@ async function up() {
 async function down() {
   const { data: school } = await supabase.from("schools").select("id").eq("name", `${QA_TAG} School`).maybeSingle();
 
-  // Order matters: sessions reference events and schools, gps_checks and flags
+  // Order matters: sessions reference events and schools, and flags
   // reference sessions. Delete inward-out rather than relying on cascade,
   // which is SET NULL on several of these and would orphan rows instead.
   if (school) {
@@ -217,7 +217,6 @@ async function down() {
     const sessionIds = (sessions ?? []).map((s) => s.id);
     if (sessionIds.length) {
       await supabase.from("feedback_submissions").delete().in("session_id", sessionIds);
-      await supabase.from("gps_checks").delete().in("session_id", sessionIds);
       await supabase.from("flags").delete().in("session_id", sessionIds);
       await supabase.from("clock_in_attempts").delete().in("session_id", sessionIds);
     }

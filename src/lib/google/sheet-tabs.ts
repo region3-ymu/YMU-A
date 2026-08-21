@@ -221,28 +221,6 @@ export const SHEET_TABS: SheetTab[] = [
     note: "Every press of the clock-in button, allowed or refused. The 'Refused' column is the one to filter on.",
   },
   {
-    name: "GPS checks",
-    rpc: "gps_checks_for_sheet",
-    columns: [
-      "class_date", "class_time", "class_title",
-      "teacher_name", "school_name", "region",
-      "due_at", "minutes_after_clock_in", "status", "sampled_at",
-      "distance_m", "accuracy_m", "inside_geofence", "origin", "session_id",
-    ],
-    header: [
-      "Class date", "Class time", "Class",
-      "Teacher", "School", "Region",
-      "Due at", "Minutes after clock-in", "Status", "Sampled at",
-      "Metres from school", "GPS accuracy (m)", "Inside geofence", "Origin",
-      "Session ID",
-    ],
-    // Read the Status column first. 649 of 654 checks are 'unverifiable' with
-    // no distance recorded — the mechanism is not currently returning samples,
-    // so an empty "Metres from school" here means "not measured", not "not
-    // there". Being chased separately.
-    note: "The mid-class presence checks behind each session. 'Inside geofence' is resolved against that school's own radius.",
-  },
-  {
     name: "Ticket messages",
     rpc: "ticket_messages_for_sheet",
     columns: [

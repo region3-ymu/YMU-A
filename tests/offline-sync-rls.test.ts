@@ -1,8 +1,6 @@
 // Hosted integration tests for Phase 6 offline sync: the offline-specific
-// behaviour added on top of clock_in()/record_gps_check() in migration 0013 —
+// behaviour added on top of clock_in() in migration 0013 —
 // the origin label, the trusted-but-clamped client clock-in time, exactly-once
-// replay on client_key, record_gps_check_offline() addressing a check by
-// (session client_key, due offset), and the server still re-validating the
 // geofence on an offline replay. Same disposable-user pattern as the other RLS
 // suites; every created row is cleaned up afterwards.
 
@@ -163,8 +161,6 @@ describe.runIf(configured)("Offline sync (Phase 6)", () => {
     const drift = Math.abs(new Date(session!.clock_in_at).getTime() - new Date(clockInAt).getTime());
     expect(drift).toBeLessThan(60_000);
 
-    // The 5 gps_checks are seeded relative to the (backdated) clock-in time, so
-    // they're already in the past — exactly the offline-replay scenario.
     const { data: checks } = await admin
       .from("gps_checks")
       .select("due_at, status, origin")
@@ -214,60 +210,6 @@ describe.runIf(configured)("Offline sync (Phase 6)", () => {
     expect(new Date(session!.clock_in_at).getTime()).toBeLessThanOrEqual(Date.now() + 5_000);
   });
 
-  it("record_gps_check_offline resolves a due check as verified with origin='offline', and is idempotent", async () => {
-    const { data: first, error } = await teacherA.client.rpc("record_gps_check_offline", {
-      p_session_client_key: sessionKeyA,
-      p_due_offset_min: 5,
-      p_lat: SCHOOL_LAT,
-      p_lng: SCHOOL_LNG,
-      p_accuracy_m: 15,
-      p_sampled_at: new Date().toISOString(),
-    });
-    expect(error).toBeNull();
-    expect(first!.status).toBe("verified");
-    expect(first!.origin).toBe("offline");
-
-    // Replaying the same sample is a no-op (still one resolved check).
-    const { data: second } = await teacherA.client.rpc("record_gps_check_offline", {
-      p_session_client_key: sessionKeyA,
-      p_due_offset_min: 5,
-      p_lat: SCHOOL_LAT,
-      p_lng: SCHOOL_LNG,
-      p_accuracy_m: 15,
-      p_sampled_at: new Date().toISOString(),
-    });
-    expect(second!.id).toBe(first!.id);
-    expect(second!.status).toBe("verified");
-  });
-
-  it("an out-of-fence offline GPS sample raises a flag tagged origin='offline'", async () => {
-    const { data: check, error } = await teacherA.client.rpc("record_gps_check_offline", {
-      p_session_client_key: sessionKeyA,
-      p_due_offset_min: 10,
-      p_lat: FAR_LAT,
-      p_lng: FAR_LNG,
-      p_accuracy_m: 15,
-      p_sampled_at: new Date().toISOString(),
-    });
-    expect(error).toBeNull();
-    expect(check!.status).toBe("out_of_fence");
-
-    const { data: flags } = await admin
-      .from("flags")
-      .select("type, details")
-      .eq("gps_check_id", check!.id);
-    expect(flags).toHaveLength(1);
-    expect(flags![0].type).toBe("gps_out_of_fence");
-    expect((flags![0].details as { origin?: string }).origin).toBe("offline");
-
-    const { data: notifications } = await admin
-      .from("notification_queue")
-      .select("recipient_id")
-      .eq("type", "gps_out_of_fence")
-      .eq("recipient_id", rmCentral.id);
-    expect((notifications ?? []).length).toBeGreaterThan(0);
-  });
-
   it("still re-validates the geofence server-side on an offline clock-in (out-of-fence rejected)", async () => {
     const { error } = await teacherFence.client.rpc("clock_in", {
       p_event_id: eventFence,
@@ -279,17 +221,5 @@ describe.runIf(configured)("Offline sync (Phase 6)", () => {
       p_clock_in_at: new Date().toISOString(),
     });
     expect(error?.message ?? "").toMatch(/outside the .* clock-in zone/i);
-  });
-
-  it("record_gps_check_offline rejects a key that isn't the caller's own session", async () => {
-    const { error } = await teacherIdem.client.rpc("record_gps_check_offline", {
-      p_session_client_key: sessionKeyA, // teacherA's session, not teacherIdem's
-      p_due_offset_min: 15,
-      p_lat: SCHOOL_LAT,
-      p_lng: SCHOOL_LNG,
-      p_accuracy_m: 10,
-      p_sampled_at: new Date().toISOString(),
-    });
-    expect(error?.message ?? "").toMatch(/no clock-in found/i);
   });
 });

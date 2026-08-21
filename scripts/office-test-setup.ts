@@ -202,7 +202,6 @@ async function reset() {
   const sessionIds = (sessions ?? []).map((s) => s.id);
   if (sessionIds.length) {
     await supabase.from("feedback_submissions").delete().in("session_id", sessionIds);
-    await supabase.from("gps_checks").delete().in("session_id", sessionIds);
     await supabase.from("flags").delete().in("session_id", sessionIds);
     await supabase.from("clock_in_attempts").delete().in("session_id", sessionIds);
   }

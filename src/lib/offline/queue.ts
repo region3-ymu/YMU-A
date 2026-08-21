@@ -4,7 +4,6 @@ import {
   NEXT_CLASS_KEY,
   offlineDb,
   type ClockInPayload,
-  type GpsCheckPayload,
   type QueueItem,
   type ScheduleCacheRow,
 } from "./db";
@@ -49,61 +48,15 @@ export async function enqueueClockIn(payload: ClockInPayload): Promise<string> {
   return client_key;
 }
 
-// Enqueue an offline GPS-check sample for an already-queued (or already-synced)
-// offline clock-in, addressed by that clock-in's client_key + the check's due
-// offset. Deduped per (session, offset): re-sampling the same due check just
-// overwrites the pending queue row rather than piling up.
-export async function enqueueGpsCheck(payload: GpsCheckPayload): Promise<void> {
-  const existing = await offlineDb.queue
-    .where("kind")
-    .equals("gps_check")
-    .filter(
-      (item) =>
-        (item.payload as GpsCheckPayload).session_client_key === payload.session_client_key &&
-        (item.payload as GpsCheckPayload).due_offset_min === payload.due_offset_min &&
-        item.status !== "rejected",
-    )
-    .first();
-  if (existing) return;
-
-  await offlineDb.queue.put({
-    client_key: uuid(),
-    kind: "gps_check",
-    payload,
-    status: "pending",
-    created_at: nowIso(),
-    attempts: 0,
-  });
-  emitChange();
-}
-
-// Items still to send. clock_in items come first so a GPS sample whose session
-// is clocked in within the same batch resolves against the freshly-created row.
+// Items still to send, oldest first. The kind-ordering this used to do existed
+// only to put clock_in ahead of gps_check so a sample could resolve against a
+// session created in the same batch; clock_in is the only kind since 0082.
 export async function listSendable(): Promise<QueueItem[]> {
   const items = await offlineDb.queue
     .where("status")
     .anyOf("pending", "syncing")
     .toArray();
-  return items.sort((a, b) => {
-    if (a.kind !== b.kind) return a.kind === "clock_in" ? -1 : 1;
-    return a.created_at.localeCompare(b.created_at);
-  });
-}
-
-// Offline clock-ins not yet synced — the offline GPS sampler walks these to
-// decide which +5/10/.../25 min checks have come due while still offline.
-export async function listPendingClockIns(): Promise<
-  { client_key: string; clock_in_at: string }[]
-> {
-  const items = await offlineDb.queue
-    .where("kind")
-    .equals("clock_in")
-    .filter((i) => i.status !== "rejected")
-    .toArray();
-  return items.map((i) => ({
-    client_key: i.client_key,
-    clock_in_at: (i.payload as ClockInPayload).clock_in_at,
-  }));
+  return items.sort((a, b) => a.created_at.localeCompare(b.created_at));
 }
 
 // Count of items not yet confirmed by the server — drives the pending-sync

@@ -20,7 +20,8 @@ import Dexie, { type EntityTable } from "dexie";
 // Kept in its own database, separate from ymu-a-feedback-drafts
 // (offline-feedback-db.ts), so the two offline concerns evolve independently.
 
-export type QueueKind = "clock_in" | "gps_check";
+// gps_check was the second kind until 0082 removed mid-class GPS sampling.
+export type QueueKind = "clock_in";
 
 // pending  — waiting to sync (or a prior sync failed with a network error)
 // syncing  — a sync run has picked it up (guards against a double-send)
@@ -38,22 +39,10 @@ export type ClockInPayload = {
   clock_in_at: string;
 };
 
-export type GpsCheckPayload = {
-  // Which offline clock-in this sample belongs to — the session's client_key,
-  // since the server-side check id doesn't exist offline.
-  session_client_key: string;
-  // Minutes after clock-in this check was due (5/10/15/20/25).
-  due_offset_min: number;
-  lat: number;
-  lng: number;
-  accuracy: number | null;
-  sampled_at: string;
-};
-
 export type QueueItem = {
   client_key: string;
   kind: QueueKind;
-  payload: ClockInPayload | GpsCheckPayload;
+  payload: ClockInPayload;
   status: QueueStatus;
   created_at: string;
   attempts: number;

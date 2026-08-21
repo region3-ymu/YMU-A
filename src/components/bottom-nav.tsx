@@ -1,8 +1,36 @@
 "use client";
 
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import type { NavItem } from "@/lib/auth/roles";
+
+/**
+ * The tapped tab, while its page is still coming.
+ *
+ * This is the direct answer to "la gente le da clic varias veces porque no se
+ * abre rápido" (YMU 2026-08-21). The loading.tsx files cover the page body;
+ * this covers the half-second before that, when the only thing the user can
+ * see is the bar they just touched.
+ *
+ * Per Next's own guidance the element is always rendered at a fixed size and
+ * only its opacity changes — an indicator that appears from nothing shifts the
+ * icon it sits under, on the one control the user is actively aiming at.
+ *
+ * useLinkStatus must be a descendant of the Link, which is why this is its own
+ * component. It returns { pending: false } for an already-prefetched route, so
+ * on a fast navigation nothing flashes.
+ */
+function TapPending() {
+  const { pending } = useLinkStatus();
+  return (
+    <span
+      aria-hidden
+      className={`pointer-events-none absolute inset-0 rounded-full border-2 border-primary transition-opacity duration-150 ${
+        pending ? "animate-pulse opacity-100" : "opacity-0"
+      }`}
+    />
+  );
+}
 
 // Mobile-first bottom navigation bar (Stitch design). Fixed to the viewport
 // bottom with a translucent, blurred surface. The active tab is derived from
@@ -44,6 +72,7 @@ export default function BottomNav({ items }: { items: NavItem[] }) {
                   >
                     {item.icon}
                   </span>
+                  <TapPending />
                   {/* Count of things waiting. Sits on the icon rather than
                       beside the label so it reads at a glance without the tab
                       widths shifting when the number changes. */}
