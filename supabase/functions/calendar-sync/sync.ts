@@ -251,8 +251,20 @@ async function queueNotifications(
       }
     }
     if (!sameStringSet(previous.teacher_ids, next.teacher_ids)) {
-      for (const recipientId of recipients) {
-        rows.push({ recipient_id: recipientId, event_id: next.id, type: "teacher_changed", payload: basePayload });
+      // Unless the app made this change itself. Once
+      // GOOGLE_CALENDAR_WRITE_ENABLED is on, confirming a substitute patches
+      // the Google event's attendees, which comes straight back through this
+      // sync as a teacher_changed diff — so without this check every
+      // substitution would email the class about a swap the manager had just
+      // arranged, and had already told them about.
+      //
+      // Keyed on the substitution existing for this event, not on a timestamp
+      // window: the sync can be minutes or hours behind the confirmation, and
+      // a window narrow enough to be meaningful would be too narrow to work.
+      if (!(await substitutionExplains(supabase, next.id, previous.teacher_ids, next.teacher_ids))) {
+        for (const recipientId of recipients) {
+          rows.push({ recipient_id: recipientId, event_id: next.id, type: "teacher_changed", payload: basePayload });
+        }
       }
     }
   }
@@ -261,6 +273,41 @@ async function queueNotifications(
   const { error } = await supabase.from("notification_queue").insert(rows);
   if (error) throw new Error(`Could not queue schedule-change notification: ${error.message}`);
   return rows.length;
+}
+
+/**
+ * Did a substitution this app recorded cause this teacher swap?
+ *
+ * True when a confirmed substitution on the event names a teacher who has just
+ * LEFT the attendee list as the absent one, and a teacher who has just JOINED
+ * as the substitute. Both halves matter: matching only the event would
+ * suppress a genuine schedule change on any class that had ever been covered.
+ *
+ * A cancelled substitution deliberately does not count. Cover withdrawn and
+ * the regular teacher put back on the event is a change people need told about.
+ */
+async function substitutionExplains(
+  supabase: any,
+  eventId: string,
+  previousTeacherIds: string[],
+  nextTeacherIds: string[],
+): Promise<boolean> {
+  const gone = previousTeacherIds.filter((id) => !nextTeacherIds.includes(id));
+  const added = nextTeacherIds.filter((id) => !previousTeacherIds.includes(id));
+  if (!gone.length || !added.length) return false;
+
+  const { data, error } = await supabase
+    .from("substitutions")
+    .select("absent_teacher_id, substitute_teacher_id")
+    .eq("event_id", eventId)
+    .eq("status", "confirmed");
+  // On error, notify. A missed suppression is a redundant email; a wrongly
+  // suppressed one is a teacher who never hears their class moved.
+  if (error || !data) return false;
+
+  return (data as { absent_teacher_id: string; substitute_teacher_id: string }[]).some(
+    (row) => gone.includes(row.absent_teacher_id) && added.includes(row.substitute_teacher_id),
+  );
 }
 
 async function upsertGoogleEvent(

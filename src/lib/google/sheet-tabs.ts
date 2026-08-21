@@ -109,15 +109,19 @@ export const SHEET_TABS: SheetTab[] = [
       "flag_id", "raised_date", "raised_time", "flag_type", "teacher_name",
       "school_name", "region", "class_title", "class_date", "class_time",
       "status", "minutes_late",
-      "resolved_at", "resolved_by", "resolution_reason", "resolution_notes",
-      "distance_m",
+      "resolved_at", "resolved_by", "resolution_reason",
+      "outcome", "absence_reason", "notified_in_advance", "notified_how",
+      "excused", "covered_by",
+      "resolution_notes", "distance_m",
     ],
     header: [
       "Flag ID", "Raised date", "Raised time", "Type", "Teacher",
       "School", "Region", "Class", "Class date", "Class time",
       "Status", "Minutes late",
-      "Resolved at", "Resolved by", "Reason", "Resolution notes",
-      "Metres from school",
+      "Resolved at", "Resolved by", "Reason",
+      "What happened", "Absence reason", "Gave notice", "How they told us",
+      "Excused", "Covered by",
+      "Resolution notes", "Metres from school",
     ],
     // "Reason" is the countable one — pivot on it. "Resolution notes" is the
     // same reason rendered as a sentence, with whatever the manager added,
@@ -126,7 +130,10 @@ export const SHEET_TABS: SheetTab[] = [
     // "Metres from school" was empty for all 120 rows before 0078: it read a
     // details key that only gps_out_of_fence flags carry, of which there are
     // none. It now falls back to the session the teacher eventually opened.
-    note: "GPS, late clock-in and overdue-feedback escalations, open and resolved. 'Resolved by' names the mechanism when the app closed the flag itself.",
+    // "Covered by" comes through the linked substitution, not by matching a
+    // name out of the notes. That link is why the column can be trusted, and
+    // why it is empty rather than wrong when nobody recorded the cover.
+    note: "GPS, late clock-in and overdue-feedback escalations, open and resolved. 'Resolved by' names the mechanism when the app closed the flag itself. The absence columns are only filled in when a manager said the teacher was away.",
   },
   {
     name: "Schools",
@@ -160,6 +167,33 @@ export const SHEET_TABS: SheetTab[] = [
     columns: ["program", "category", "objective", "active"],
     header: ["Program", "Category", "Objective", "Active"],
     note: "The objective lists teachers pick from on the feedback form.",
+  },
+  {
+    name: "Substitutions",
+    rpc: "substitutions_for_sheet",
+    columns: [
+      "class_date", "class_time", "class_title", "school_name", "region",
+      "absent_teacher", "absent_teacher_email",
+      "covered_by", "covered_by_email",
+      "reason", "reason_notes", "status",
+      "confirmed_by", "confirmed_at",
+      "cancelled_by", "cancelled_at", "cancel_reason",
+      "google_calendar", "substitution_id", "event_id",
+    ],
+    header: [
+      "Class date", "Class time", "Class", "School", "Region",
+      "Teacher who was out", "Absent teacher email",
+      "Covered by", "Substitute email",
+      "Why they were out", "Notes", "Status",
+      "Confirmed by", "Confirmed at",
+      "Cancelled by", "Cancelled at", "Cancel reason",
+      "Google Calendar", "Substitution ID", "Event ID",
+    ],
+    // Read the "Google Calendar" column before trusting a row as the whole
+    // story. "Needs editing by hand" means the app has the substitution and
+    // the Google event does not — and since teacher_ids comes from that event,
+    // the substitute cannot clock in until somebody changes the attendee.
+    note: "Who covered a class the assigned teacher missed, and why they missed it. Join to Flags on Event ID to line an absence up with its escalation.",
   },
   {
     name: "Clock-in attempts",

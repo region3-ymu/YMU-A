@@ -4,13 +4,19 @@ import { createClient } from "@/lib/supabase/server";
 import { SUBSTITUTE_FINDER_ROLES, type Region } from "@/lib/auth/roles";
 import { matchProgram, type ProgramRow } from "@/lib/feedback/program-match";
 import SubstitutesFinder from "./substitutes-finder";
-import type { CoverableClass } from "./types";
+import RecentSubstitutions from "./recent-substitutions";
+import type { CoverableClass, Substitution } from "./types";
 
 export const metadata: Metadata = { title: "Substitutes" };
 
 // How far ahead the picker offers classes. Covering an absence is short-notice
 // work; a term's worth of classes would just be a longer list to scroll.
 const DAYS_AHEAD = 14;
+
+// How far back the "already arranged" list reaches. Cover is looked up after
+// the fact as often as before it — a manager resolving a missed clock-in needs
+// to find the substitution they booked last week.
+const DAYS_BACK = 30;
 
 export default async function SubstitutesPage() {
   const caller = await requireRole(...SUBSTITUTE_FINDER_ROLES);
@@ -25,8 +31,11 @@ export default async function SubstitutesPage() {
   // for, so a Regional Manager sees their own region's classes here. Only the
   // search itself reaches across regions, and it does that inside
   // find_substitutes() rather than here.
-  const [{ data: events, error: eventsError }, { data: programs, error: programsError }] =
-    await Promise.all([
+  const [
+    { data: events, error: eventsError },
+    { data: programs, error: programsError },
+    { data: substitutions },
+  ] = await Promise.all([
       supabase
         .from("calendar_events")
         .select("id, summary, start_at, end_at, teacher_ids, school:schools!inner(id, name, region)")
@@ -39,6 +48,10 @@ export default async function SubstitutesPage() {
         .select("id, name, category, sort_order, match_patterns")
         .eq("active", true)
         .order("sort_order"),
+      // Not SECURITY DEFINER, unlike find_substitutes: substitutions_select
+      // already says who may read what, so this runs under the caller's RLS
+      // and a Regional Manager sees their own region's cover.
+      supabase.rpc("recent_substitutions", { p_days: DAYS_BACK }),
     ]);
 
   // Names for the teachers already on each class — the person who would be out.
@@ -63,6 +76,7 @@ export default async function SubstitutesPage() {
       schoolName: school.name,
       region: school.region,
       assignedTeachers: (e.teacher_ids ?? []).map((id: string) => teacherName.get(id) ?? "Unknown"),
+      assignedTeacherIds: (e.teacher_ids ?? []) as string[],
       program: matchProgram(e.summary as string | null, programRows)?.name ?? null,
     };
   });
@@ -87,7 +101,15 @@ export default async function SubstitutesPage() {
       )}
 
       <div className="mt-4">
-        <SubstitutesFinder classes={classes} callerRole={caller.role} />
+        <SubstitutesFinder
+          classes={classes}
+          callerRole={caller.role}
+          substitutions={(substitutions ?? []) as Substitution[]}
+        />
+      </div>
+
+      <div className="mt-6">
+        <RecentSubstitutions substitutions={(substitutions ?? []) as Substitution[]} />
       </div>
     </main>
   );

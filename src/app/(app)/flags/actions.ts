@@ -5,6 +5,11 @@ import { requireRole } from "@/lib/auth/dal";
 import { MANAGER_ROLES } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/server";
 import { describeReasonGap } from "@/lib/attendance/flag-reasons";
+import {
+  describeOutcomeGap,
+  toOutcomePayload,
+  type OutcomeDraft,
+} from "@/lib/attendance/absence-reasons";
 
 export type ResolveFlagState = { error?: string } | undefined;
 export type ForceCloseState = { error?: string } | undefined;
@@ -29,11 +34,27 @@ export async function resolveFlag(
   const gap = describeReasonGap(reason, notes);
   if (gap) return { error: gap };
 
+  // What actually happened, and only the fields that outcome implies.
+  // resolve_flag() REFUSES a field the outcome does not imply — an absence
+  // reason on a "they were here" resolution is a contradiction, not extra
+  // detail — so toOutcomePayload nulls the rest rather than forwarding
+  // whatever the form happened to be holding.
+  const outcome: OutcomeDraft = {
+    outcome: String(formData.get("outcome") ?? "").trim(),
+    absenceReason: String(formData.get("absence_reason") ?? "").trim(),
+    notifiedChannel: String(formData.get("notified_channel") ?? "").trim(),
+    excused: String(formData.get("excused") ?? "").trim(),
+    substitutionId: String(formData.get("substitution_id") ?? "").trim(),
+  };
+  const outcomeGap = describeOutcomeGap(outcome);
+  if (outcomeGap) return { error: outcomeGap };
+
   const supabase = await createClient();
   const { error } = await supabase.rpc("resolve_flag", {
     p_flag_id: flagId,
     p_reason: reason,
     p_notes: notes || null,
+    ...toOutcomePayload(outcome),
   });
   if (error) return { error: error.message };
 

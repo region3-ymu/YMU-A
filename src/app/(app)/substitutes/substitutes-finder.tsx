@@ -3,7 +3,8 @@
 import { useMemo, useState, useTransition } from "react";
 import { REGION_LABELS, type AppRole, type Region } from "@/lib/auth/roles";
 import { findSubstitutes } from "./actions";
-import type { Candidate, CoverableClass } from "./types";
+import ConfirmSubstitutionForm from "./confirm-substitution-form";
+import type { Candidate, CoverableClass, Substitution } from "./types";
 
 const TIME_ZONE = "America/New_York";
 
@@ -35,9 +36,11 @@ function tierFor(score: number): { label: string; tone: string } {
 export default function SubstitutesFinder({
   classes,
   callerRole,
+  substitutions,
 }: {
   classes: CoverableClass[];
   callerRole: AppRole;
+  substitutions: Substitution[];
 }) {
   const [schoolId, setSchoolId] = useState("");
   const [eventId, setEventId] = useState("");
@@ -59,6 +62,15 @@ export default function SubstitutesFinder({
   );
 
   const selected = classesForSchool.find((c) => c.id === eventId) ?? null;
+
+  // Cover already booked for this class. Two managers looking at the same
+  // absence on the same morning is exactly how a class gets two substitutes,
+  // and confirm_substitution() supersedes rather than refuses — so the warning
+  // has to be here, before the second one is confirmed.
+  const alreadyCovered = useMemo(
+    () => substitutions.filter((sub) => sub.event_id === eventId && sub.status === "confirmed"),
+    [substitutions, eventId]
+  );
 
   const search = () => {
     if (!eventId) return;
@@ -131,6 +143,16 @@ export default function SubstitutesFinder({
               ? `Normally taught by ${selected.assignedTeachers.join(", ")}`
               : "No teacher is linked to this class yet"}
           </p>
+          {alreadyCovered.map((sub) => (
+            <p
+              key={sub.id}
+              className="rounded-lg bg-warning-container p-2 text-xs text-on-warning-container"
+            >
+              Already covered: {sub.substitute_teacher ?? "someone"} is standing in for{" "}
+              {sub.absent_teacher ?? "the assigned teacher"}. Confirming another substitute replaces
+              that record.
+            </p>
+          ))}
           <button
             type="button"
             onClick={search}
@@ -218,6 +240,10 @@ export default function SubstitutesFinder({
                     </a>
                   )}
                 </div>
+
+                {/* Contacting them is still step one — the app cannot ask on
+                    anyone's behalf. This records the answer. */}
+                {selected && <ConfirmSubstitutionForm klass={selected} candidate={c} />}
               </div>
             );
           })}

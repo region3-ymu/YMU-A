@@ -81,6 +81,30 @@ const CALENDAR_SCOPE = [
   "https://www.googleapis.com/auth/calendar.readonly",
   "https://www.googleapis.com/auth/calendar.calendarlist",
 ].join(" ");
+
+// Editing an event's attendees needs a real write scope, so it gets its own
+// constant rather than widening CALENDAR_SCOPE. Everything the sync does keeps
+// running read-only: a token minted for the sweep can never patch an event by
+// accident, and getGoogleAccessToken caches per scope so the two never blur.
+//
+// This scope alone is not enough. The service account also needs "Make changes
+// to events" on each school calendar, and it cannot grant itself that — a
+// service account is not an owner, so acl.insert is refused. Every calendar's
+// owner has to re-share. Until that is done, patchEventAttendees returns a 403
+// and confirm_substitution's row stays at calendar_write_status = 'manual',
+// which is the same process YMU follows today with a record of it.
+export const CALENDAR_WRITE_SCOPE = "https://www.googleapis.com/auth/calendar.events";
+
+/**
+ * Whether the app is allowed to write to Google Calendar at all.
+ *
+ * Off by default and read at call time, not at import: the deploy that ships
+ * the write path and the day the calendars are re-shared are not the same day,
+ * and flipping this must not need a code change.
+ */
+export function calendarWriteEnabled(): boolean {
+  return process.env.GOOGLE_CALENDAR_WRITE_ENABLED === "true";
+}
 const GOOGLE_TOKEN_AUDIENCE = "https://oauth2.googleapis.com/token";
 const GOOGLE_CALENDAR_API = "https://www.googleapis.com/calendar/v3";
 
@@ -366,6 +390,76 @@ export class GoogleCalendarClient {
         body,
       );
     }
+  }
+
+  /**
+   * Replace an event's attendee list — the one write this client makes against
+   * event data, and the only way a substitution can reach the schedule.
+   *
+   * It has to be the attendees and nothing else: calendar_events.teacher_ids
+   * comes from matching attendee emails to logins (see matchedTeacherIds in
+   * supabase/functions/calendar-sync/sync.ts), so an attendee that is not on
+   * the Google event is a teacher who cannot clock in, whatever the app's own
+   * substitutions table says.
+   *
+   * Three things about this call are load-bearing:
+   *
+   *   * sendUpdates=none. The default is to email every attendee, so the
+   *     default would mail a class full of teachers each time a manager fixed
+   *     a typo. YMU tells its own people.
+   *
+   *   * Patching one INSTANCE of a recurring series is correct and expected —
+   *     cover is for one date, not for the term. Google turns that instance
+   *     into an exception, which is what we want; pass the instance id, never
+   *     the series id.
+   *
+   *   * The change flows back through the incremental sync and rewrites
+   *     teacher_ids, which makes queueNotifications() see a teacher_changed
+   *     diff. Whoever calls this must make sure the substitutions row exists
+   *     first, so the sync can tell its own edit from a real one.
+   */
+  async patchEventAttendees(
+    calendarId: string,
+    eventId: string,
+    attendees: GoogleCalendarAttendee[],
+  ): Promise<GoogleCalendarEvent> {
+    if (!calendarWriteEnabled()) {
+      // A thrown error rather than a silent no-op. A caller that reaches here
+      // believes it is writing to Google; letting it "succeed" would leave a
+      // substitution marked written against an unchanged calendar, which is
+      // worse than not writing at all.
+      throw new GoogleCalendarError(
+        "Google Calendar writes are disabled. Set GOOGLE_CALENDAR_WRITE_ENABLED=true once the service account has \"Make changes to events\" on the school calendars.",
+        0,
+        "",
+      );
+    }
+
+    const accessToken = await getGoogleAccessToken(this.serviceAccount, CALENDAR_WRITE_SCOPE);
+    const url = new URL(
+      `${GOOGLE_CALENDAR_API}/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`,
+    );
+    url.searchParams.set("sendUpdates", "none");
+
+    const response = await googleFetchWithRetry(url.toString(), {
+      method: "PATCH",
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ attendees }),
+    });
+    if (!response.ok) {
+      const body = await readError(response);
+      throw new GoogleCalendarError(
+        response.status === 403
+          ? `Google refused the edit (403) on ${calendarId}. The service account almost certainly has read-only access — it needs "Make changes to events" on that calendar.`
+          : `Google Calendar events.patch failed (${response.status}) for ${eventId} on ${calendarId}.`,
+        response.status,
+        body,
+      );
+    }
+    return (await response.json()) as GoogleCalendarEvent;
   }
 }
 

@@ -11,6 +11,13 @@ export type CoverableClass = {
   region: Region | null;
   /** Names of the teachers currently on it — who would be out. */
   assignedTeachers: string[];
+  /**
+   * Their ids, index-for-index with assignedTeachers. Needed because a
+   * substitution records WHICH teacher is away: a co-taught class has two
+   * matched teachers and only one of them is absent, and Google has no
+   * primary/substitute distinction to infer it from.
+   */
+  assignedTeacherIds: string[];
   /** Resolved from the title with the same matcher the rest of the app uses. */
   program: string | null;
 };
@@ -31,3 +38,31 @@ export type Candidate = {
 export type FindResult =
   | { ok: true; candidates: Candidate[] }
   | { ok: false; error: string };
+
+/**
+ * One recorded substitution, as recent_substitutions() returns it. `reason` is
+ * already the human label — SQL resolves it via absence_reason_label() so the
+ * screen and the spreadsheet cannot disagree about wording.
+ */
+export type Substitution = {
+  id: string;
+  event_id: string;
+  class_title: string | null;
+  class_start_at: string;
+  school_name: string | null;
+  region: Region | null;
+  absent_teacher_id: string;
+  absent_teacher: string | null;
+  substitute_teacher_id: string;
+  substitute_teacher: string | null;
+  substitute_email: string | null;
+  reason: string | null;
+  reason_notes: string | null;
+  status: "confirmed" | "cancelled";
+  confirmed_by: string | null;
+  confirmed_at: string;
+  cancel_reason: string | null;
+  calendar_write_status: "manual" | "pending" | "written" | "failed";
+};
+
+export type ConfirmResult = { error?: string; success?: string } | undefined;

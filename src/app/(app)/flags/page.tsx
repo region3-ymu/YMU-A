@@ -73,6 +73,33 @@ export default async function FlagsPage() {
       (s) => [`${s.event_id}:${s.teacher_id}`, s],
     ),
   );
+
+  // Cover already recorded against these classes. resolve_flag() will only
+  // accept a substitution_id whose event AND absent teacher match the flag, so
+  // the picker must offer exactly the rows that would pass — anything wider is
+  // an option that fails on submit.
+  const { data: substitutions } = eventIds.length
+    ? await supabase
+        .from("substitutions")
+        .select("id, event_id, absent_teacher_id, substitute:profiles!substitutions_substitute_teacher_id_fkey(full_name)")
+        .in("event_id", eventIds)
+        .eq("status", "confirmed")
+    : { data: [] };
+  const coverByKey = new Map<string, { id: string; label: string }[]>();
+  for (const row of (substitutions ?? []) as unknown as {
+    id: string;
+    event_id: string;
+    absent_teacher_id: string;
+    substitute: { full_name: string | null } | null;
+  }[]) {
+    const key = `${row.event_id}:${row.absent_teacher_id}`;
+    const list = coverByKey.get(key) ?? [];
+    list.push({ id: row.id, label: row.substitute?.full_name ?? "Unnamed teacher" });
+    coverByKey.set(key, list);
+  }
+  function coverFor(flag: FlagRow) {
+    return (flag.event?.id ? coverByKey.get(`${flag.event.id}:${flag.teacher_id}`) : undefined) ?? [];
+  }
   function sessionFor(flag: FlagRow) {
     return flag.session ?? (flag.event?.id ? sessionByKey.get(`${flag.event.id}:${flag.teacher_id}`) : undefined);
   }
@@ -129,7 +156,11 @@ export default async function FlagsPage() {
               {flag.type === "feedback_stuck" && flag.session_id ? (
                 canForceClose && <ForceCloseForm sessionId={flag.session_id} />
               ) : (
-                <ResolveFlagButton flagId={flag.id} />
+                <ResolveFlagButton
+                  flagId={flag.id}
+                  askOutcome={flag.type === "late_clock_in"}
+                  cover={coverFor(flag)}
+                />
               )}
             </li>
           ))}
