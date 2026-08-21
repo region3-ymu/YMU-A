@@ -53,20 +53,16 @@ as $$
   select case p_code
     when 'forgot'              then 'Forgot to clock in — was there on time'
     when 'tech_problem'        then 'App or phone problem'
-    when 'no_internet'         then 'No internet at the school'
     when 'calendar_time_wrong' then 'Calendar time is wrong — class starts later'
-    when 'back_to_back'        then 'Back-to-back class — clocked in for the first one'
-    when 'arrived_late'        then 'Arrived late (traffic / travel)'
-    when 'substitute_covered'  then 'A substitute covered the class'
+    when 'no_internet'         then 'No internet at the school'
     when 'teacher_absent'      then 'Teacher was absent'
     when 'class_not_held'      then 'Class did not happen'
-    when 'flag_in_error'       then 'Flag raised in error / test data'
     when 'other'               then 'Other'
   end;
 $$;
 
 comment on function public.flag_reason_label(text) is
-  'The label for a late-clock-in reason code, or null if the code is not one of the eleven. Twin of src/lib/attendance/flag-reasons.ts.';
+  'The label for a late-clock-in reason code, or null if the code is not one of the seven. Twin of src/lib/attendance/flag-reasons.ts.';
 
 grant execute on function public.flag_reason_label(text) to authenticated, service_role;
 
@@ -92,7 +88,7 @@ declare
   v_notes text := nullif(btrim(coalesce(p_notes, '')), '');
 begin
   if v_label is null then
-    raise exception 'Choose a reason. "%" is not one of the reasons on the list.', coalesce(p_code, '');
+    raise exception 'Choose a reason. "%" is not one of the seven reasons on the list.', coalesce(p_code, '');
   end if;
   if p_code = 'other' and v_notes is null then
     raise exception 'Choosing "Other" means writing what happened.';

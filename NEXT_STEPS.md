@@ -2,8 +2,9 @@
 
 ## 🟡 NOT APPLIED YET — migrations 0076–0080 (2026-08-21)
 
-Five migrations are written, committed and **not pushed**. Everything below is
-inert until `supabase db push` runs from a linked machine.
+Eight migrations are written, committed and **not pushed**. Everything below is
+inert until they are applied. There is a single pasteable file in
+`~/Downloads/YMU-A — migrations 0076-0083.sql`, wrapped in one transaction, or:
 
 ```bash
 supabase db push
@@ -31,6 +32,12 @@ What they do, shortest first:
   and why the assigned teacher was away.
 - **0080** — the missed-clock-in follow-ups: outcome, absence reason, notice
   channel, excused, and a LINK to the substitution.
+- **0081** — Tutoring owes no feedback form. A patterns table plus a BEFORE
+  INSERT trigger, because five different functions create an attendance
+  session and a rule in one of five call sites will be wrong within a month.
+- **0082** — GPS checks were losing a race with their own closeout. See below.
+- **0083** — **the speed one.** Every RLS policy's identity lookups now run
+  once per query instead of once per row. See below.
 
 ### After the push, one command, in this order
 
@@ -42,6 +49,70 @@ The tab sync rewrites Flags and Attendance with their new columns and creates
 Substitutions, Clock-in attempts, GPS checks and Ticket messages. **The
 `*_summary` tabs reference columns positionally**, so check those pivots still
 resolve afterwards — Flags gained 10 columns and Attendance gained 4.
+
+### Why the app was slow, and what 0083 does about it
+
+Measured from `pg_stat_statements` on production, not guessed. The /schedules
+`calendar_events` query: **6,396 calls, 158 ms mean, 5.4 s worst, and 17,023
+shared blocks per call** — 136 MB of buffer reads to return a fortnight of
+classes from a 57 MB table. A second `calendar_events` query averaged 358 ms at
+23,985 blocks.
+
+The same query with RLS out of the way: **3.7 ms, 633 blocks, index scan.**
+
+It is not the policy's logic, it is when the policy runs. `calendar_events_select`
+calls `auth.uid()`, `current_sees_all_regions()`, `current_app_role()` and
+`current_app_region()` bare, so each lands in the row filter and runs PER ROW —
+and each does its own `select from profiles`. A Regional Manager opening two
+weeks of classes pays thousands of profile lookups to be told the same answer
+every time.
+
+Wrapping each in a scalar subquery moves it into an InitPlan, evaluated once per
+statement. Measured on the same query in the same session: **52.6 ms bare vs
+25.7 ms wrapped**, and that is as `service_role`, where
+`current_sees_all_regions()` returns true immediately and short-circuits the
+rest. For a Regional Manager, where every branch is really evaluated, the gap is
+those 17,000 blocks.
+
+0083 rewrites all 36 affected expressions across 28 policies mechanically, then
+asserts three invariants or rolls back: no policy dropped, no policy changed in
+anything but its parenthesisation, and no bare identity call left. The
+transformation was dry-run read-only against all 35 live policies first — 0
+invariant violations, 0 broken schema prefixes, 0 double wraps.
+
+**Still open, not fixed here** (both are DB CPU, not page latency, but they tax
+everything else on a small instance):
+
+- `enqueue_reminder_notifications()` — 44,548 calls at **112.6 ms mean**, 5,016
+  seconds of total DB time. Runs every minute.
+- `detect_late_clockins()` — 45,164 calls at **95.5 ms mean**, 4,313 seconds.
+  Also every minute.
+
+So roughly 200 ms of database work every minute, forever, before any user asks
+for anything. Worth a look next.
+
+- `calendar_events.raw` is 24 MB of the table's 57 MB and is read by exactly one
+  page (`/schedules/[id]`). Moving it to a side table would shrink every other
+  query's working set.
+
+### GPS checks: why they never worked, and what 0082 changes
+
+649 of 654 checks are `unverifiable` with no position ever recorded.
+`close_out_overdue_gps_checks()` marked anything past due and its cron runs
+**every minute**, while the sampler polls every 30 s and waits up to 15 s for a
+fix. All four checks that ever succeeded were sampled **18–33 seconds** after
+coming due, because nothing later than about a minute could survive.
+
+0082 gives it ten minutes of grace, which turns a coin flip into a window.
+
+**It does not make the feature work**, and that needs saying: the sampler is
+foreground-only by design and stops the moment the phone locks. Nobody holds a
+phone open for eighty minutes while teaching. There is no web API that fixes
+this — a service worker has no `navigator.geolocation`, and Periodic Background
+Sync is Chromium-only and does not grant location. The real options are a
+mid-class push the teacher taps (which uses push infrastructure that already
+exists), replacing the checks with a GPS clock-OUT at the end of class, a native
+wrapper, or dropping the feature.
 
 ### The Google Calendar write is built and switched OFF
 

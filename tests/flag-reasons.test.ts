@@ -52,6 +52,22 @@ describe("isFlagReason", () => {
     }
   });
 
+  // Cut from the original eleven (YMU 2026-08-21). Left as an explicit test so
+  // a future edit that quietly reinstates one has to argue with this list:
+  // lateness is already a field, back-to-back is solved by the carryover
+  // rules, "a substitute covered it" is an outcome with a real link, and a
+  // "this flag was a mistake" category is just the quickest way out of the
+  // screen.
+  it("no longer offers the four that were cut", () => {
+    for (const cut of ["arrived_late", "back_to_back", "substitute_covered", "flag_in_error"]) {
+      expect(isFlagReason(cut)).toBe(false);
+    }
+  });
+
+  it("offers exactly seven", () => {
+    expect(FLAG_REASONS).toHaveLength(7);
+  });
+
   it("rejects non-strings", () => {
     expect(isFlagReason(null)).toBe(false);
     expect(isFlagReason(undefined)).toBe(false);
@@ -63,6 +79,10 @@ describe("flagReasonLabel", () => {
   it("resolves the causes that dominated the first 120 flags", () => {
     expect(flagReasonLabel("forgot")).toBe("Forgot to clock in — was there on time");
     expect(flagReasonLabel("no_internet")).toBe("No internet at the school");
+  });
+
+  it("is undefined for a code that was cut", () => {
+    expect(flagReasonLabel("arrived_late")).toBeUndefined();
   });
 
   it("is undefined for an unknown code", () => {

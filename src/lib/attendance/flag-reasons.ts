@@ -7,27 +7,33 @@
  * shape its 93 historical rows already have), while this list draws the
  * dropdown. tests/flag-reasons.test.ts guards the pairing.
  *
- * Ordered by how often the cause actually showed up in the first 120 flags,
- * not alphabetically — the manager resolving twenty of these in a sitting
- * should find the common answer without reading the whole list. Counts from
- * the 49 notes that had prose: forgot 19, tech 10, calendar 5, internet 3,
- * substitute 3, traffic 2, back-to-back 2.
+ * Seven, in YMU's own order (2026-08-21). It started as eleven, drawn from the
+ * causes in the first 120 flags, and four came back out for reasons worth
+ * keeping:
  *
- * `teacher_absent`, `class_not_held` and `flag_in_error` had no canonical
- * spelling to count — managers were writing them as prose ("Substitute
- * Assigned", "PRUEBA - diagnostico") or not resolving the flag at all.
+ *   arrived_late       — redundant. The attendance form already asks on-time
+ *                        or late, and minutes_late is now exported on the
+ *                        Flags tab. Lateness is a fact in the data, not a
+ *                        reason somebody types.
+ *   back_to_back       — solved rather than recorded. The six carryover rules
+ *                        in 0077 mean the second class of a run no longer
+ *                        raises a flag at all.
+ *   substitute_covered — lives on the OUTCOME list instead (0080), where it
+ *                        links to a real substitution. Asking the same
+ *                        question twice, once as prose and once as a link, is
+ *                        how you get two answers. The reason here stays
+ *                        `teacher_absent`, which is what was true.
+ *   flag_in_error      — no purpose. A junk or test flag is `other` with a
+ *                        note, and a category for "ignore this" invites use as
+ *                        the quickest way out of the screen.
  */
 export const FLAG_REASONS = [
   { value: "forgot", label: "Forgot to clock in — was there on time" },
   { value: "tech_problem", label: "App or phone problem" },
-  { value: "no_internet", label: "No internet at the school" },
   { value: "calendar_time_wrong", label: "Calendar time is wrong — class starts later" },
-  { value: "back_to_back", label: "Back-to-back class — clocked in for the first one" },
-  { value: "arrived_late", label: "Arrived late (traffic / travel)" },
-  { value: "substitute_covered", label: "A substitute covered the class" },
+  { value: "no_internet", label: "No internet at the school" },
   { value: "teacher_absent", label: "Teacher was absent" },
   { value: "class_not_held", label: "Class did not happen" },
-  { value: "flag_in_error", label: "Flag raised in error / test data" },
   { value: "other", label: "Other" },
 ] as const;
 
