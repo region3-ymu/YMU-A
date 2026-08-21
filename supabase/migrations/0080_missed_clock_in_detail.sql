@@ -250,6 +250,9 @@ grant execute on function public.resolve_flag(uuid, text, text, text, text, bool
 -- that closes the loop: a manager filtering Attendance for missed classes can
 -- now see, on the same row, the name of whoever actually taught it.
 
+-- Dropped again: 0078 left it at 17 columns and this adds six more.
+drop function if exists public.flags_for_sheet();
+
 create or replace function public.flags_for_sheet()
 returns table (
   flag_id uuid,

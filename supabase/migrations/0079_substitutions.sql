@@ -132,6 +132,7 @@ comment on column public.substitutions.calendar_write_status is
 
 alter table public.substitutions enable row level security;
 
+drop trigger if exists substitutions_touch on public.substitutions;
 create trigger substitutions_touch
   before update on public.substitutions
   for each row execute function public.touch_updated_at();
@@ -144,6 +145,7 @@ create trigger substitutions_touch
 -- on the row — unlike a flag, a substitution is not an escalation about
 -- somebody, it is a fact they both need. A teacher covering a class at another
 -- school has to be able to see that they are on it.
+drop policy if exists substitutions_select on public.substitutions;
 create policy substitutions_select on public.substitutions
   for select to authenticated
   using (

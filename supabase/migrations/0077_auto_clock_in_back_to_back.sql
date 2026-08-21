@@ -99,6 +99,7 @@ alter table public.auto_clock_in_rules enable row level security;
 -- the same reason find_substitutes reaches past a region), writable only by
 -- the roles that already set org-wide attendance policy — the same pair that
 -- may set profiles.clock_in_exempt in 0052.
+drop policy if exists auto_clock_in_rules_select on public.auto_clock_in_rules;
 create policy auto_clock_in_rules_select on public.auto_clock_in_rules
   for select to authenticated
   using (
@@ -106,11 +107,13 @@ create policy auto_clock_in_rules_select on public.auto_clock_in_rules
     or public.current_sees_all_regions()
   );
 
+drop policy if exists auto_clock_in_rules_write on public.auto_clock_in_rules;
 create policy auto_clock_in_rules_write on public.auto_clock_in_rules
   for all to authenticated
   using (public.current_app_role() in ('operations_manager', 'cpo'))
   with check (public.current_app_role() in ('operations_manager', 'cpo'));
 
+drop trigger if exists auto_clock_in_rules_touch on public.auto_clock_in_rules;
 create trigger auto_clock_in_rules_touch
   before update on public.auto_clock_in_rules
   for each row execute function public.touch_updated_at();
@@ -124,7 +127,7 @@ create trigger auto_clock_in_rules_touch
 -- spreadsheet, so 'carryover' shows up there with no further work.
 
 alter table public.attendance_sessions
-  drop constraint attendance_sessions_origin_check;
+  drop constraint if exists attendance_sessions_origin_check;
 
 alter table public.attendance_sessions
   add constraint attendance_sessions_origin_check

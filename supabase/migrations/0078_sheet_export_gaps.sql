@@ -57,6 +57,13 @@
 -- rather than leaving the cell blank. 0077's 'back_to_back' joins 'clock_in'
 -- and 'clock_in_exempt' there.
 
+-- DROP first. `create or replace` cannot change a function's return type, and
+-- this adds four columns to the existing 13 — Postgres refuses with
+-- "cannot change return type of existing function". Same for
+-- attendance_for_sheet below, and for flags_for_sheet again in 0080.
+-- The grants are reissued at the foot of each block, since dropping takes them.
+drop function if exists public.flags_for_sheet();
+
 create or replace function public.flags_for_sheet()
 returns table (
   flag_id uuid,
@@ -162,6 +169,8 @@ grant execute on function public.flags_for_sheet() to service_role;
 -- today, and pre-term setup days are real work; tightening the floor to the
 -- official start date would silently drop a row YMU can currently see. The
 -- point of this change is the tab not emptying, not a narrower window.
+
+drop function if exists public.attendance_for_sheet(timestamptz, timestamptz);
 
 create or replace function public.attendance_for_sheet(
   p_from timestamptz default null,

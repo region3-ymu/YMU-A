@@ -59,12 +59,14 @@ alter table public.feedback_exempt_patterns enable row level security;
 
 -- Readable by everyone signed in: a teacher's own app has to be able to
 -- explain why one class on their day asks for a form and another does not.
+drop policy if exists feedback_exempt_patterns_select on public.feedback_exempt_patterns;
 create policy feedback_exempt_patterns_select on public.feedback_exempt_patterns
   for select to authenticated using (true);
 
 -- Writable by the two roles that set the other org-wide attendance policies
 -- (clock_in_exempt in 0052, auto_clock_in_rules in 0077). Deciding a class
 -- needs no report is the same kind of decision.
+drop policy if exists feedback_exempt_patterns_write on public.feedback_exempt_patterns;
 create policy feedback_exempt_patterns_write on public.feedback_exempt_patterns
   for all to authenticated
   using (public.current_app_role() in ('operations_manager', 'cpo'))
