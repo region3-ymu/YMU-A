@@ -215,17 +215,63 @@ comment on function public.clock_in(uuid, double precision, double precision, do
 -- 3. Drop what read the checks
 -- ---------------------------------------------------------------------------
 
+-- These two do not return the gps_checks row type, so they need naming.
+-- gps_checks_for_sheet is only here for a database where 0078 ran before this
+-- migration was rewritten; on a fresh run 0078 never creates it.
 drop function if exists public.gps_checks_for_sheet(timestamptz, timestamptz);
-drop function if exists public.record_gps_check(uuid, double precision, double precision, double precision);
-drop function if exists public.record_gps_check_offline(uuid, integer, double precision, double precision, double precision, timestamptz);
 drop function if exists public.close_out_overdue_gps_checks();
 drop function if exists public.close_out_overdue_gps_checks(integer);
+
+-- Everything that RETURNS the gps_checks row type, found rather than listed.
+--
+-- A hand-written list is what made this migration fail twice. The first version
+-- named record_gps_check and record_gps_check_offline and stopped there;
+-- apply_gps_sample() — the shared implementation those two wrap — also returns
+-- gps_checks, so DROP TABLE was refused:
+--
+--   ERROR: 2BP01: cannot drop table gps_checks because other objects depend on it
+--   DETAIL: function apply_gps_sample(...) depends on type gps_checks
+--
+-- A function returning a table's row type is a hard dependency, and there is no
+-- reason to guess at the set when pg_proc knows it exactly. This finds them by
+-- return type, so a fourth one nobody remembered cannot break the run either.
+--
+-- Scoped to the RETURN TYPE deliberately, not to "any function mentioning
+-- gps_checks" — clock_in() mentions it until section 2 above redefines it, and
+-- a text search would have dropped the clock-in.
+
+do $$
+declare
+  v_signature text;
+  v_dropped integer := 0;
+begin
+  for v_signature in
+    select p.oid::regprocedure::text
+      from pg_proc p
+      join pg_type t on t.oid = p.prorettype
+     where p.pronamespace = 'public'::regnamespace
+       and t.typname = 'gps_checks'
+       and t.typnamespace = 'public'::regnamespace
+  loop
+    execute 'drop function if exists ' || v_signature;
+    v_dropped := v_dropped + 1;
+  end loop;
+  raise notice '0082: dropped % function(s) returning gps_checks.', v_dropped;
+end;
+$$;
 
 -- flags.gps_check_id only ever pointed at this table, and the flag type it
 -- belonged to (gps_out_of_fence) was raised exclusively by record_gps_check().
 -- Zero such flags were ever raised, so there is no history to preserve.
+-- Dropping the column takes its foreign key with it, which is why this comes
+-- before the table rather than after.
 alter table public.flags drop column if exists gps_check_id;
 
+-- No CASCADE. The hint on that error suggests it, and it is the wrong tool
+-- here: CASCADE would silently drop whatever else had come to depend on this
+-- table, which is exactly the thing worth being told about. Everything that
+-- legitimately depends on it has been dropped above by name or by return type,
+-- so a plain DROP either succeeds or reports something genuinely unexpected.
 drop table if exists public.gps_checks;
 
 -- 'gps_out_of_fence' stays in the flags type check constraint. Nothing can

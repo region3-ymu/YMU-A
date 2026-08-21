@@ -180,4 +180,83 @@ describe("returns-table functions that get redefined", () => {
       }
     }
   });
+
+  // Dropping a function drops its grants with it. A sheet exporter that comes
+  // back without `grant ... to service_role` is a tab that silently syncs
+  // nothing, which is the failure mode sheet-tabs.ts cannot detect.
+  it("regrants anything it drops", () => {
+    for (const { name, sql } of migrations()) {
+      for (const match of sql.matchAll(/drop function if exists public\.(\w+)\s*\(/gi)) {
+        const fn = match[1];
+        const recreated = new RegExp(
+          `create or replace function public\\.${fn}\\s*\\(`,
+          "i",
+        ).test(sql);
+        if (!recreated) continue; // A permanent removal needs no grant.
+        expect(
+          new RegExp(`grant execute on function public\\.${fn}\\(`, "i").test(sql),
+          `${name} drops and recreates ${fn}() without regranting execute`,
+        ).toBe(true);
+      }
+    }
+  });
+});
+
+// The second failure this bundle hit in YMU's SQL editor:
+//
+//   ERROR: 2BP01: cannot drop table gps_checks because other objects depend on it
+//   DETAIL: function apply_gps_sample(...) depends on type gps_checks
+//   HINT: Use DROP ... CASCADE to drop the dependent objects too.
+//
+// A function that RETURNS a table's row type is a hard dependency on that
+// table. 0082 named two such functions and missed a third — the shared
+// implementation the other two wrap. Guessing the set twice is what earned
+// these tests.
+describe("dropping a table", () => {
+  const removal = readFileSync(`${DIR}/0082_remove_gps_checks.sql`, "utf8");
+
+  it("finds its dependent functions by return type instead of naming them", () => {
+    // The list-by-hand approach failed. This asserts the migration asks
+    // pg_proc which functions return the row type rather than remembering.
+    expect(removal).toMatch(/join pg_type t on t\.oid = p\.prorettype/);
+    expect(removal).toContain("t.typname = 'gps_checks'");
+  });
+
+  it("does not name the functions it sweeps", () => {
+    // If someone re-adds these as explicit drops, the sweep stops being the
+    // single source of truth and the next apply_gps_sample gets missed again.
+    for (const fn of ["record_gps_check(", "record_gps_check_offline(", "apply_gps_sample("]) {
+      expect(
+        removal.includes(`drop function if exists public.${fn}`),
+        `0082 should let the return-type sweep remove ${fn}) rather than naming it`,
+      ).toBe(false);
+    }
+  });
+
+  it("refuses CASCADE", () => {
+    // Postgres's own hint suggests CASCADE, and taking it would have silently
+    // dropped whatever else had come to depend on the table — which is exactly
+    // the thing worth being told about. A plain DROP either succeeds or reports
+    // something genuinely unexpected.
+    expect(removal).not.toMatch(/drop table[^;]*cascade/i);
+  });
+
+  it("drops the referencing column before the table", () => {
+    // flags.gps_check_id carries the foreign key. Dropping the column takes
+    // the constraint with it; the other order fails.
+    const column = removal.indexOf("alter table public.flags drop column if exists gps_check_id");
+    const table = removal.indexOf("drop table if exists public.gps_checks");
+    expect(column).toBeGreaterThan(-1);
+    expect(table).toBeGreaterThan(-1);
+    expect(column).toBeLessThan(table);
+  });
+
+  it("unschedules the cron before dropping what it calls", () => {
+    // Otherwise check-closeout-1min errors 1,440 times a day until someone
+    // redeploys the Edge Function.
+    const unschedule = removal.indexOf("cron.unschedule");
+    const dropFunctions = removal.indexOf("drop function if exists public.close_out_overdue_gps_checks");
+    expect(unschedule).toBeGreaterThan(-1);
+    expect(unschedule).toBeLessThan(dropFunctions);
+  });
 });
