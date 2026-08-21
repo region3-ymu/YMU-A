@@ -69,37 +69,66 @@
 --
 -- regexp_replace, not replace(). A plain string replace of 'current_app_role()'
 -- would also hit the inside of 'public.current_app_role()' and produce
--- 'public.(select current_app_role())', which is not valid SQL — the migration
--- would fail loudly, but only after touching some policies. The leading group
--- below refuses to match when the name is preceded by a dot or a word
+-- 'public.(select current_app_role())', which is not valid SQL. The leading
+-- group below refuses to match when the name is preceded by a dot or a word
 -- character, so a schema-qualified call is matched whole or not at all.
+--
+-- Four functions, and only these four: they read nothing from the row, so
+-- their answer is the same for every row in the statement. afterschool_owned(...) and
+-- notify_recipients_for_school(...) take row columns and are deliberately NOT
+-- in the set — wrapping one of those would evaluate it once for the whole
+-- statement and hand every row the first row's answer, which is not a slow
+-- authorization check but a broken one.
+--
+-- UNWRAP FIRST, then wrap. That order is what makes this idempotent, and
+-- idempotence is not theoretical here: profiles.profiles_update_own already
+-- reads ( SELECT auth.uid() AS uid), so a wrap-only pass turned it into
+-- ( SELECT ( SELECT auth.uid() AS uid) AS uid). Invariant 2 below caught that
+-- and rolled the whole migration back, which is the only reason it is not in
+-- the version YMU ran.
 
 create or replace function public.wrap_identity_calls(p_expr text)
 returns text
 language sql
 immutable
 set search_path = ''
-as $$
+as $wrap$
   select case when p_expr is null then null else
-    -- auth.uid() carries its own dot, so it needs its own pattern.
     regexp_replace(
       regexp_replace(
-        p_expr,
+        -- Unwrap: matches both how Postgres renders a wrapped call
+        -- ( SELECT auth.uid() AS uid) and how one is written by hand
+        -- (select auth.uid()). Specific enough that it cannot touch a real
+        -- subquery like exists (select 1 from schools ...).
+        regexp_replace(
+          p_expr,
+          '\(\s*select\s+((?:public\.)?(?:current_app_role|current_sees_all_regions|current_app_region|auth\.uid)\(\))(\s+as\s+[a-z_.]+)?\s*\)',
+          '\1',
+          'gi'
+        ),
         '(^|[^[:alnum:]_.])((?:public\.)?(?:current_app_role|current_sees_all_regions|current_app_region)\(\))',
         '\1(select \2)',
         'g'
       ),
+      -- auth.uid() carries its own dot, so it needs its own pattern.
       '(^|[^[:alnum:]_.])(auth\.uid\(\))',
       '\1(select \2)',
       'g'
     )
   end;
-$$;
+$wrap$;
 
 comment on function public.wrap_identity_calls(text) is
-  'Wraps the four row-independent identity functions in a scalar subquery so Postgres evaluates them once per statement instead of once per row. Used by migration 0083 to rewrite RLS policies; safe to keep for the next one.';
+  'Wraps the four row-independent identity functions in a scalar subquery so Postgres evaluates them once per statement instead of once per row. Idempotent: unwraps any existing wrapper first, so applying it twice cannot nest.';
 
-do $$
+-- No "already applied?" guard. The first version had one, checking for
+-- '%SELECT current_app_role()%' — and it was the wrong question, because the
+-- one policy already carrying a wrapper carried it on auth.uid() instead. A
+-- guard that answers a narrower question than it appears to is worse than no
+-- guard; the function above is idempotent, so a second run re-issues the same
+-- ALTERs and changes nothing.
+
+do $rewrite$
 declare
   v_policy record;
   v_using text;
@@ -112,35 +141,17 @@ declare
   v_count_after integer;
   v_touched integer := 0;
 begin
-  -- Already applied? Then there is nothing to do, and re-running the wrap
-  -- would nest a subquery inside a subquery. Cheaper and clearer than trying
-  -- to make the rewrite reversible.
-  select count(*) into v_bare
-    from pg_policy p
-    join pg_class c on c.oid = p.polrelid
-    join pg_namespace n on n.oid = c.relnamespace
-   where n.nspname = 'public'
-     and (coalesce(pg_get_expr(p.polqual, p.polrelid), '')
-          || coalesce(pg_get_expr(p.polwithcheck, p.polrelid), ''))
-         like '%SELECT current_app_role()%';
-  if v_bare > 0 then
-    raise notice '0083 already applied — leaving % policies alone.', v_bare;
-    return;
-  end if;
-
   select count(*) into v_count_before
     from pg_policy p join pg_class c on c.oid = p.polrelid
-    join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public';
+   where c.relnamespace = 'public'::regnamespace;
 
   for v_policy in
     select p.polname,
            c.relname,
            pg_get_expr(p.polqual, p.polrelid)      as using_expr,
            pg_get_expr(p.polwithcheck, p.polrelid) as check_expr
-      from pg_policy p
-      join pg_class c on c.oid = p.polrelid
-      join pg_namespace n on n.oid = c.relnamespace
-     where n.nspname = 'public'
+      from pg_policy p join pg_class c on c.oid = p.polrelid
+     where c.relnamespace = 'public'::regnamespace
      order by c.relname, p.polname
   loop
     v_using := public.wrap_identity_calls(v_policy.using_expr);
@@ -170,25 +181,23 @@ begin
   -- ── Invariant 1: nothing was dropped ──────────────────────────────────
   select count(*) into v_count_after
     from pg_policy p join pg_class c on c.oid = p.polrelid
-    join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public';
+   where c.relnamespace = 'public'::regnamespace;
   if v_count_after <> v_count_before then
     raise exception 'Policy count changed from % to %. Rolling back.', v_count_before, v_count_after;
   end if;
 
   -- ── Invariant 2: the ONLY change is where the parentheses are ─────────
   -- This is what makes a mechanical rewrite of the whole application's
-  -- security rules defensible. Strip every wrapper Postgres rendered back out
-  -- of the AFTER expression and it must be character-identical to BEFORE. If
-  -- the transform altered a boolean, a column, a role or an OR, these diverge
-  -- and the migration rolls back with both texts in the error.
+  -- security rules defensible, and it has already earned its keep: it is what
+  -- caught the double-wrap on profiles_update_own. Strip every wrapper
+  -- Postgres rendered back out and BEFORE must equal AFTER character for
+  -- character.
   for v_policy in
     select p.polname, c.relname,
            pg_get_expr(p.polqual, p.polrelid)      as using_expr,
            pg_get_expr(p.polwithcheck, p.polrelid) as check_expr
-      from pg_policy p
-      join pg_class c on c.oid = p.polrelid
-      join pg_namespace n on n.oid = c.relnamespace
-     where n.nspname = 'public'
+      from pg_policy p join pg_class c on c.oid = p.polrelid
+     where c.relnamespace = 'public'::regnamespace
   loop
     v_after := v_after || jsonb_build_object(
       v_policy.relname || '.' || v_policy.polname,
@@ -197,18 +206,20 @@ begin
   end loop;
 
   for v_key in select jsonb_object_keys(v_before) loop
-    -- Postgres renders a wrapped call as "( SELECT f() AS f)". Undo exactly
-    -- that shape and nothing else.
     -- Postgres names the subquery's output column after the function: "AS uid"
-    -- for auth.uid(), "AS current_app_role" for the rest. The alias pattern
-    -- allows a dot as well, so this holds whichever way the server renders it.
+    -- for auth.uid(), "AS current_app_role" for the rest.
     if regexp_replace(v_before->>v_key, '\( SELECT ([a-z_.]+\(\)) AS [a-z_.]+\)', '\1', 'g')
        is distinct from
        regexp_replace(v_after->>v_key,  '\( SELECT ([a-z_.]+\(\)) AS [a-z_.]+\)', '\1', 'g')
     then
+      -- E'' so the newlines are real, and three placeholders for three
+      -- arguments. The first version passed chr(10) twice and wrote %% for one
+      -- of them — but %% in a RAISE format is an escaped literal percent, not
+      -- two placeholders, so it compiled to four placeholders against five
+      -- arguments: ERROR 42601, too many parameters specified for RAISE.
       raise exception
-        'Policy % changed in more than its evaluation order. Rolling back.%before: %%after:  %',
-        v_key, chr(10), v_before->>v_key, chr(10), v_after->>v_key;
+        E'Policy % changed in more than its evaluation order. Rolling back.\n  before: %\n  after:  %',
+        v_key, v_before->>v_key, v_after->>v_key;
     end if;
   end loop;
 
@@ -216,10 +227,8 @@ begin
   -- No lookbehind in Postgres regex, so blank out the wrapped forms first and
   -- then look for anything still calling bare.
   select count(*) into v_bare
-    from pg_policy p
-    join pg_class c on c.oid = p.polrelid
-    join pg_namespace n on n.oid = c.relnamespace
-   where n.nspname = 'public'
+    from pg_policy p join pg_class c on c.oid = p.polrelid
+   where c.relnamespace = 'public'::regnamespace
      and regexp_replace(
            coalesce(pg_get_expr(p.polqual, p.polrelid), '')
              || coalesce(pg_get_expr(p.polwithcheck, p.polrelid), ''),
@@ -231,4 +240,4 @@ begin
 
   raise notice '0083: % policies rewritten; identity lookups now run once per query.', v_touched;
 end;
-$$;
+$rewrite$;
