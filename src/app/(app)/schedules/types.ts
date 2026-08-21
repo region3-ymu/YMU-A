@@ -84,3 +84,32 @@ export type SchedulesExplorerProps = {
   range: ScheduleRangeKey;
   rangeOptions: { key: ScheduleRangeKey; label: string }[];
 };
+
+/**
+ * One same-teacher same-school run where the next class starts within 30
+ * minutes of the previous one ending. Shape of back_to_back_runs() in
+ * migration 0077.
+ *
+ * There are 23 of these across the four regions and they are the source of 20
+ * of the first 116 late-clock-in flags — the teacher is standing in the room
+ * they clocked into ninety minutes earlier. `late_flags` and `occurrences` are
+ * on the row so the decision to suppress a clock-in is made against evidence
+ * rather than from memory.
+ */
+export type BackToBackRun = {
+  school_id: string;
+  school_name: string;
+  region: Region | null;
+  teacher_id: string | null;
+  teacher_name: string | null;
+  first_class: string | null;
+  first_start: string;
+  first_end: string;
+  second_class: string | null;
+  second_start: string;
+  gap_minutes: number;
+  is_afterschool: boolean;
+  occurrences: number;
+  late_flags: number;
+  rule_active: boolean;
+};

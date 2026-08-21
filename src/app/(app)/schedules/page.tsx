@@ -2,13 +2,16 @@ import type { Metadata } from "next";
 import { requireProfile } from "@/lib/auth/dal";
 import { createClient } from "@/lib/supabase/server";
 import SchedulesExplorer from "./schedules-explorer";
+import BackToBackRuns from "./back-to-back-runs";
 import { resolveScheduleRange, scheduleRangeOptions } from "@/lib/schedules/range";
 import {
   SCHEDULE_LIST_COLUMNS,
+  type BackToBackRun,
   type CalendarSyncIssue,
   type ScheduleEvent,
   type ScheduleSchool,
 } from "./types";
+import { canSetAutoClockIn, isManagerRole } from "@/lib/auth/roles";
 
 export const metadata: Metadata = { title: "Schedules" };
 
@@ -25,10 +28,16 @@ export default async function SchedulesPage({
   // those only filter rows already fetched.
   const range = resolveScheduleRange((await searchParams).range, now.getTime());
 
+  // Not range-bound like the events query: a run repeats all term, and the
+  // point of the list is the arrangement, not this fortnight's instances.
+  // back_to_back_runs() picks its own window from app_data_start().
+  const showRuns = isManagerRole(caller.role);
+
   const [
     { data: events, error: eventsError },
     { data: schools, error: schoolsError },
     { data: calendarIssues, error: calendarIssuesError },
+    { data: runs },
   ] = await Promise.all([
     supabase
       .from("calendar_events")
@@ -46,6 +55,9 @@ export default async function SchedulesPage({
       .select("id, calendar_id, calendar_summary, reason, candidates, detected_at")
       .is("resolved_at", null)
       .order("detected_at"),
+    showRuns
+      ? supabase.rpc("back_to_back_runs")
+      : Promise.resolve({ data: [] as BackToBackRun[] }),
   ]);
 
   return (
@@ -64,6 +76,15 @@ export default async function SchedulesPage({
           rangeOptions={scheduleRangeOptions()}
         />
       </div>
+      {showRuns && (
+        <div className="mt-4">
+          <BackToBackRuns
+            runs={(runs ?? []) as BackToBackRun[]}
+            callerRole={caller.role}
+            canEdit={canSetAutoClockIn(caller.role)}
+          />
+        </div>
+      )}
     </main>
   );
 }

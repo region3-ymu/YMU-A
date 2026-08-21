@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth/dal";
-import { MANAGER_ROLES } from "@/lib/auth/roles";
+import { AUTO_CLOCK_IN_ADMIN_ROLES, MANAGER_ROLES } from "@/lib/auth/roles";
 import { createClient } from "@/lib/supabase/server";
 
 export type ScheduleFormState = { error?: string; success?: string } | undefined;
@@ -57,5 +57,42 @@ export async function resolveCalendarIssue(
       // Genuinely permanent since 0050/0051. It used to wear off within five
       // minutes, because every sync run rewrote resolved_at back to null.
       : "Dismissed for good — this calendar won't be flagged again.",
+  };
+}
+
+// Turn back-to-back auto clock-in on or off for one run.
+//
+// AUTO_CLOCK_IN_ADMIN_ROLES rather than MANAGER_ROLES, matching
+// set_auto_clock_in_rule()'s own guard and the auto_clock_in_rules_write
+// policy — SQL is authoritative either way, this just keeps the action from
+// making a round trip that was always going to be refused.
+export async function setAutoClockInRule(
+  _previous: ScheduleFormState,
+  formData: FormData,
+): Promise<ScheduleFormState> {
+  await requireRole(...AUTO_CLOCK_IN_ADMIN_ROLES);
+
+  const schoolId = String(formData.get("school_id") ?? "");
+  const teacherId = String(formData.get("teacher_id") ?? "");
+  const active = String(formData.get("active") ?? "") === "on";
+  const note = String(formData.get("note") ?? "").trim();
+  if (!isUuid(schoolId)) return { error: "Choose a valid school." };
+  if (teacherId && !isUuid(teacherId)) return { error: "Choose a valid teacher." };
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("set_auto_clock_in_rule", {
+    p_school_id: schoolId,
+    p_teacher_id: teacherId || null,
+    p_active: active,
+    p_max_gap_minutes: 15,
+    p_note: note || null,
+  });
+  if (error) return { error: error.message };
+
+  revalidatePath("/schedules");
+  return {
+    success: active
+      ? "Auto clock-in is on for this run. The next class records itself once the teacher clocks into the first one."
+      : "Auto clock-in is off. This run goes back to a normal clock-in per class.",
   };
 }

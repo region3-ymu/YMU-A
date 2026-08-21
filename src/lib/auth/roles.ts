@@ -114,6 +114,24 @@ export function canFindSubstitutes(role: AppRole): boolean {
   return (SUBSTITUTE_FINDER_ROLES as readonly AppRole[]).includes(role);
 }
 
+// Who can switch back-to-back auto clock-in on and off for a run. Mirrors the
+// auto_clock_in_rules_write policy in migration 0077 — SQL is authoritative.
+//
+// Deliberately narrower than MANAGER_ROLES, and the same pair that may set
+// profiles.clock_in_exempt in 0052. A carryover rule stops asking a teacher to
+// prove they were somewhere, so it is attendance policy, not a regional
+// judgement call — and a Regional Manager who wants one asks for it rather
+// than granting it to their own region. Every manager can still SEE the runs
+// and the flag counts, which is what the conversation needs.
+export const AUTO_CLOCK_IN_ADMIN_ROLES = [
+  "operations_manager",
+  "cpo",
+] as const satisfies readonly AppRole[];
+
+export function canSetAutoClockIn(role: AppRole): boolean {
+  return (AUTO_CLOCK_IN_ADMIN_ROLES as readonly AppRole[]).includes(role);
+}
+
 // Who can post an announcement on the News board. Everyone signed in reads it;
 // only these four write, which is the "only admins can talk" shape YMU asked
 // for. Mirrors can_publish_news() in migration 0053 — SQL is authoritative.
