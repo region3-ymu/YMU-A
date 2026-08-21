@@ -36,6 +36,7 @@ function SectionTable({ rows }: { rows: PeriodSummary[] }) {
     <View style={styles.table}>
       <View style={styles.headerRow}>
         <Text style={styles.cellWide}>Period</Text>
+        <Text style={styles.cell}>Classes</Text>
         <Text style={styles.cell}>Hours</Text>
         <Text style={styles.cell}>On time</Text>
         <Text style={styles.cell}>Late</Text>
@@ -45,6 +46,7 @@ function SectionTable({ rows }: { rows: PeriodSummary[] }) {
       {rows.map((row) => (
         <View style={styles.row} key={row.periodKey}>
           <Text style={styles.cellWide}>{row.periodLabel} ({row.periodStart})</Text>
+          <Text style={styles.cell}>{row.taughtCount}</Text>
           <Text style={styles.cell}>{row.hoursWorked.toFixed(2)}</Text>
           <Text style={styles.cell}>{row.onTimeCount}</Text>
           <Text style={styles.cell}>{row.lateCount}</Text>

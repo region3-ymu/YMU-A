@@ -57,6 +57,12 @@ export type PeriodSummary = {
   periodStart: string;
   periodEnd: string;
   hoursWorked: number;
+  /**
+   * Classes actually taught: on-time plus late. NOT scheduledCount, which
+   * counts the missed ones too — a teacher who missed three of twenty taught
+   * seventeen, and that is the number YMU reads alongside hours.
+   */
+  taughtCount: number;
   onTimeCount: number;
   lateCount: number;
   missedCount: number;

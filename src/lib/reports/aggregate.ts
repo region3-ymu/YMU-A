@@ -201,6 +201,9 @@ function summarize(key: string, bucket: Bucket): PeriodSummary {
     periodStart: isoDate(bucket.periodStart),
     periodEnd: isoDate(bucket.periodEnd),
     hoursWorked: Math.round(hoursWorked * 100) / 100,
+    // Taught, not scheduled. A late arrival still taught the class; a missed
+    // one did not, and an upcoming one has not yet.
+    taughtCount: onTime + late,
     onTimeCount: onTime,
     lateCount: late,
     missedCount: missed,

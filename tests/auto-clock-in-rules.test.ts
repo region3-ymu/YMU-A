@@ -17,26 +17,54 @@ const migration = readFileSync(
 );
 
 describe("the seeded rules", () => {
-  // 23 runs were detected. YMU chose two and asked for the rest to stay off
-  // until they had spoken to the regions — Carol City and Little River
-  // especially, which have more flags than either of these. A seed row added
-  // here is a clock-in that stops being asked for at a school nobody agreed
-  // to, so it should be hard to add by accident.
-  const seeded = [...migration.matchAll(/^\s*\('([^']+)', '([^']+)',$/gm)].map(
-    ([, school, teacher]) => `${teacher} @ ${school}`,
-  );
+  // 23 runs were detected. YMU approved six of them (2026-08-21) and the rest
+  // stay off behind a toggle on /schedules. A seed row added here is a
+  // clock-in that stops being asked for at a school nobody agreed to, so it
+  // should be hard to add by accident.
+  const seeded = [
+    ...migration.matchAll(
+      /^\s*\('([^']+)', '([^']+)', (null|'[a-z]+'), (null|'[a-z]+'),$/gm,
+    ),
+  ].map(([, school, teacher, first, second]) => ({
+    run: `${teacher} @ ${school}`,
+    first: first === "null" ? null : first.replaceAll("'", ""),
+    second: second === "null" ? null : second.replaceAll("'", ""),
+  }));
 
-  it("ships exactly the two runs YMU approved", () => {
-    expect(seeded).toEqual([
+  it("ships exactly the six runs YMU approved", () => {
+    expect(seeded.map((row) => row.run)).toEqual([
       "Kevin Bodniza @ Horace Mann Middle School",
       "Jose Heredia @ South Dade Middle School",
+      "Deion Hampton @ Carol City Middle School",
+      "Jeff Joseph @ Carol City Middle School",
+      "Gerdy Chevelon @ Carol City Middle School",
+      "Reinaldo Velez @ Little River K-8",
     ]);
   });
 
-  it("leaves the runs YMU is still deciding on alone", () => {
-    for (const school of ["Carol City", "Little River", "Madison", "Benjamin Franklin", "Lillie C. Evans"]) {
-      expect(seeded.some((row) => row.includes(school))).toBe(false);
+  // The whole reason first_class_pattern exists. Reinaldo runs four classes
+  // back to back at Little River and only the LAST link carries over —
+  // Beginning Band into Tutoring keeps its own clock-in. An unscoped rule for
+  // him would silently cover the earlier links too.
+  it("scopes Reinaldo's rule to Tutoring into Afterschool only", () => {
+    const reinaldo = seeded.find((row) => row.run.startsWith("Reinaldo Velez"));
+    expect(reinaldo).toBeDefined();
+    expect(reinaldo!.first).toBe("tutoring");
+    expect(reinaldo!.second).toBe("afterschool");
+  });
+
+  it("leaves the runs YMU wants clocked in normally alone", () => {
+    for (const school of ["Madison", "Benjamin Franklin", "Lillie C. Evans", "Norland", "Morningside"]) {
+      expect(seeded.some((row) => row.run.includes(school))).toBe(false);
     }
+  });
+
+  // Little River appears once and only with patterns. An unscoped Little River
+  // row would cover Beginning Band into Tutoring.
+  it("never seeds an unscoped rule at Little River", () => {
+    const littleRiver = seeded.filter((row) => row.run.includes("Little River"));
+    expect(littleRiver).toHaveLength(1);
+    expect(littleRiver.every((row) => row.first !== null && row.second !== null)).toBe(true);
   });
 
   it("explains every rule it seeds", () => {
@@ -44,6 +72,26 @@ describe("the seeded rules", () => {
     // attendance should never be unexplained.
     const notes = [...migration.matchAll(/^\s*'([^']*YMU 2026[^']*)'\),?$/gm)];
     expect(notes).toHaveLength(seeded.length);
+  });
+});
+
+describe("one predicate, three callers", () => {
+  // The sweep that writes the session, the detector that must not flag it, and
+  // the screen that shows which runs are on all have to agree. Three
+  // hand-rolled title matches would be three chances for the screen to say
+  // "on" about a run the sweep does not cover.
+  it("routes every rule decision through auto_clock_in_rule_gap", () => {
+    const calls = [...migration.matchAll(/public\.auto_clock_in_rule_gap\(/g)];
+    // One definition plus three call sites.
+    expect(calls.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it("matches a title as a case-insensitive substring", () => {
+    // Calendar titles belong to the schools. Little River has "Tutoring",
+    // "After School Tutoring" and "After School - Tutoring" live right now,
+    // and 'aftreschool' is a real typo on 36 of their events — an exact match
+    // would cover one spelling and miss the rest.
+    expect(migration).toContain("position(lower(r.first_class_pattern) in lower(coalesce(p_first_class, ''))) > 0");
   });
 });
 

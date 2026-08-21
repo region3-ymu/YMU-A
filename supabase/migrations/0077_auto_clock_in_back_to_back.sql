@@ -48,6 +48,17 @@ create table if not exists public.auto_clock_in_rules (
   id uuid primary key default gen_random_uuid(),
   school_id uuid not null references public.schools (id) on delete cascade,
   teacher_id uuid references public.profiles (id) on delete cascade,
+  -- Which pair of classes, when (school, teacher) is too coarse. Reinaldo
+  -- Velez runs four classes back to back at Little River and YMU wants the
+  -- carryover on exactly one link of that chain — Tutoring into Afterschool —
+  -- while Beginning Band into Tutoring keeps its own clock-in. A teacher-wide
+  -- rule cannot say that.
+  --
+  -- Matched as a case-insensitive substring of the event summary, the same way
+  -- afterschool_patterns (0063) and programs.match_patterns match titles.
+  -- Null means "any class", which is what the simple rules use.
+  first_class_pattern text,
+  second_class_pattern text,
   max_gap_minutes integer not null default 15 check (max_gap_minutes between 0 and 60),
   active boolean not null default true,
   -- Why this rule exists, in the words of whoever asked for it. A rule that
@@ -58,15 +69,29 @@ create table if not exists public.auto_clock_in_rules (
   updated_at timestamptz not null default now()
 );
 
--- One rule per target. A school-wide rule and a teacher-specific rule can
--- coexist; the function takes the largest gap either allows.
-create unique index if not exists auto_clock_in_rules_school_teacher_idx
-  on public.auto_clock_in_rules (school_id, coalesce(teacher_id, '00000000-0000-0000-0000-000000000000'::uuid));
+-- One rule per target. A school-wide rule, a teacher-specific rule and a
+-- title-scoped rule can all coexist; the function takes the largest gap any
+-- matching rule allows.
+--
+-- The coalesces are what make the index usable: null teacher_id and null
+-- patterns are meaningful values here ("any"), and a plain unique index would
+-- treat two "any" rows as distinct because NULL <> NULL.
+create unique index if not exists auto_clock_in_rules_target_idx
+  on public.auto_clock_in_rules (
+    school_id,
+    coalesce(teacher_id, '00000000-0000-0000-0000-000000000000'::uuid),
+    coalesce(lower(first_class_pattern), ''),
+    coalesce(lower(second_class_pattern), '')
+  );
 
 comment on table public.auto_clock_in_rules is
   'Where a teacher already clocked into an earlier class at the same school, the next class within max_gap_minutes is recorded automatically by auto_clock_in_back_to_back(). Opt-in per (school, teacher) — a clock-in is evidence of presence, so suppressing it is a decision a manager makes, not a default.';
 comment on column public.auto_clock_in_rules.teacher_id is
   'Null means every teacher at this school.';
+comment on column public.auto_clock_in_rules.first_class_pattern is
+  'Case-insensitive substring the FIRST class''s title must contain, or null for any. Use with second_class_pattern to carry over one specific link of a longer run.';
+comment on column public.auto_clock_in_rules.second_class_pattern is
+  'Case-insensitive substring the SECOND class''s title must contain, or null for any.';
 
 alter table public.auto_clock_in_rules enable row level security;
 
@@ -106,7 +131,51 @@ alter table public.attendance_sessions
   check (origin in ('online', 'offline', 'admin', 'exempt', 'carryover'));
 
 -- ---------------------------------------------------------------------------
--- 3. The runs themselves, for the toggle screen
+-- 3. Does a rule cover this pair of classes?
+-- ---------------------------------------------------------------------------
+-- One predicate, three callers: the sweep that writes the session, the
+-- detector that must not raise a flag for it, and the screen that shows which
+-- runs are on. Three hand-rolled copies of a title match is three chances for
+-- the screen to say "on" about a run the sweep does not actually cover.
+
+create or replace function public.auto_clock_in_rule_gap(
+  p_school_id    uuid,
+  p_teacher_id   uuid,
+  p_first_class  text,
+  p_second_class text
+)
+returns integer
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  -- The largest gap any matching rule allows, or null if none matches. Max
+  -- rather than min: a rule is a permission, and the most permissive one that
+  -- applies is the answer.
+  select max(r.max_gap_minutes)
+    from public.auto_clock_in_rules r
+   where r.active
+     and r.school_id = p_school_id
+     and (r.teacher_id is null or r.teacher_id = p_teacher_id)
+     and (
+       r.first_class_pattern is null
+       or position(lower(r.first_class_pattern) in lower(coalesce(p_first_class, ''))) > 0
+     )
+     and (
+       r.second_class_pattern is null
+       or position(lower(r.second_class_pattern) in lower(coalesce(p_second_class, ''))) > 0
+     );
+$$;
+
+comment on function public.auto_clock_in_rule_gap(uuid, uuid, text, text) is
+  'The widest gap any active auto_clock_in_rules row allows for this teacher, school and pair of class titles, or null if no rule covers it. The single source of truth for "is carryover on for this run".';
+
+revoke execute on function public.auto_clock_in_rule_gap(uuid, uuid, text, text) from public, anon;
+grant execute on function public.auto_clock_in_rule_gap(uuid, uuid, text, text) to authenticated, service_role;
+
+-- ---------------------------------------------------------------------------
+-- 4. The runs themselves, for the toggle screen
 -- ---------------------------------------------------------------------------
 -- The same query that found the 23 runs, as a function, so the screen where a
 -- manager turns rules on shows real evidence — gap, how many dates it repeats
@@ -197,16 +266,14 @@ as $$
          bool_or(p.is_afterschool),
          count(distinct p.second_event_id),
          count(distinct f.id),
-         -- A scalar subquery, NOT a join. Joining here would multiply every
-         -- pair by the number of matching rules, and occurrences/late_flags
-         -- are counts — a school-wide rule alongside a teacher rule would
-         -- silently report 82 dates for a run that happens 41 times.
-         exists (
-           select 1 from public.auto_clock_in_rules r
-            where r.active
-              and r.school_id = p.school_id
-              and (r.teacher_id is null or r.teacher_id = p.teacher_id)
-         )
+         -- A scalar call, NOT a join. Joining auto_clock_in_rules here would
+         -- multiply every pair by the number of matching rules, and
+         -- occurrences/late_flags are counts — a school-wide rule alongside a
+         -- teacher rule would silently report 82 dates for a run that happens
+         -- 41 times.
+         public.auto_clock_in_rule_gap(
+           p.school_id, p.teacher_id, p.first_class, p.second_class
+         ) is not null
     from pairs p
     join public.schools s on s.id = p.school_id
     left join public.profiles pr on pr.id = p.teacher_id
@@ -226,7 +293,7 @@ revoke execute on function public.back_to_back_runs(timestamptz, timestamptz) fr
 grant execute on function public.back_to_back_runs(timestamptz, timestamptz) to authenticated, service_role;
 
 -- ---------------------------------------------------------------------------
--- 4. Recording the carried-over attendance
+-- 5. Recording the carried-over attendance
 -- ---------------------------------------------------------------------------
 -- Deliberately shaped like auto_attend_exempt_teachers() (0052): a
 -- service_role sweep that inserts sessions and then closes the flags they
@@ -279,26 +346,29 @@ begin
            prev.clock_in_distance_m as distance_m
       from public.calendar_events ce
       cross join lateral unnest(ce.teacher_ids) as t (teacher_id)
-      -- The rule. Largest max_gap_minutes wins where a school-wide and a
-      -- teacher-specific rule both apply.
-      join lateral (
-        select max(r.max_gap_minutes) as max_gap_minutes
-          from public.auto_clock_in_rules r
-         where r.active
-           and r.school_id = ce.school_id
-           and (r.teacher_id is null or r.teacher_id = t.teacher_id)
-      ) rule on rule.max_gap_minutes is not null
       -- The earlier class at the same school that the teacher DID clock into.
       -- Ordering by end_at desc picks the immediately preceding one, so a
-      -- three-class run carries over one link at a time.
+      -- four-class run like Little River's is considered one link at a time
+      -- and each link needs its own covering rule.
       join public.calendar_events prev_ce
         on  prev_ce.school_id = ce.school_id
         and t.teacher_id = any(prev_ce.teacher_ids)
         and prev_ce.status <> 'cancelled'
         and prev_ce.id <> ce.id
         and prev_ce.end_at is not null
-        and prev_ce.end_at >= ce.start_at - make_interval(mins => rule.max_gap_minutes)
+        -- The widest window any rule could allow, so the title-aware check
+        -- below has candidates to test. 60 is max_gap_minutes' own ceiling.
+        and prev_ce.end_at >= ce.start_at - interval '60 minutes'
         and prev_ce.end_at <= ce.start_at + interval '5 minutes'
+      -- The rule, evaluated against BOTH titles. This is the join that makes
+      -- "Tutoring into Afterschool, but not Beginning Band into Tutoring"
+      -- expressible.
+      join lateral (
+        select public.auto_clock_in_rule_gap(
+          ce.school_id, t.teacher_id, prev_ce.summary, ce.summary
+        ) as max_gap_minutes
+      ) rule on rule.max_gap_minutes is not null
+        and prev_ce.end_at >= ce.start_at - make_interval(mins => rule.max_gap_minutes)
       join public.attendance_sessions prev
         on  prev.event_id = prev_ce.id
         and prev.teacher_id = t.teacher_id
@@ -381,7 +451,7 @@ revoke execute on function public.auto_clock_in_back_to_back() from public, anon
 grant execute on function public.auto_clock_in_back_to_back() to service_role;
 
 -- ---------------------------------------------------------------------------
--- 5. Do not chase what is about to be recorded
+-- 6. Do not chase what is about to be recorded
 -- ---------------------------------------------------------------------------
 -- The ordering in late-detect/index.ts is the primary guard. This is the
 -- second one, for the case the two ever drift apart: a class covered by an
@@ -429,20 +499,22 @@ begin
       -- already accounted for.
       and not exists (
         select 1
-          from public.auto_clock_in_rules r
-          join public.calendar_events prev_ce
-            on  prev_ce.school_id = ce.school_id
-            and t.teacher_id = any(prev_ce.teacher_ids)
-            and prev_ce.status <> 'cancelled'
-            and prev_ce.id <> ce.id
-            and prev_ce.end_at is not null
-            and prev_ce.end_at >= ce.start_at - make_interval(mins => r.max_gap_minutes)
-            and prev_ce.end_at <= ce.start_at + interval '5 minutes'
+          from public.calendar_events prev_ce
           join public.attendance_sessions prev
             on prev.event_id = prev_ce.id and prev.teacher_id = t.teacher_id
-         where r.active
-           and r.school_id = ce.school_id
-           and (r.teacher_id is null or r.teacher_id = t.teacher_id)
+          cross join lateral (
+            select public.auto_clock_in_rule_gap(
+              ce.school_id, t.teacher_id, prev_ce.summary, ce.summary
+            ) as max_gap_minutes
+          ) rule
+         where prev_ce.school_id = ce.school_id
+           and t.teacher_id = any(prev_ce.teacher_ids)
+           and prev_ce.status <> 'cancelled'
+           and prev_ce.id <> ce.id
+           and prev_ce.end_at is not null
+           and rule.max_gap_minutes is not null
+           and prev_ce.end_at >= ce.start_at - make_interval(mins => rule.max_gap_minutes)
+           and prev_ce.end_at <= ce.start_at + interval '5 minutes'
       )
     returning id, event_id, teacher_id, school_id
   loop
@@ -464,32 +536,62 @@ end;
 $$;
 
 -- ---------------------------------------------------------------------------
--- 6. The two runs YMU asked for, and only those two
+-- 7. The runs YMU has approved
 -- ---------------------------------------------------------------------------
--- Kevin Bodniza at Horace Mann (no usable internet at the school) and Jose
--- Heredia at South Dade Middle. The other 21 detected runs get a toggle on the
--- schedules screen and stay off until a manager decides — including Carol City
--- and Little River, which YMU is still asking about.
+-- Six rules across five teachers, all confirmed by YMU (2026-08-21):
 --
--- Matched by name rather than hardcoded uuid so this migration is replayable
--- against a fresh database. Silently inserts nothing if a name does not
--- resolve, which is the right failure: a seed is not the place to abort a
--- deploy, and back_to_back_runs() will show the rule as off.
+--   Kevin Bodniza / Horace Mann      — no usable internet at the school
+--   Jose Heredia / South Dade Middle — two Band blocks, same room
+--   Deion Hampton / Carol City       — Beginning Band 1 -> 2
+--   Jeff Joseph / Carol City         — Modern Band 1 -> 2
+--   Gerdy Chevelon / Carol City      — Drumline 1 -> 2
+--   Reinaldo Velez / Little River    — Tutoring -> Afterschool ONLY
+--
+-- The Carol City three are the biggest single source of these flags (7 between
+-- them) and Eric Levy had already been resolving them by hand with the note
+-- "Didn't clock in again on time for the back-to-back class at the same
+-- location."
+--
+-- Reinaldo's is the reason first_class_pattern exists. He runs four classes
+-- back to back at Little River — Beginning Band or Drumline, then Tutoring,
+-- then Afterschool — and only the last link carries over. Beginning Band into
+-- Tutoring keeps its own clock-in, because that is where the teaching day
+-- changes shape and the clock-in is worth having.
+--
+-- The other 17 detected runs, Madison and Benjamin Franklin and Lillie C.
+-- Evans among them, stay off. They get a toggle on /schedules.
+--
+-- Matched by name rather than hardcoded uuid so this is replayable against a
+-- fresh database. Inserts nothing if a name does not resolve, which is the
+-- right failure: a seed should not abort a deploy, and back_to_back_runs()
+-- will simply show the rule as off.
 
-insert into public.auto_clock_in_rules (school_id, teacher_id, max_gap_minutes, note)
-select s.id, p.id, 15, v.note
+insert into public.auto_clock_in_rules (
+  school_id, teacher_id, first_class_pattern, second_class_pattern, max_gap_minutes, note
+)
+select s.id, p.id, v.first_pattern, v.second_pattern, 15, v.note
   from (values
-    ('Horace Mann Middle School', 'Kevin Bodniza',
+    ('Horace Mann Middle School', 'Kevin Bodniza', null, null,
      'No usable internet at the school; the 10:50 Music Production block follows the 09:10 one in the same room. YMU 2026-08-21.'),
-    ('South Dade Middle School', 'Jose Heredia',
-     'Two Band (Rotating) blocks back to back, 5 minutes apart, same room. YMU 2026-08-21.')
-  ) as v (school_name, teacher_name, note)
+    ('South Dade Middle School', 'Jose Heredia', null, null,
+     'Two Band (Rotating) blocks back to back, 5 minutes apart, same room. YMU 2026-08-21.'),
+    ('Carol City Middle School', 'Deion Hampton', null, null,
+     'Beginning Band 1 into Beginning Band 2, 10-minute gap, same room. 4 late flags. YMU 2026-08-21.'),
+    ('Carol City Middle School', 'Jeff Joseph', null, null,
+     'Modern Band 1 into Modern Band 2, 10-minute gap, same room. YMU 2026-08-21.'),
+    ('Carol City Middle School', 'Gerdy Chevelon', null, null,
+     'Drumline 1 into Drumline 2, 10-minute gap, same room. YMU 2026-08-21.'),
+    -- The only title-scoped rule. Without the patterns this would also carry
+    -- Beginning Band into Tutoring, which YMU wants clocked in normally.
+    ('Little River K-8', 'Reinaldo Velez', 'tutoring', 'afterschool',
+     'Tutoring into Afterschool ONLY. The earlier links of the Little River run keep their own clock-in. YMU 2026-08-21.')
+  ) as v (school_name, teacher_name, first_pattern, second_pattern, note)
   join public.schools s on s.name = v.school_name
   join public.profiles p on p.full_name = v.teacher_name and p.archived_at is null
 on conflict do nothing;
 
 -- ---------------------------------------------------------------------------
--- 7. Turning a run on or off
+-- 8. Turning a run on or off
 -- ---------------------------------------------------------------------------
 -- The RLS policy above already permits the write, so this function is not
 -- about authorization — it is about the two things a raw upsert from the
@@ -498,11 +600,13 @@ on conflict do nothing;
 -- keeps the note explaining why it was ever on.
 
 create or replace function public.set_auto_clock_in_rule(
-  p_school_id       uuid,
-  p_teacher_id      uuid,
-  p_active          boolean,
-  p_max_gap_minutes integer default 15,
-  p_note            text default null
+  p_school_id            uuid,
+  p_teacher_id           uuid,
+  p_active               boolean,
+  p_max_gap_minutes      integer default 15,
+  p_note                 text default null,
+  p_first_class_pattern  text default null,
+  p_second_class_pattern text default null
 )
 returns public.auto_clock_in_rules
 language plpgsql
@@ -526,13 +630,22 @@ begin
   end if;
 
   insert into public.auto_clock_in_rules (
-    school_id, teacher_id, max_gap_minutes, active, note, created_by
+    school_id, teacher_id, first_class_pattern, second_class_pattern,
+    max_gap_minutes, active, note, created_by
   )
   values (
-    p_school_id, p_teacher_id, coalesce(p_max_gap_minutes, 15), p_active,
+    p_school_id, p_teacher_id,
+    nullif(btrim(coalesce(p_first_class_pattern, '')), ''),
+    nullif(btrim(coalesce(p_second_class_pattern, '')), ''),
+    coalesce(p_max_gap_minutes, 15), p_active,
     nullif(btrim(coalesce(p_note, '')), ''), v_uid
   )
-  on conflict (school_id, coalesce(teacher_id, '00000000-0000-0000-0000-000000000000'::uuid))
+  on conflict (
+    school_id,
+    coalesce(teacher_id, '00000000-0000-0000-0000-000000000000'::uuid),
+    coalesce(lower(first_class_pattern), ''),
+    coalesce(lower(second_class_pattern), '')
+  )
   do update set
     active          = excluded.active,
     max_gap_minutes = excluded.max_gap_minutes,
@@ -546,8 +659,8 @@ begin
 end;
 $$;
 
-comment on function public.set_auto_clock_in_rule(uuid, uuid, boolean, integer, text) is
-  'Creates or updates the auto clock-in rule for a (school, teacher) pair. Switching off sets active=false rather than deleting, so the note survives.';
+comment on function public.set_auto_clock_in_rule(uuid, uuid, boolean, integer, text, text, text) is
+  'Creates or updates the auto clock-in rule for a (school, teacher, class-title pair) target. Switching off sets active=false rather than deleting, so the note survives.';
 
-revoke execute on function public.set_auto_clock_in_rule(uuid, uuid, boolean, integer, text) from public, anon;
-grant execute on function public.set_auto_clock_in_rule(uuid, uuid, boolean, integer, text) to authenticated;
+revoke execute on function public.set_auto_clock_in_rule(uuid, uuid, boolean, integer, text, text, text) from public, anon;
+grant execute on function public.set_auto_clock_in_rule(uuid, uuid, boolean, integer, text, text, text) to authenticated;

@@ -21,6 +21,9 @@ export function periodSummariesToCsv(
     "Teacher",
     "Period start",
     "Period end",
+    // Ahead of hours, and taught rather than scheduled: YMU reads the two
+    // together and a missed class is not one the teacher gave.
+    "Classes taught",
     "Hours worked",
     "On time",
     "Late",
@@ -36,6 +39,7 @@ export function periodSummariesToCsv(
         teacherNameById.get(row.teacherId) ?? row.teacherId,
         row.periodStart,
         row.periodEnd,
+        row.taughtCount,
         row.hoursWorked,
         row.onTimeCount,
         row.lateCount,

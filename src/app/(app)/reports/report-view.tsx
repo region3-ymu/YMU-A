@@ -200,6 +200,16 @@ export default function ReportView({
                       <p className="text-sm text-on-surface-variant">{row.periodStart}</p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
+                      {/* Classes first, then hours. YMU reads these two
+                          together and asked for the count (2026-08-21):
+                          "cuántas clases impartió cada profesor". It is taught,
+                          not scheduled — a missed class is not one they gave. */}
+                      <span className="inline-flex items-center gap-1 rounded-full bg-primary-container px-2.5 py-1 text-xs font-semibold text-on-primary-container">
+                        <span className="material-symbols-outlined text-sm" aria-hidden>
+                          co_present
+                        </span>
+                        Classes {row.taughtCount}
+                      </span>
                       <span className="inline-flex items-center gap-1 rounded-full bg-primary-container px-2.5 py-1 text-xs font-semibold text-on-primary-container">
                         <span className="material-symbols-outlined text-sm" aria-hidden>
                           schedule
@@ -265,12 +275,13 @@ export default function ReportView({
 function TeacherRow({ name, summaries }: { name: string; summaries: PeriodSummary[] }) {
   const totals = summaries.reduce(
     (acc, r) => ({
+      taught: acc.taught + r.taughtCount,
       hours: acc.hours + r.hoursWorked,
       onTime: acc.onTime + r.onTimeCount,
       late: acc.late + r.lateCount,
       missed: acc.missed + r.missedCount,
     }),
-    { hours: 0, onTime: 0, late: 0, missed: 0 },
+    { taught: 0, hours: 0, onTime: 0, late: 0, missed: 0 },
   );
 
   return (
@@ -284,6 +295,7 @@ function TeacherRow({ name, summaries }: { name: string; summaries: PeriodSummar
         </span>
         <span className="min-w-0 flex-1 font-medium text-on-surface">{name}</span>
         <span className="flex flex-wrap items-center gap-1.5">
+          <Pill tone="primary" icon="co_present" label={`Classes ${totals.taught}`} />
           <Pill tone="primary" icon="schedule" label={`Hours ${totals.hours.toFixed(2)}`} />
           <Pill tone="tertiary" icon="check_circle" label={`On time ${totals.onTime}`} />
           {totals.late > 0 && <Pill tone="warning" icon="warning" label={`Late ${totals.late}`} />}
@@ -305,6 +317,7 @@ function TeacherRow({ name, summaries }: { name: string; summaries: PeriodSummar
                 <p className="text-xs text-on-surface-variant">{row.periodStart}</p>
               </div>
               <div className="flex flex-wrap items-center gap-1.5">
+                <Pill tone="primary" icon="co_present" label={`Classes ${row.taughtCount}`} />
                 <Pill tone="primary" icon="schedule" label={`Hours ${row.hoursWorked.toFixed(2)}`} />
                 <Pill tone="tertiary" icon="check_circle" label={`On time ${row.onTimeCount}`} />
                 <Pill tone="warning" icon="warning" label={`Late ${row.lateCount}`} />
