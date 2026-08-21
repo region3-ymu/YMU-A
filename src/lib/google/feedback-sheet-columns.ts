@@ -14,8 +14,8 @@
 // the first schema change and corrupts the sheet silently rather than loudly.
 //
 // COLUMNS are keys of feedback_for_sheet()'s result; HEADER is the human row.
-// They are index-for-index parallel, which assertSheetColumnsMatchHeader keeps
-// true.
+// They are index-for-index parallel, which the length check at the foot of this
+// file keeps true — loudly, at import, rather than quietly at write time.
 
 export const COLUMNS = [
   "id", "submitted_at", "class_date", "class_time",
@@ -54,7 +54,7 @@ export const HEADER: string[] = [
   "Teacher", "Teacher email", "Teacher phone",
   "School", "Region", "Regional manager",
   "Class title", "Program",
-  "Engagement", "Focus pillar (retired)", "Objectives worked", "Open notes",
+  "Engagement", "Focus pillar (retired — always empty)", "Objectives worked", "Open notes",
   "Quarter goals on track",
   "Reported an issue", "Issue category (at submission)", "Issue type (at submission)",
   "Urgency (at submission)", "What the teacher wrote",

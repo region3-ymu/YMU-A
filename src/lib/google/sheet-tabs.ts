@@ -49,27 +49,33 @@ export const SHEET_TABS: SheetTab[] = [
   {
     name: "Attendance",
     rpc: "attendance_for_sheet",
-    // The current school year. Without bounds this would also mirror two
-    // previous years of history nobody is analysing, tripling the tab for no
-    // gain.
-    args: { p_from: "2026-08-01T00:00:00-04:00", p_to: "2027-07-01T00:00:00-04:00" },
+    // No args. The bounds used to be written here as
+    // 2026-08-01 -> 2027-07-01, which meant that on 2027-07-01 this tab would
+    // rewrite itself to zero rows and raise nothing anywhere. 0078 moved them
+    // into attendance_for_sheet(), which reads the live school_years row.
     columns: [
-      "class_date", "class_time", "class_title", "program",
+      "class_date", "class_time", "class_title", "program", "is_afterschool",
       "teacher_name", "teacher_email", "school_name", "region", "regional_manager",
       "attendance_status", "clock_in_at", "clock_in_minutes_late",
       "clock_out_at", "clock_out_source", "hours_worked",
       "clock_in_origin", "distance_m", "feedback_submitted",
+      "edited_by", "edited_at", "edit_reason",
       "event_id", "session_id",
     ],
     header: [
-      "Class date", "Class time", "Class title", "Program",
+      "Class date", "Class time", "Class title", "Program", "Afterschool",
       "Teacher", "Teacher email", "School", "Region", "Regional manager",
       "Status", "Clocked in at", "Minutes late",
-      "Clocked out at", "Clock-out by", "Hours",
+      "Clocked out at", "Clock-out by", "Hours (scheduled)",
       "Clock-in origin", "Metres from school", "Feedback submitted",
+      "Edited by", "Edited at", "Edit reason",
       "Event ID", "Session ID",
     ],
-    note: "One row per teacher per scheduled class. Late clock-ins, absences and hours all come from here.",
+    // "Hours (scheduled)", relabelled in 0078. It has always been the class's
+    // scheduled length rather than clock-out minus clock-in, so a teacher who
+    // clocked in forty minutes late shows full hours. YMU asked for the
+    // calculation left alone; the heading now says what the number is.
+    note: "One row per teacher per scheduled class. Late clock-ins, absences and hours all come from here. 'Edited by' means a manager rewrote the row.",
   },
   {
     name: "Tickets",
@@ -100,16 +106,27 @@ export const SHEET_TABS: SheetTab[] = [
     name: "Flags",
     rpc: "flags_for_sheet",
     columns: [
-      "raised_date", "raised_time", "flag_type", "teacher_name",
-      "school_name", "region", "class_title", "class_date",
-      "status", "resolved_at", "resolved_by", "resolution_notes", "distance_m",
+      "flag_id", "raised_date", "raised_time", "flag_type", "teacher_name",
+      "school_name", "region", "class_title", "class_date", "class_time",
+      "status", "minutes_late",
+      "resolved_at", "resolved_by", "resolution_reason", "resolution_notes",
+      "distance_m",
     ],
     header: [
-      "Raised date", "Raised time", "Type", "Teacher",
-      "School", "Region", "Class", "Class date",
-      "Status", "Resolved at", "Resolved by", "Resolution notes", "Metres from school",
+      "Flag ID", "Raised date", "Raised time", "Type", "Teacher",
+      "School", "Region", "Class", "Class date", "Class time",
+      "Status", "Minutes late",
+      "Resolved at", "Resolved by", "Reason", "Resolution notes",
+      "Metres from school",
     ],
-    note: "GPS, late clock-in and overdue-feedback escalations, open and resolved.",
+    // "Reason" is the countable one — pivot on it. "Resolution notes" is the
+    // same reason rendered as a sentence, with whatever the manager added,
+    // and it is the column that has 93 rows of history in it.
+    //
+    // "Metres from school" was empty for all 120 rows before 0078: it read a
+    // details key that only gps_out_of_fence flags carry, of which there are
+    // none. It now falls back to the session the teacher eventually opened.
+    note: "GPS, late clock-in and overdue-feedback escalations, open and resolved. 'Resolved by' names the mechanism when the app closed the flag itself.",
   },
   {
     name: "Schools",
@@ -143,6 +160,70 @@ export const SHEET_TABS: SheetTab[] = [
     columns: ["program", "category", "objective", "active"],
     header: ["Program", "Category", "Objective", "Active"],
     note: "The objective lists teachers pick from on the feedback form.",
+  },
+  {
+    name: "Clock-in attempts",
+    rpc: "clock_in_attempts_for_sheet",
+    columns: [
+      "attempt_date", "attempt_time", "outcome", "refused", "denial_message",
+      "teacher_name", "school_name", "region",
+      "class_title", "class_date", "class_time", "minutes_after_start",
+      "origin", "accuracy_m", "overdue_feedback_count",
+      "event_id", "session_id",
+    ],
+    header: [
+      "Attempt date", "Attempt time", "Outcome", "Refused", "What they were told",
+      "Teacher", "School", "Region",
+      "Class", "Class date", "Class time", "Minutes after class start",
+      "Origin", "GPS accuracy (m)", "Overdue feedback at the time",
+      "Event ID", "Session ID",
+    ],
+    // Worth knowing how thin this is before reading much into it: of 224
+    // attempts, 220 were allowed, 7 refused for the wrong day and 4 for a
+    // class already clocked into. None were refused by the geofence. So when a
+    // teacher reports a "tech problem" there is usually no record of them
+    // trying at all, which points at the app not loading rather than the app
+    // saying no.
+    note: "Every press of the clock-in button, allowed or refused. The 'Refused' column is the one to filter on.",
+  },
+  {
+    name: "GPS checks",
+    rpc: "gps_checks_for_sheet",
+    columns: [
+      "class_date", "class_time", "class_title",
+      "teacher_name", "school_name", "region",
+      "due_at", "minutes_after_clock_in", "status", "sampled_at",
+      "distance_m", "accuracy_m", "inside_geofence", "origin", "session_id",
+    ],
+    header: [
+      "Class date", "Class time", "Class",
+      "Teacher", "School", "Region",
+      "Due at", "Minutes after clock-in", "Status", "Sampled at",
+      "Metres from school", "GPS accuracy (m)", "Inside geofence", "Origin",
+      "Session ID",
+    ],
+    // Read the Status column first. 649 of 654 checks are 'unverifiable' with
+    // no distance recorded — the mechanism is not currently returning samples,
+    // so an empty "Metres from school" here means "not measured", not "not
+    // there". Being chased separately.
+    note: "The mid-class presence checks behind each session. 'Inside geofence' is resolved against that school's own radius.",
+  },
+  {
+    name: "Ticket messages",
+    rpc: "ticket_messages_for_sheet",
+    columns: [
+      "ticket_number", "sent_date", "sent_time",
+      "sender", "sender_role", "channel", "internal_note",
+      "message_body", "resulting_status", "ticket_status",
+      "teacher_name", "school_name", "region",
+    ],
+    header: [
+      "Ticket #", "Sent date", "Sent time",
+      "Sender", "Sender role", "Channel", "Internal note",
+      "Message", "Status it set", "Ticket status now",
+      "Teacher", "School", "Region",
+    ],
+    note: "The conversation the Tickets tab's SLA minutes are measuring. Join to Tickets on Ticket #.",
   },
   {
     name: "Ticket insights",
