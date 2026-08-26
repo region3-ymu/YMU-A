@@ -24,6 +24,77 @@ Already visible today: Deion Hampton's 10:35 Beginning Band 2 at Carol City has
 no session and no new flag. The sweep has a 30-minute lookback and will not
 backfill it — that one needs recording by hand on /flags.
 
+## 🔴 FOUR TEACHERS CANNOT CLOCK IN — no account for their calendar email (2026-08-26)
+
+A teacher whose Google Calendar attendee email does not match their login email
+is invisible to the app: `matchedTeacherIds()` in calendar-sync matches on the
+email exactly, so `teacher_ids` stays empty, `getNextClass()` finds nothing, and
+the clock-in screen offers them no class. **It fails completely silently** — no
+flag, no error, nothing in `calendar_sync_issues` (that table only tracks
+unmatched CALENDARS, not unmatched attendees).
+
+Run this whenever a teacher reports they cannot clock in, and after any intake:
+
+```sql
+with attendee as (
+  select distinct lower(btrim(a->>'email')) as email
+  from calendar_events ce
+  cross join jsonb_array_elements(coalesce(ce.attendees,'[]'::jsonb)) a
+  where ce.status <> 'cancelled' and ce.all_day = false and ce.school_id is not null
+    and ce.start_at >= now() - interval '7 days' and a->>'email' is not null)
+select att.email,
+       (select count(*) from calendar_events ce
+         cross join jsonb_array_elements(coalesce(ce.attendees,'[]'::jsonb)) a
+        where lower(btrim(a->>'email')) = att.email
+          and ce.status <> 'cancelled' and ce.start_at >= now() - interval '7 days') as events
+from attendee att
+where att.email not in (select lower(btrim(email::text)) from auth.users)
+  and att.email not like '%@ymu.org'
+  and att.email not like '%calendar.google.com'
+order by events desc;
+```
+
+Currently unmatched — each of these needs an account created at that address:
+
+| calendar email | school | events |
+|---|---|---|
+| `ivandavidparra@gmail.com` | Young Men's Preparatory Academy | **218** |
+| `daniel.s.0903@outlook.com` | West Homestead K-8 | 16 |
+| `marvinjclairsaint@gmail.com` | Coconut Palm K-8, West Homestead K-8 | 3 |
+| `falcon785@hotmail.com` | Coconut Palm K-8 | 2 |
+
+Ivan David Parra is the urgent one: 218 events and no account at all.
+
+`daniel.s.0903@outlook.com` may be the Daniel Soto who already has an account
+as `sotod1403a@gmail.com` — worth asking him before creating a second login.
+
+## ✅ Michael Cooley can clock in again (2026-08-26)
+
+Same class of problem, and the account existed so it was a one-field fix.
+
+- The John A. Ferguson calendar said `michael.coooooley@gmail.com` — five
+  letter **o**'s, and Michael confirmed that is his real address.
+- His login was `michael.c00000ley@gmail.com` — five **zeros**.
+
+The typo came from the July onboarding events at Little River, whose attendee
+lists carry the zeros version; the account was created from that list. His
+account had `confirmation_sent_at` and `recovery_sent_at` both null, so no mail
+had ever been sent to the zeros address — nobody had ever validated it.
+
+Fixed via the Admin API with `email_confirm: true`, which changes the address
+and marks it confirmed in one step. **That flag matters:** without it Supabase
+leaves the change pending a confirmation email, and this project's auth mail is
+broken (ymu.org unverified in Resend), so the mail would never arrive and he
+would have been locked out of both addresses. His password was untouched.
+
+`relink_event_teachers()` then linked him to 78 events, 71 upcoming, all at John
+A. Ferguson. Next class 2026-08-27 10:30. He had 0 attendance sessions in his
+entire history before this.
+
+Note the app has no email-change screen — `/users` creates accounts, resets
+passwords, promotes, archives and sets clock-in exemption, nothing more. If this
+recurs it is the Admin API or the Supabase dashboard.
+
 ## ✅ Verified after the migration (2026-08-21)
 
 Database:
