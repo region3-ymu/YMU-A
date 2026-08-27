@@ -24,6 +24,50 @@ Already visible today: Deion Hampton's 10:35 Beginning Band 2 at Carol City has
 no session and no new flag. The sweep has a 30-minute lookback and will not
 backfill it — that one needs recording by hand on /flags.
 
+## ✅ Nine carryover runs now, up from six (2026-08-26)
+
+Added by YMU, reversing the earlier "keep the normal clock-in here" call:
+
+| teacher | school | run | gap |
+|---|---|---|---|
+| James Perez | Madison Middle | Drumline I → Beginning Band | 5 min |
+| Reinaldo Velez | Benjamin Franklin K-8 | Drumline I → Beginning Band | 3 min |
+| Reinaldo Velez | Lillie C. Evans K-8 | Drumline I → Beginning Band | 0–3 min |
+
+All three unscoped (null patterns), which is safe only because each has exactly
+one run at that school — checked with `back_to_back_runs()` before writing them.
+The two rows each shows in the UI are the Wednesday bell-schedule variant of the
+same pair, not two arrangements.
+
+Reinaldo's Little River rule stays title-scoped (`tutoring` → `afterschool`).
+He now has three rules at three schools and only that one is scoped, which is
+the distinction `tests/auto-clock-in-rules.test.ts` now guards: seeding an
+unscoped rule for a (school, teacher) that already has a scoped one would
+silently override the scoping and carry over all four of his Little River links.
+
+**Omar Cuellar / Morningside was requested and withdrawn within the minute.** If
+it comes back it needs `max_gap_minutes` raised: its gap is 30 minutes, not 3–5,
+so the 15-minute default would never fire — and 30 minutes is long enough to
+leave the building, which makes "they clocked into the first one" a much weaker
+claim about the second.
+
+Also new in the calendar since the original survey: **Jose Heredia at Homestead
+Middle School**, Drumline → Marching Band, 07:40–09:14 → 09:18, 4-minute gap.
+One date so far. Off, and worth watching as that calendar fills in.
+
+## 🟡 A regional manager cannot switch these on (2026-08-26)
+
+`auto_clock_in_rules_write` is `operations_manager` and `cpo` only, and there is
+no operations_manager in the system — so only Pedro Diaz and Juan Pelaez can use
+the toggle. Emilio Medrano, who actually runs this, is a regional_manager and
+sees the list without the buttons.
+
+The reasoning was that suppressing a clock-in is attendance policy rather than a
+regional call. In practice it locks the person doing the work out of the tool.
+The fix, if YMU wants it: let a regional_manager toggle runs at schools in their
+own region, with afterschool runs going to the afterschool manager — the same
+scoping every other manager action in this app uses. Not done; awaiting the word.
+
 ## 🔴 FOUR TEACHERS CANNOT CLOCK IN — no account for their calendar email (2026-08-26)
 
 A teacher whose Google Calendar attendee email does not match their login email

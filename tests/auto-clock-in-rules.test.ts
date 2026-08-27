@@ -8,13 +8,41 @@
 // blast radius: which runs ship switched ON, and the two constants that decide
 // what counts as back-to-back.
 
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const migration = readFileSync(
   "supabase/migrations/0077_auto_clock_in_back_to_back.sql",
   "utf8",
 );
+
+// Every migration that seeds an auto_clock_in_rules row. New rules arrive in
+// new migrations, so the collision check below has to read all of them or it
+// stops protecting anything the day a rule lands in 0085.
+const seedingMigrations = readdirSync("supabase/migrations")
+  .filter((name) => name.endsWith(".sql"))
+  .sort()
+  .map((name) => ({ name, sql: readFileSync(`supabase/migrations/${name}`, "utf8") }))
+  .filter(({ sql }) => sql.includes("insert into public.auto_clock_in_rules"));
+
+/** Every seeded rule across every migration: who, where, and how it is scoped. */
+function seededRules(): { migration: string; school: string; teacher: string; scoped: boolean }[] {
+  const rules: { migration: string; school: string; teacher: string; scoped: boolean }[] = [];
+  for (const { name, sql } of seedingMigrations) {
+    for (const match of sql.matchAll(
+      /^\s*\('([^']+)', '([^']+)', (null|'[a-z]+'), (null|'[a-z]+'),$/gm,
+    )) {
+      const [, school, teacher, first, second] = match;
+      rules.push({
+        migration: name,
+        school,
+        teacher,
+        scoped: first !== "null" || second !== "null",
+      });
+    }
+  }
+  return rules;
+}
 
 describe("the seeded rules", () => {
   // 23 runs were detected. YMU approved six of them (2026-08-21) and the rest
@@ -138,5 +166,55 @@ describe("the session it writes", () => {
     const detect = edgeFunction.indexOf("detect_late_clockins");
     expect(carryover).toBeGreaterThan(-1);
     expect(carryover).toBeLessThan(detect);
+  });
+});
+
+describe("scoped and unscoped rules must not collide", () => {
+  // A rule with null patterns covers ANY pair of that teacher's consecutive
+  // classes at that school. Seed one for a (school, teacher) that already has
+  // a title-scoped rule and the scoping is silently overridden — Reinaldo's
+  // Little River rule exists precisely because only one of his four
+  // consecutive classes there should carry over, and an unscoped rule at the
+  // same school would quietly cover all of them.
+  //
+  // This is the mistake that produces no error, no failing insert and no
+  // visible change until a teacher stops being asked to clock in somewhere
+  // nobody agreed to.
+  const rules = seededRules();
+
+  it("reads rules from every migration that seeds them", () => {
+    expect(seedingMigrations.length).toBeGreaterThan(1);
+    expect(rules.length).toBeGreaterThan(6);
+  });
+
+  it("never gives one (school, teacher) both a scoped and an unscoped rule", () => {
+    const byTarget = new Map<string, { scoped: number; unscoped: number; where: string[] }>();
+    for (const rule of rules) {
+      const key = `${rule.teacher} @ ${rule.school}`;
+      const entry = byTarget.get(key) ?? { scoped: 0, unscoped: 0, where: [] };
+      if (rule.scoped) entry.scoped += 1;
+      else entry.unscoped += 1;
+      entry.where.push(rule.migration);
+      byTarget.set(key, entry);
+    }
+
+    const collisions = [...byTarget.entries()]
+      .filter(([, e]) => e.scoped > 0 && e.unscoped > 0)
+      .map(([key, e]) => `${key} — scoped and unscoped both seeded (${[...new Set(e.where)].join(", ")})`);
+
+    expect(collisions).toEqual([]);
+  });
+
+  it("keeps Reinaldo's Little River rule the only scoped one, and only at Little River", () => {
+    const scoped = rules.filter((r) => r.scoped);
+    expect(scoped).toHaveLength(1);
+    expect(scoped[0].teacher).toBe("Reinaldo Velez");
+    expect(scoped[0].school).toBe("Little River K-8");
+
+    // He also has unscoped rules — at OTHER schools, which is fine and is the
+    // distinction this test exists to hold.
+    const hisUnscoped = rules.filter((r) => r.teacher === "Reinaldo Velez" && !r.scoped);
+    expect(hisUnscoped.length).toBeGreaterThan(0);
+    expect(hisUnscoped.every((r) => r.school !== "Little River K-8")).toBe(true);
   });
 });
