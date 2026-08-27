@@ -1,72 +1,68 @@
 # NEXT_STEPS — YMU-A
 
-## 🔴 ONE COMMAND LEFT — redeploy late-detect (2026-08-21)
+## 🔴 A MANAGER CORRECTING ATTENDANCE CAN LOCK A TEACHER OUT (2026-08-27)
 
-Migrations 0076–0083 are **applied**, the code is **pushed** (origin/main = eb8343e),
-and the spreadsheet is **synced**. One thing is not done:
+Live now: **Cristian Perez cannot clock in.**
 
-```bash
-supabase functions deploy late-detect
-```
+Pedro Diaz recorded his Modern Band class at Edison Park with the reason
+`class_not_held`. The class ended 2026-08-26 11:00; he recorded it 2026-08-27
+13:18. `admin_create_attendance()` sets `feedback_due_at = end_at + 24 hours`,
+which computed to 2026-08-27 11:00 — over two hours before the row existed. The
+session was born already overdue, and `clock_in()` refuses anyone with overdue
+feedback.
 
-Until that runs, `auto_clock_in_back_to_back()` is never called. Verified: it
-does not appear in pg_stat_statements as an RPC, only as the DDL that created
-it.
+So correcting a teacher's attendance punishes the teacher. Two bugs, probably
+one fix:
 
-**Why this matters more than it sounds.** The suppression inside
-`detect_late_clockins()` is a database function, so it IS live — no flag is
-raised any more for the six carryover runs. But the *session* is only created
-by the sweep in the edge function. So right now a covered class produces
-**neither a flag nor an attendance record**, which reads as a missed class with
-nothing chasing it. That is worse than the noisy flags it replaced.
+1. A back-dated entry must not create an already-expired demand. Settle the
+   feedback when `end_at + 24h` is already past, or floor the deadline at
+   `now() + 24h`.
+2. `class_not_held` should never demand feedback at all — there was no lesson.
+   Same for the `class_not_held` outcome on `resolve_flag()`. Migration 0081
+   already has the shape for this (`class_owes_feedback()` + the settle-on-insert
+   trigger); reuse it.
 
-Already visible today: Deion Hampton's 10:35 Beginning Band 2 at Carol City has
-no session and no new flag. The sweep has a 30-minute lookback and will not
-backfill it — that one needs recording by hand on /flags.
+Not mine to have introduced — `admin_create_attendance` has computed the
+deadline this way since 0023. It only surfaced now because the reason dropdown
+made managers record more of these.
 
-## ✅ Nine carryover runs now, up from six (2026-08-26)
+## ✅ Everything from the 0076–0084 work is verified live (2026-08-27)
 
-Added by YMU, reversing the earlier "keep the normal clock-in here" call:
+The `late-detect` redeploy landed. Confirmed three ways:
 
-| teacher | school | run | gap |
-|---|---|---|---|
-| James Perez | Madison Middle | Drumline I → Beginning Band | 5 min |
-| Reinaldo Velez | Benjamin Franklin K-8 | Drumline I → Beginning Band | 3 min |
-| Reinaldo Velez | Lillie C. Evans K-8 | Drumline I → Beginning Band | 0–3 min |
+- `auto_clock_in_back_to_back` appears in `pg_stat_statements` as a PostgREST
+  call and its count climbs by one a minute (1 → 2 → 3 across three polls),
+  matching the cron.
+- 105 `late-detect` invocations in the last two hours, the only non-200 a 401
+  from a `curl` without the secret.
+- Zero errors in the function logs — no carryover failure, no detection failure.
 
-All three unscoped (null patterns), which is safe only because each has exactly
-one run at that school — checked with `back_to_back_runs()` before writing them.
-The two rows each shows in the UI are the Wednesday bell-schedule variant of the
-same pair, not two arrangements.
+**The app deploy is live too**, and this is the proof I could not get from
+outside: Pedro Diaz resolved two flags through the UI and both carry reason
+CODES (`class_not_held`, `forgot`), which the old deployed code had no way to
+send. The reason dropdown works, `admin_create_attendance` accepts its new
+6-argument signature, and SQL is rendering the prefixed note as designed.
 
-Reinaldo's Little River rule stays title-scoped (`tutoring` → `afterschool`).
-He now has three rules at three schools and only that one is scoped, which is
-the distinction `tests/auto-clock-in-rules.test.ts` now guards: seeding an
-unscoped rule for a (school, teacher) that already has a scoped one would
-silently override the scoping and carry over all four of his Little River links.
+10 carryover rules active. 9 crons, 0 failures. `check-closeout` unscheduled.
 
-**Omar Cuellar / Morningside was requested and withdrawn within the minute.** If
-it comes back it needs `max_gap_minutes` raised: its gap is 30 minutes, not 3–5,
-so the 15-minute default would never fire — and 30 minutes is long enough to
-leave the building, which makes "they clocked into the first one" a much weaker
-claim about the second.
+### The 8 classes in the gap are backfilled
 
-Also new in the calendar since the original survey: **Jose Heredia at Homestead
-Middle School**, Drumline → Marching Band, 07:40–09:14 → 09:18, 4-minute gap.
-One date so far. Off, and worth watching as that calendar fills in.
+Between the migration (which silenced the flags) and today's redeploy (which
+creates the sessions), 8 covered classes ended with neither a flag nor a record
+— they read as not taught, and nothing was chasing them. The sweep's lookback is
+30 minutes so it could never reach them.
 
-## 🟡 A regional manager cannot switch these on (2026-08-26)
+Backfilled as `origin = 'carryover'`, on time, GPS copied from the preceding
+session, **feedback settled rather than owed**. That last part was the trap: a
+24-hour deadline that expired days ago would have put Kevin, Deion, Reinaldo and
+Jose straight into overdue feedback and blocked all four from clocking in —
+exactly the bug described at the top of this file. Same reasoning
+`auto_attend_exempt_teachers` uses for a session recorded after the fact.
 
-`auto_clock_in_rules_write` is `operations_manager` and `cpo` only, and there is
-no operations_manager in the system — so only Pedro Diaz and Juan Pelaez can use
-the toggle. Emilio Medrano, who actually runs this, is a regional_manager and
-sees the list without the buttons.
-
-The reasoning was that suppressing a clock-in is attendance policy rather than a
-regional call. In practice it locks the person doing the work out of the tool.
-The fix, if YMU wants it: let a regional_manager toggle runs at schools in their
-own region, with afterschool runs going to the afterschool manager — the same
-scoping every other manager action in this app uses. Not done; awaiting the word.
+Verified after: 0 gaps left, 0 duplicate sessions per class, 0 teachers with two
+open sessions, and neither of the two teachers currently blocked by overdue
+feedback is from this backfill (Patricio Acevedo owes real feedback; Cristian
+Perez is the bug above).
 
 ## 🔴 FOUR TEACHERS CANNOT CLOCK IN — no account for their calendar email (2026-08-26)
 
