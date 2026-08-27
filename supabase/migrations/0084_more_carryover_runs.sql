@@ -1,5 +1,5 @@
 -- ===========================================================================
--- 0084 — three more back-to-back runs carry over
+-- 0084 — four more back-to-back runs carry over
 -- ===========================================================================
 --
 -- YMU 2026-08-26, reversing the earlier "keep the normal clock-in here" call
@@ -8,8 +8,10 @@
 --   James Perez / Madison Middle       Drumline I -> Beginning Band   5 min
 --   Reinaldo Velez / Benjamin Franklin Drumline I -> Beginning Band   3 min
 --   Reinaldo Velez / Lillie C. Evans   Drumline I -> Beginning Band   0-3 min
+--   Jose Heredia / Homestead Middle    Drumline -> Marching Band      4 min
 --
--- Between them: 160 dates a term and 5 late flags already raised.
+-- The first three are 160 dates a term and 5 late flags already raised. The
+-- fourth is a single date so far — see its own note below.
 --
 -- ── Why these three are unscoped and Little River is not ─────────────────
 --
@@ -21,6 +23,8 @@
 --   Reinaldo / Benjamin Franklin 1 run (listed twice — the Wednesday bell
 --                                schedule shifts it, same pair of classes)
 --   Reinaldo / Lillie C. Evans   1 run (same, Wednesday variant)
+--   Jose Heredia / Homestead     1 run (and his South Dade rule is a different
+--                                school, so the two never interact)
 --
 -- Reinaldo's Little River rule (0077) stays title-scoped because there he has
 -- four classes in a row and only the last link carries over. Rules are keyed
@@ -49,7 +53,14 @@ select s.id, p.id, v.first_pattern, v.second_pattern, 15, v.note
     ('Benjamin Franklin K-8', 'Reinaldo Velez', null, null,
      'Drumline I into Beginning Band, 3-minute gap, same school. 58 dates, 2 late flags. YMU 2026-08-26.'),
     ('Lillie C. Evans K-8', 'Reinaldo Velez', null, null,
-     'Drumline I into Beginning Band, 0-3 minute gap, same school. 57 dates, 2 late flags. YMU 2026-08-26.')
+     'Drumline I into Beginning Band, 0-3 minute gap, same school. 57 dates, 2 late flags. YMU 2026-08-26.'),
+    -- Nearly inert as the calendar stands, and switched on deliberately anyway.
+    -- Homestead has 91 of his events and exactly ONE Drumline (2026-08-26); every
+    -- other date is Marching Band at 09:18 with nothing before it, so there is no
+    -- first class to carry over from. The rule starts mattering when the Drumline
+    -- sessions are filled in, and costs nothing until then.
+    ('Homestead Middle School', 'Jose Heredia', null, null,
+     'Drumline into Marching Band, 4-minute gap. Only 1 date exists yet — the calendar is still being built. YMU 2026-08-26.')
   ) as v (school_name, teacher_name, first_pattern, second_pattern, note)
   join public.schools s on s.name = v.school_name
   join public.profiles p on p.full_name = v.teacher_name and p.archived_at is null
