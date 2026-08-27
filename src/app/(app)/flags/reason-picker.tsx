@@ -23,9 +23,13 @@ import { FLAG_REASONS, REASON_REQUIRING_NOTES, describeReasonGap } from "@/lib/a
 export default function ReasonPicker({
   autoFocus = false,
   notesPlaceholder = "Anything worth knowing later (optional)",
+  onReasonChange,
 }: {
   autoFocus?: boolean;
   notesPlaceholder?: string;
+  /** Lets the parent react to the choice — the attendance form uses it to drop
+   *  the on-time/late question when the class did not happen. */
+  onReasonChange?: (reason: string) => void;
 }) {
   const [reason, setReason] = useState("");
   const [notes, setNotes] = useState("");
@@ -41,7 +45,10 @@ export default function ReasonPicker({
           required
           autoFocus={autoFocus}
           value={reason}
-          onChange={(event) => setReason(event.target.value)}
+          onChange={(event) => {
+            setReason(event.target.value);
+            onReasonChange?.(event.target.value);
+          }}
           className="mt-1 w-full rounded-lg bg-surface-container px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary"
         >
           <option value="" disabled>

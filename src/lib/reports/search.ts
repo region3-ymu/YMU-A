@@ -28,7 +28,7 @@ export type SessionResult = {
   school_name: string | null;
   clock_in_at: string;
   clock_out_at: string | null;
-  clock_in_status: "on_time" | "late";
+  clock_in_status: "on_time" | "late" | "not_held";
 };
 
 export type SchoolResult = { id: string; name: string };
@@ -109,7 +109,7 @@ export async function searchAll(rawQuery: string): Promise<SearchResults> {
     teacher_id: string;
     clock_in_at: string;
     clock_out_at: string | null;
-    clock_in_status: "on_time" | "late";
+    clock_in_status: "on_time" | "late" | "not_held";
     school: { name: string } | null;
   };
 

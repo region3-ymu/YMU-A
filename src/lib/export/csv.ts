@@ -24,6 +24,9 @@ export function periodSummariesToCsv(
     // Ahead of hours, and taught rather than scheduled: YMU reads the two
     // together and a missed class is not one the teacher gave.
     "Classes taught",
+    // Its own column, never folded into "Classes taught". Paid (the hours are
+    // in "Hours worked") but no lesson was delivered.
+    "Not held",
     "Hours worked",
     "On time",
     "Late",
@@ -40,6 +43,7 @@ export function periodSummariesToCsv(
         row.periodStart,
         row.periodEnd,
         row.taughtCount,
+        row.notHeldCount,
         row.hoursWorked,
         row.onTimeCount,
         row.lateCount,

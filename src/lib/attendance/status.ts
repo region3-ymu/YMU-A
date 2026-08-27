@@ -11,7 +11,18 @@
 // UI is a later concern.
 export const ON_TIME_GRACE_MINUTES = 5;
 
+// What COMPUTING a clock-in can produce. Deliberately not widened for
+// 'not_held': a clock-in is a teacher arriving, and there is no punctuality to
+// judge for a class that did not happen. Nothing here can ever return it.
 export type AttendanceStatus = "on_time" | "late";
+
+/**
+ * What a session's clock_in_status can be once STORED, which is a wider set.
+ * A manager recording a class as class_not_held writes 'not_held' (migration
+ * 0087) — it still pays, because hours come from the class's scheduled length,
+ * but it is not a class taught and no arrival time is being claimed.
+ */
+export type SessionStatus = AttendanceStatus | "not_held";
 
 // Late only when the clock-in is MORE than `graceMinutes` after the scheduled
 // start. Arriving early (or with no scheduled start to be late against) is
@@ -39,7 +50,8 @@ export function minutesLate(
   );
 }
 
-export const STATUS_LABELS: Record<AttendanceStatus, string> = {
+export const STATUS_LABELS: Record<SessionStatus, string> = {
   on_time: "On time",
   late: "Late",
+  not_held: "Class did not happen",
 };

@@ -210,6 +210,17 @@ export default function ReportView({
                         </span>
                         Classes {row.taughtCount}
                       </span>
+                      {/* Beside Classes, not folded into it. A cancelled class
+                          is paid — its hours are in Hours — but no lesson was
+                          delivered, so it is not a class taught. */}
+                      {row.notHeldCount > 0 && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-surface-container-high px-2.5 py-1 text-xs font-semibold text-on-surface-variant">
+                          <span className="material-symbols-outlined text-sm" aria-hidden>
+                            event_busy
+                          </span>
+                          Not held {row.notHeldCount}
+                        </span>
+                      )}
                       <span className="inline-flex items-center gap-1 rounded-full bg-primary-container px-2.5 py-1 text-xs font-semibold text-on-primary-container">
                         <span className="material-symbols-outlined text-sm" aria-hidden>
                           schedule
@@ -276,12 +287,13 @@ function TeacherRow({ name, summaries }: { name: string; summaries: PeriodSummar
   const totals = summaries.reduce(
     (acc, r) => ({
       taught: acc.taught + r.taughtCount,
+      notHeld: acc.notHeld + r.notHeldCount,
       hours: acc.hours + r.hoursWorked,
       onTime: acc.onTime + r.onTimeCount,
       late: acc.late + r.lateCount,
       missed: acc.missed + r.missedCount,
     }),
-    { taught: 0, hours: 0, onTime: 0, late: 0, missed: 0 },
+    { taught: 0, notHeld: 0, hours: 0, onTime: 0, late: 0, missed: 0 },
   );
 
   return (
@@ -296,6 +308,9 @@ function TeacherRow({ name, summaries }: { name: string; summaries: PeriodSummar
         <span className="min-w-0 flex-1 font-medium text-on-surface">{name}</span>
         <span className="flex flex-wrap items-center gap-1.5">
           <Pill tone="primary" icon="co_present" label={`Classes ${totals.taught}`} />
+          {totals.notHeld > 0 && (
+            <Pill tone="neutral" icon="event_busy" label={`Not held ${totals.notHeld}`} />
+          )}
           <Pill tone="primary" icon="schedule" label={`Hours ${totals.hours.toFixed(2)}`} />
           <Pill tone="tertiary" icon="check_circle" label={`On time ${totals.onTime}`} />
           {totals.late > 0 && <Pill tone="warning" icon="warning" label={`Late ${totals.late}`} />}
@@ -318,6 +333,9 @@ function TeacherRow({ name, summaries }: { name: string; summaries: PeriodSummar
               </div>
               <div className="flex flex-wrap items-center gap-1.5">
                 <Pill tone="primary" icon="co_present" label={`Classes ${row.taughtCount}`} />
+                {row.notHeldCount > 0 && (
+                  <Pill tone="neutral" icon="event_busy" label={`Not held ${row.notHeldCount}`} />
+                )}
                 <Pill tone="primary" icon="schedule" label={`Hours ${row.hoursWorked.toFixed(2)}`} />
                 <Pill tone="tertiary" icon="check_circle" label={`On time ${row.onTimeCount}`} />
                 <Pill tone="warning" icon="warning" label={`Late ${row.lateCount}`} />

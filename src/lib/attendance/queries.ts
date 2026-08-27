@@ -3,7 +3,7 @@
 // a teacher only ever sees their own sessions and their own matched classes.
 
 import { createClient } from "@/lib/supabase/server";
-import type { AttendanceStatus } from "@/lib/attendance/status";
+import type { SessionStatus } from "@/lib/attendance/status";
 import { startOfLocalDay } from "@/lib/schedules/range";
 
 export type ClockSchool = {
@@ -20,7 +20,7 @@ export type OpenSession = {
   event_id: string | null;
   school_id: string | null;
   clock_in_at: string;
-  clock_in_status: AttendanceStatus;
+  clock_in_status: SessionStatus;
   scheduled_start_at: string | null;
   event: { id: string; summary: string | null; start_at: string | null; end_at: string | null } | null;
   school: ClockSchool | null;
@@ -44,7 +44,7 @@ export type OwedFeedback = {
   id: string;
   event_id: string | null;
   clock_in_at: string;
-  clock_in_status: AttendanceStatus;
+  clock_in_status: SessionStatus;
   clock_out_at: string | null;
   scheduled_end_at: string | null;
   feedback_due_at: string | null;

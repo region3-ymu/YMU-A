@@ -38,6 +38,13 @@ export default function AdminEditAttendanceForm({
   const action = isCreate ? createAttendanceAction : editAttendanceAction;
   const [state, dispatch, pending] = useActionState(action, undefined);
   const [open, setOpen] = useState(false);
+  // YMU 2026-08-27: "si no hubo clases no hubo tardanza ni a tiempo." Asking
+  // for on-time or late when the class did not happen forces a choice where
+  // both answers are false, so the question goes away and the status is sent
+  // as not_held instead. admin_create_attendance/admin_edit_attendance (0087)
+  // derive the same thing from the reason, so this is the courtesy, not the
+  // rule.
+  const [notHeld, setNotHeld] = useState(false);
 
   const defaultClockInAt = toLocalInputValue(currentClockInAt ?? scheduledStartAt ?? new Date().toISOString());
 
@@ -74,8 +81,17 @@ export default function AdminEditAttendanceForm({
         <input type="hidden" name="session_id" value={sessionId} />
       )}
 
+      {/* First, because the two fields below depend on the answer. The one
+          remaining gate too, and the only one that ever produced a record
+          worth reading later: 0023 raises if it arrives blank, and since 0076
+          it also raises if the reason is not one of the seven on the list. */}
+      <ReasonPicker
+        notesPlaceholder="e.g. confirmed on the paper sign-in sheet"
+        onReasonChange={(reason) => setNotHeld(reason === "class_not_held")}
+      />
+
       <label className="text-xs font-medium text-on-surface-variant">
-        Clock-in time
+        {notHeld ? "When it would have started" : "Clock-in time"}
         <input
           type="datetime-local"
           name="clock_in_at"
@@ -85,22 +101,27 @@ export default function AdminEditAttendanceForm({
         />
       </label>
 
-      <label className="text-xs font-medium text-on-surface-variant">
-        Status
-        <select
-          name="clock_in_status"
-          defaultValue={currentStatus ?? "on_time"}
-          className="mt-1 w-full rounded-lg bg-surface-container px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary"
-        >
-          <option value="on_time">On time</option>
-          <option value="late">Late</option>
-        </select>
-      </label>
-
-      {/* The one remaining gate, and the only one that ever produced a record
-          worth reading later: 0023 raises if it arrives blank, and since 0076
-          it also raises if the reason is not one of the eleven on the list. */}
-      <ReasonPicker notesPlaceholder="e.g. confirmed on the paper sign-in sheet" />
+      {notHeld ? (
+        <>
+          <input type="hidden" name="clock_in_status" value="not_held" />
+          <p className="rounded-lg bg-surface-container px-3 py-2 text-xs text-on-surface-variant">
+            No on-time or late for a class that did not happen. It still counts
+            toward hours — the teacher is paid — but not as a class taught.
+          </p>
+        </>
+      ) : (
+        <label className="text-xs font-medium text-on-surface-variant">
+          Status
+          <select
+            name="clock_in_status"
+            defaultValue={currentStatus ?? "on_time"}
+            className="mt-1 w-full rounded-lg bg-surface-container px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary"
+          >
+            <option value="on_time">On time</option>
+            <option value="late">Late</option>
+          </select>
+        </label>
+      )}
 
       <div className="mt-1 flex items-center gap-2">
         <button

@@ -21,7 +21,7 @@ export type OpenSessionRow = {
   id: string;
   teacher_id: string;
   clock_in_at: string;
-  clock_in_status: "on_time" | "late";
+  clock_in_status: "on_time" | "late" | "not_held";
   school: { name: string } | null;
   event: { summary: string | null } | null;
 };
@@ -155,7 +155,7 @@ export type TodayAttendanceRow = {
   summary: string | null;
   start_at: string;
   end_at: string | null;
-  attendance_status: "on_time" | "late" | "missed" | "upcoming";
+  attendance_status: "on_time" | "late" | "not_held" | "missed" | "upcoming";
 };
 
 // Today's per-(teacher, class) status, straight from attendance_period_rows

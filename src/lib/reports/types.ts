@@ -13,11 +13,11 @@ export type ReportRow = {
   start_at: string;
   end_at: string | null;
   session_id: string | null;
-  clock_in_status: "on_time" | "late" | null;
+  clock_in_status: "on_time" | "late" | "not_held" | null;
   clock_in_at: string | null;
   clock_out_at: string | null;
   origin: "online" | "offline" | null;
-  attendance_status: "on_time" | "late" | "missed" | "upcoming";
+  attendance_status: "on_time" | "late" | "not_held" | "missed" | "upcoming";
   hours_worked: number | null;
 };
 
@@ -61,8 +61,17 @@ export type PeriodSummary = {
    * Classes actually taught: on-time plus late. NOT scheduledCount, which
    * counts the missed ones too — a teacher who missed three of twenty taught
    * seventeen, and that is the number YMU reads alongside hours.
+   *
+   * Excludes notHeldCount. A cancelled class is still PAID, so it stays in
+   * hoursWorked, but no lesson was delivered so it is not a class taught.
+   * Separating the two is what stops one number having to mean both.
    */
   taughtCount: number;
+  /**
+   * Classes that did not happen. Paid (see hoursWorked) but not taught, and
+   * shown beside taughtCount rather than folded into it or hidden.
+   */
+  notHeldCount: number;
   onTimeCount: number;
   lateCount: number;
   missedCount: number;

@@ -181,17 +181,30 @@ function summarize(key: string, bucket: Bucket): PeriodSummary {
   let hoursWorked = 0;
   let onTime = 0;
   let late = 0;
+  let notHeld = 0;
   let missed = 0;
   let upcoming = 0;
 
   for (const row of bucket.rows) {
+    // Hours come from the class's scheduled length and are NOT filtered by
+    // status: a cancelled class is still paid. That is why not_held needs its
+    // own count rather than a decision about whether it "counts".
     if (row.hours_worked != null) hoursWorked += row.hours_worked;
+
+    // Every status named explicitly. This used to end in `else upcoming += 1`,
+    // which meant any status added later was silently counted as a class that
+    // has not happened YET — the worst possible bucket for one that already
+    // definitively did not happen.
     if (row.attendance_status === "on_time") onTime += 1;
     else if (row.attendance_status === "late") late += 1;
+    else if (row.attendance_status === "not_held") notHeld += 1;
     else if (row.attendance_status === "missed") missed += 1;
-    else upcoming += 1;
+    else if (row.attendance_status === "upcoming") upcoming += 1;
   }
 
+  // not_held is out of both halves of the attendance rate. You cannot be
+  // punctual for a class that did not happen, and counting it as a scheduled
+  // class the teacher failed would be worse still.
   const scheduledCount = onTime + late + missed;
 
   return {
@@ -202,8 +215,10 @@ function summarize(key: string, bucket: Bucket): PeriodSummary {
     periodEnd: isoDate(bucket.periodEnd),
     hoursWorked: Math.round(hoursWorked * 100) / 100,
     // Taught, not scheduled. A late arrival still taught the class; a missed
-    // one did not, and an upcoming one has not yet.
+    // one did not, an upcoming one has not yet, and a cancelled one never will
+    // — though it is still paid, via hoursWorked above.
     taughtCount: onTime + late,
+    notHeldCount: notHeld,
     onTimeCount: onTime,
     lateCount: late,
     missedCount: missed,
