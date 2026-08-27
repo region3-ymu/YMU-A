@@ -68,28 +68,6 @@ export async function getNewsPost(id: string): Promise<NewsPost | null> {
   return (data as unknown as NewsPost) ?? null;
 }
 
-/**
- * Short-lived signed URLs for a post's attachments.
- *
- * The bucket is private, so nothing is readable by URL alone. One hour matches
- * the app-feedback screenshots — long enough to open a PDF, short enough that
- * a copied link is not a permanent hole.
- */
-export async function signAttachments(
-  attachments: NewsAttachment[],
-): Promise<(NewsAttachment & { url: string | null })[]> {
-  if (attachments.length === 0) return [];
-  const supabase = await createClient();
-  return Promise.all(
-    attachments.map(async (attachment) => {
-      const { data } = await supabase.storage
-        .from("news")
-        .createSignedUrl(attachment.storage_path, 3600);
-      return { ...attachment, url: data?.signedUrl ?? null };
-    }),
-  );
-}
-
 export async function getUnreadNewsCount(): Promise<number> {
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("unread_news_count");

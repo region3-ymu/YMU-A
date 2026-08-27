@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireProfile } from "@/lib/auth/dal";
 import { canPublishNews, displayRole } from "@/lib/auth/roles";
-import { getNewsPost, newsAudienceLabel, signAttachments } from "@/lib/news/queries";
+import { getNewsPost, newsAudienceLabel } from "@/lib/news/queries";
 import { formatDateTime } from "@/lib/format/datetime";
 import { markNewsRead } from "../actions";
 import DeletePostButton from "./delete-post-button";
@@ -33,7 +33,6 @@ export default async function NewsPostPage({ params }: { params: Promise<{ id: s
   // list. Deliberately not awaited into the render path's critical work.
   await markNewsRead(post.id);
 
-  const attachments = await signAttachments(post.attachments);
   const canEdit =
     canPublishNews(profile.role) &&
     (post.author_id === profile.id ||
@@ -80,24 +79,25 @@ export default async function NewsPostPage({ params }: { params: Promise<{ id: s
         {post.body}
       </article>
 
-      {attachments.length > 0 && (
+      {post.attachments.length > 0 && (
         <section>
           <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-on-surface-variant">
             Attachments
           </h2>
           <ul className="grid gap-3">
-            {attachments.map((file) => (
-              <li key={file.id} className="overflow-hidden rounded-2xl bg-surface-container shadow-sm">
-                {file.url == null ? (
-                  <p className="p-4 text-sm text-on-surface-variant">
-                    {file.file_name} — couldn&apos;t be loaded.
-                  </p>
-                ) : (
-                  <a href={file.url} target="_blank" rel="noopener noreferrer" className="block">
+            {post.attachments.map((file) => {
+              // Not a signed storage URL: this page gets cached by the service
+              // worker for up to a week and a signed URL is dead after an
+              // hour, so the token is minted per request behind this id
+              // instead — see src/app/api/news-attachment/[id]/route.ts.
+              const href = `/api/news-attachment/${file.id}`;
+              return (
+                <li key={file.id} className="overflow-hidden rounded-2xl bg-surface-container shadow-sm">
+                  <a href={href} target="_blank" rel="noopener noreferrer" className="block">
                     {isImage(file.mime_type) && (
-                      // eslint-disable-next-line @next/next/no-img-element -- signed URL on a private bucket; next/image cannot optimise it
+                      // eslint-disable-next-line @next/next/no-img-element -- private bucket behind an auth check; next/image cannot optimise it
                       <img
-                        src={file.url}
+                        src={href}
                         alt={file.file_name}
                         className="max-h-96 w-full object-contain"
                       />
@@ -114,9 +114,9 @@ export default async function NewsPostPage({ params }: { params: Promise<{ id: s
                       )}
                     </span>
                   </a>
-                )}
-              </li>
-            ))}
+                </li>
+              );
+            })}
           </ul>
         </section>
       )}

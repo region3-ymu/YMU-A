@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useRef, useState } from "react";
+import { storageSafeName } from "@/lib/news/attachment-name";
 import { createClient } from "@/lib/supabase/client";
 import { editNewsPost, publishNewsPost, type NewsFormState } from "./actions";
 
@@ -55,7 +56,7 @@ export default function NewsPostForm({
           setUploadError(`${file.name} is over 15 MB — attach a link instead.`);
           continue;
         }
-        const path = `${userId}/${Date.now()}-${file.name}`;
+        const path = `${userId}/${Date.now()}-${storageSafeName(file.name)}`;
         const { error } = await supabase.storage.from("news").upload(path, file);
         if (error) {
           setUploadError(`Couldn't upload ${file.name}: ${error.message}`);
