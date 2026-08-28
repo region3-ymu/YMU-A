@@ -99,6 +99,9 @@ describe.runIf(configured)("stuck-feedback-session reliability (Phase 9)", () =>
   let schoolId: string;
   let eventId: string;
   let sessionId: string;
+  /** Older than any real unsettled session can plausibly be. */
+  const STUCK_HOURS = 2_000;
+  let preexistingFlagIds = new Set<string>();
 
   beforeAll(async () => {
     [teacher, om] = await Promise.all([createUser("Stuck Teacher"), createUser("Operations Manager")]);
@@ -116,15 +119,46 @@ describe.runIf(configured)("stuck-feedback-session reliability (Phase 9)", () =>
     });
     if (error || !session) throw new Error(`clock_in failed: ${error?.message}`);
     sessionId = session.id;
-    // clock_in_at is clamped server-side to "now" for an online clock-in, so
-    // backdate it directly to simulate a session that's been open for hours.
+    // feedback_due_at is what the detector keys on, and backdating clock_in_at
+    // alone (which is all this used to do) moves nothing: since 0026 a session
+    // is "stuck" when its 24h feedback deadline has lapsed, not when it has
+    // been open a while. clock_in() sets the deadline to end_at + 24h, so an
+    // event an hour in the past is still due 23 hours from now.
+    //
+    // STUCK_HOURS is absurdly large on purpose. detect_stuck_feedback_sessions
+    // takes no scope: it flags every eligible session in the organisation and
+    // queues a push to that school's managers. A run on 21 August genuinely
+    // sent one to a real Regional Manager. A threshold no real session can
+    // reach keeps the blast radius to this suite's own row, and the afterAll
+    // below sweeps anything that slips through anyway.
     await admin
       .from("attendance_sessions")
-      .update({ clock_in_at: past })
+      .update({
+        clock_in_at: past,
+        feedback_due_at: new Date(Date.now() - (STUCK_HOURS + 24) * 3_600_000).toISOString(),
+      })
       .eq("id", sessionId);
+
+    const { data: preexisting } = await admin
+      .from("flags")
+      .select("id")
+      .eq("type", "feedback_stuck");
+    preexistingFlagIds = new Set((preexisting ?? []).map((f) => f.id as string));
   }, 60_000);
 
   afterAll(async () => {
+    // Collateral first: any feedback_stuck flag that appeared during this run
+    // on somebody else's session, plus the manager notifications it queued.
+    // Deleting a queued push before notify-dispatch claims it is the only
+    // window there is, which is the other reason STUCK_HOURS is so large.
+    const { data: nowFlagged } = await admin.from("flags").select("id").eq("type", "feedback_stuck");
+    const collateral = (nowFlagged ?? [])
+      .map((f) => f.id as string)
+      .filter((id) => !preexistingFlagIds.has(id));
+    if (collateral.length) {
+      await admin.from("notification_queue").delete().in("payload->>flag_id", collateral);
+      await admin.from("flags").delete().in("id", collateral);
+    }
     if (createdUserIds.length) {
       await admin.from("flags").delete().in("teacher_id", createdUserIds);
       await admin.from("attendance_sessions").delete().in("teacher_id", createdUserIds);
@@ -135,13 +169,13 @@ describe.runIf(configured)("stuck-feedback-session reliability (Phase 9)", () =>
   }, 60_000);
 
   it("detect_stuck_feedback_sessions is service-role only", async () => {
-    const { error } = await teacher.client.rpc("detect_stuck_feedback_sessions", { p_stuck_after_hours: 6 });
+    const { error } = await teacher.client.rpc("detect_stuck_feedback_sessions", { p_stuck_after_hours: STUCK_HOURS });
     expect(error).not.toBeNull();
   });
 
   it("flags a session open past the threshold, and doesn't double-flag on a re-run", async () => {
     const { data: flaggedCount, error } = await admin.rpc("detect_stuck_feedback_sessions", {
-      p_stuck_after_hours: 6,
+      p_stuck_after_hours: STUCK_HOURS,
     });
     expect(error).toBeNull();
     expect(flaggedCount).toBeGreaterThan(0);
@@ -153,7 +187,7 @@ describe.runIf(configured)("stuck-feedback-session reliability (Phase 9)", () =>
       .eq("session_id", sessionId);
     expect(flags).toHaveLength(1);
 
-    await admin.rpc("detect_stuck_feedback_sessions", { p_stuck_after_hours: 6 });
+    await admin.rpc("detect_stuck_feedback_sessions", { p_stuck_after_hours: STUCK_HOURS });
     const { data: flagsAfter } = await admin
       .from("flags")
       .select("id")

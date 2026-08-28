@@ -244,12 +244,14 @@ describe.runIf(configured)("afterschool manager scope", () => {
     it("lets her resolve it and refuses the RM", async () => {
       const { error: rmError } = await rm.client.rpc("resolve_flag", {
         p_flag_id: flagId,
+        p_reason: "forgot",
         p_notes: "RM should not be able to do this",
       });
       expect(rmError?.message ?? "").toMatch(/afterschool manager/i);
 
       const { error: asmError } = await asm.client.rpc("resolve_flag", {
         p_flag_id: flagId,
+        p_reason: "forgot",
         p_notes: "Confirmed on the sign-in sheet",
       });
       expect(asmError).toBeNull();

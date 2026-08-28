@@ -134,12 +134,43 @@ describe.runIf(configured)("news audiences", () => {
   }, 90_000);
 
   afterAll(async () => {
+    // Backstop: deleting the post does not cascade to the queue — post_id
+    // lives in the payload, not in a foreign key — so anything dropForeignFanout
+    // missed would otherwise outlive the announcement it points at.
+    for (const id of createdPostIds) await dropForeignFanout(id);
+    if (createdUserIds.length) {
+      const { data: ours } = await admin
+        .from("notification_queue")
+        .select("id")
+        .eq("type", "news_published")
+        .in("recipient_id", createdUserIds);
+      const ids = (ours ?? []).map((q) => q.id as string);
+      if (ids.length) await admin.from("notification_queue").delete().in("id", ids);
+    }
     await admin.from("news_posts").delete().in("id", createdPostIds);
     await admin.from("calendar_events").delete().in("id", createdEventIds);
     await admin.from("schools").delete().in("id", createdSchoolIds);
     for (const id of createdUserIds) await admin.auth.admin.deleteUser(id);
   }, 60_000);
 
+  /**
+   * Publishes, then immediately un-queues the fan-out to everybody who is not
+   * one of this suite's own users.
+   *
+   * p_notify has to stay true — the audience assertions below read the queue,
+   * and that fan-out is the invariant worth testing. But create_news_post()
+   * pushes to every active teacher in the organisation, and notify-dispatch
+   * runs every minute against the real project, so on 28 August 2026 four test
+   * announcements ("For everyone", "Central only", …) were delivered to 52 real
+   * teachers' phones, 223 pushes across three runs. Nothing in the assertions
+   * ever looks at those recipients.
+   *
+   * The delete lands a few hundred milliseconds after the insert, inside a
+   * 60-second dispatch tick, so the window is small rather than closed. If a
+   * run happens to collide with a tick, a handful of teachers get one stray
+   * push — worth knowing before running this suite in the middle of a school
+   * day.
+   */
   async function post(author: TestUser, title: string, audience: string) {
     const { data, error } = await author.client.rpc("create_news_post", {
       p_title: title,
@@ -152,7 +183,20 @@ describe.runIf(configured)("news audiences", () => {
     if (error) throw new Error(`create_news_post failed: ${error.message}`);
     const row = data as { id: string };
     createdPostIds.push(row.id);
+    await dropForeignFanout(row.id);
     return row.id;
+  }
+
+  async function dropForeignFanout(postId: string) {
+    const { data: queued } = await admin
+      .from("notification_queue")
+      .select("id, recipient_id")
+      .eq("type", "news_published")
+      .filter("payload->>post_id", "eq", postId);
+    const foreign = (queued ?? [])
+      .filter((q) => !createdUserIds.includes(q.recipient_id as string))
+      .map((q) => q.id as string);
+    if (foreign.length) await admin.from("notification_queue").delete().in("id", foreign);
   }
 
   async function canSee(user: TestUser, postId: string) {

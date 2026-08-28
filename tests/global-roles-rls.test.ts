@@ -205,8 +205,11 @@ describe.runIf(configured)("the org-wide roles", () => {
       it("can resolve a flag outside any region of its own", async () => {
         // Re-opened each time so all three roles get a live flag to close.
         await admin.from("flags").update({ resolved_at: null, resolved_by: null }).eq("id", flagId);
+        // p_reason became mandatory in 0076 — a flag can no longer be closed
+        // without saying why, which is the whole point of that migration.
         const { error } = await globals[role].client.rpc("resolve_flag", {
           p_flag_id: flagId,
+          p_reason: "forgot",
           p_notes: `Resolved by ${role}`,
         });
         expect(error).toBeNull();

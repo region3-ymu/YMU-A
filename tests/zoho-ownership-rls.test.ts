@@ -88,7 +88,17 @@ describe.runIf(configured)("close_session_from_zoho ownership (review L3)", () =
     return data.id;
   }
 
-  async function openSession(teacherId: string, eventId: string, schoolId: string): Promise<string> {
+  /**
+   * A session on an event of its own.
+   *
+   * The three cases below used to share one event, which stopped working when
+   * 0026 added the partial unique index attendance_one_session_per_teacher_event
+   * — a teacher gets one session per class, ever, and the second case leaves
+   * its (closed) row behind. A class each keeps the cases independent instead
+   * of having them tidy up after one another.
+   */
+  async function openSession(teacherId: string, schoolId: string): Promise<string> {
+    const eventId = await createEvent(teacherId, schoolId);
     const { data, error } = await admin
       .from("attendance_sessions")
       .insert({ teacher_id: teacherId, event_id: eventId, school_id: schoolId, clock_in_status: "on_time" })
@@ -101,12 +111,10 @@ describe.runIf(configured)("close_session_from_zoho ownership (review L3)", () =
   let teacherA: TestUser;
   let teacherB: TestUser;
   let schoolId: string;
-  let eventId: string;
 
   beforeAll(async () => {
     [teacherA, teacherB] = await Promise.all([createUser("Teacher A"), createUser("Teacher B")]);
     schoolId = await createSchool();
-    eventId = await createEvent(teacherA.id, schoolId);
   }, 60_000);
 
   afterAll(async () => {
@@ -117,7 +125,7 @@ describe.runIf(configured)("close_session_from_zoho ownership (review L3)", () =
   }, 60_000);
 
   it("refuses to close a session when the submitted teacher id is a different teacher", async () => {
-    const sessionId = await openSession(teacherA.id, eventId, schoolId);
+    const sessionId = await openSession(teacherA.id, schoolId);
     const { error } = await admin.rpc("close_session_from_zoho", {
       p_session_id: sessionId,
       p_engagement: "Very engaged",
@@ -129,13 +137,16 @@ describe.runIf(configured)("close_session_from_zoho ownership (review L3)", () =
     const { data } = await admin.from("attendance_sessions").select("clock_out_at").eq("id", sessionId).single();
     expect(data?.clock_out_at).toBeNull();
 
-    // Free the one-open-session-per-teacher slot for the next case (the reject
-    // path deliberately left this session open).
+    // Free the one-open-session-per-teacher slot for the next case. The reject
+    // path deliberately left this session open, and a direct insert does not
+    // get clock_in()'s auto-close of the previous one. Giving every case its
+    // own class fixed attendance_one_session_per_teacher_event; this is the
+    // other index, attendance_one_open_session_per_teacher, and it still binds.
     await admin.from("attendance_sessions").delete().eq("id", sessionId);
   });
 
   it("closes the session when the submitted teacher id matches the owner, stamping zoho_synced_at", async () => {
-    const sessionId = await openSession(teacherA.id, eventId, schoolId);
+    const sessionId = await openSession(teacherA.id, schoolId);
     const { error } = await admin.rpc("close_session_from_zoho", {
       p_session_id: sessionId,
       p_engagement: "Very engaged",
@@ -154,7 +165,7 @@ describe.runIf(configured)("close_session_from_zoho ownership (review L3)", () =
   });
 
   it("still closes when no teacher id is supplied (backward-compatible)", async () => {
-    const sessionId = await openSession(teacherA.id, eventId, schoolId);
+    const sessionId = await openSession(teacherA.id, schoolId);
     const { error } = await admin.rpc("close_session_from_zoho", {
       p_session_id: sessionId,
       p_engagement: "Somewhat engaged",

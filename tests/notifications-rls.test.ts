@@ -333,11 +333,17 @@ describe.runIf(configured)("Notifications (Phase 7)", () => {
         new Date(new Date(ended).getTime() - 3_600_000).toISOString(),
         ended,
       );
+      // Both columns matter: since 0026 the clock_out_reminder branch keys on
+      // the session's own scheduled_end_at and feedback_due_at, not the
+      // event's. clock_in() fills them in; a hand-written row has to as well,
+      // and this one did not — which is why the reminder never fired.
       await admin.from("attendance_sessions").insert({
         teacher_id: userB.id,
         event_id: eventId,
         school_id: schoolId,
         clock_in_status: "on_time",
+        scheduled_end_at: ended,
+        feedback_due_at: new Date(new Date(ended).getTime() + 24 * 3_600_000).toISOString(),
       });
 
       await admin.rpc("enqueue_reminder_notifications");
@@ -348,7 +354,12 @@ describe.runIf(configured)("Notifications (Phase 7)", () => {
         .eq("type", "clock_out_reminder")
         .eq("recipient_id", userB.id);
       expect(rows ?? []).toHaveLength(1);
-      expect(rows![0].email_status).toBe("pending");
+      // Null, not 'pending'. 0039 turned the Resend channel off at the source
+      // because ymu.org publishes no SPF/DKIM/DMARC and every email failed;
+      // planDispatch() only sends when email_status === 'pending', so a null
+      // is what "do not attempt email" looks like. clock_out_reminder was the
+      // only type that was ever email-eligible.
+      expect(rows![0].email_status).toBeNull();
     });
   });
 });

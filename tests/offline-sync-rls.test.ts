@@ -161,13 +161,11 @@ describe.runIf(configured)("Offline sync (Phase 6)", () => {
     const drift = Math.abs(new Date(session!.clock_in_at).getTime() - new Date(clockInAt).getTime());
     expect(drift).toBeLessThan(60_000);
 
-    const { data: checks } = await admin
-      .from("gps_checks")
-      .select("due_at, status, origin")
-      .eq("session_id", session!.id)
-      .order("due_at");
-    expect(checks).toHaveLength(5);
-    expect(checks!.every((c) => c.status === "pending")).toBe(true);
+    // The five gps_checks rows this used to assert on are gone: migration 0082
+    // removed mid-class GPS checking outright (649 of 654 checks came back
+    // 'unverifiable' because a phone cannot hold a fix while it is in a
+    // pocket). What matters about an offline clock-in is the clamped timestamp
+    // above, which is still checked.
   });
 
   it("replaying the same client_key returns the same session (exactly-once)", async () => {

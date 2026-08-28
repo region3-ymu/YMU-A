@@ -101,6 +101,31 @@ describe.runIf(configured)("attendance clocking RLS + RPCs", () => {
     return data.id;
   }
 
+  /**
+   * A fresh class for teacher A, clocked into.
+   *
+   * Several tests below need teacher A holding an open session, and they used
+   * to get one by clocking back into the same class once the previous session
+   * was closed. 0026's partial unique index
+   * attendance_one_session_per_teacher_event ended that: one session per
+   * teacher per class, ever, closed or not. A new class each time is what the
+   * app's own back-to-back path does anyway.
+   */
+  async function reopenSessionForTeacherA() {
+    const eventId = await createEvent(
+      `attendance-reopen-${randomUUID()}`,
+      [teacherA.id],
+      centralSchoolId,
+      new Date(Date.now() + 3_600_000).toISOString(),
+    );
+    const { error } = await teacherA.client.rpc("clock_in", {
+      p_event_id: eventId,
+      p_lat: SCHOOL_LAT,
+      p_lng: SCHOOL_LNG,
+    });
+    expect(error).toBeNull();
+  }
+
   let teacherA: TestUser; // future class => on_time
   let teacherB: TestUser; // past class => late
   let teacherOther: TestUser;
@@ -189,13 +214,20 @@ describe.runIf(configured)("attendance clocking RLS + RPCs", () => {
     expect(data?.clock_in_status).toBe("late");
   });
 
-  it("blocks a second clock-in while a session is open (feedback owed)", async () => {
+  // What this used to assert — that an open session blocks the next clock-in,
+  // with a "submit feedback" message — was deliberately removed by 0026.
+  // Clocking into a DIFFERENT class now auto-closes the open one, which is how
+  // back-to-back classes work; what blocks a clock-in is feedback that is
+  // genuinely overdue, 24h past the previous class's end. Clocking into the
+  // SAME class is refused outright, by the unique index 0026 added, and that
+  // is the guard this call actually exercises.
+  it("refuses a second clock-in to the same class", async () => {
     const { error } = await teacherA.client.rpc("clock_in", {
       p_event_id: futureEventId,
       p_lat: SCHOOL_LAT,
       p_lng: SCHOOL_LNG,
     });
-    expect(error?.message ?? "").toMatch(/submit feedback/i);
+    expect(error?.message ?? "").toMatch(/already clocked in/i);
   });
 
   it("teachers see only their own sessions", async () => {
@@ -205,8 +237,19 @@ describe.runIf(configured)("attendance clocking RLS + RPCs", () => {
   });
 
   it("a regional manager sees in-region sessions; the other region's RM does not", async () => {
-    const { data: central } = await rmCentral.client.from("attendance_sessions").select("id");
-    const { data: east } = await rmEast.client.from("attendance_sessions").select("id");
+    // Scoped to this suite's own teachers. Unscoped, the east RM correctly
+    // sees every real east-region session in the project — 125 of them when
+    // this last ran — and the assertion was measuring the size of the
+    // production dataset rather than the region boundary.
+    const ours = [teacherA.id, teacherB.id];
+    const { data: central } = await rmCentral.client
+      .from("attendance_sessions")
+      .select("id")
+      .in("teacher_id", ours);
+    const { data: east } = await rmEast.client
+      .from("attendance_sessions")
+      .select("id")
+      .in("teacher_id", ours);
     expect((central ?? []).length).toBeGreaterThan(0);
     // Both sessions are at the central school, so the east RM sees none of them.
     expect((east ?? []).length).toBe(0);
@@ -288,13 +331,8 @@ describe.runIf(configured)("attendance clocking RLS + RPCs", () => {
     expect(retryError).toBeNull();
     expect(retried?.feedback_engagement).toBe("Very engaged");
 
-    // With no open session, clock-in is possible again.
-    const { error: reError } = await teacherA.client.rpc("clock_in", {
-      p_event_id: futureEventId,
-      p_lat: SCHOOL_LAT,
-      p_lng: SCHOOL_LNG,
-    });
-    expect(reError).toBeNull();
+    // With no open session, clocking into the next class works.
+    await reopenSessionForTeacherA();
   });
 
   it("close_session_from_zoho sets zoho_synced_at on the real closing branch (Phase 9)", async () => {
@@ -312,13 +350,8 @@ describe.runIf(configured)("attendance clocking RLS + RPCs", () => {
     expect(closed?.zoho_synced_at).not.toBeNull();
     expect(closed?.admin_closed_at).toBeNull();
 
-    // Clean up the open session so later tests keep a predictable state.
-    const { error: reError } = await teacherA.client.rpc("clock_in", {
-      p_event_id: futureEventId,
-      p_lat: SCHOOL_LAT,
-      p_lng: SCHOOL_LNG,
-    });
-    expect(reError).toBeNull();
+    // Leave an open session behind so the next test has one to work with.
+    await reopenSessionForTeacherA();
   });
 
   it("an archived teacher's own JWT is rejected by clock_in() directly, closing the /api/sync bypass gap (Phase 9)", async () => {

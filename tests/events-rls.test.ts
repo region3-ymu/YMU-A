@@ -150,7 +150,10 @@ describe.runIf(configured)("calendar event RLS", () => {
   }, 60_000);
 
   it("teachers see only event rows whose matched attendee is their login", async () => {
-    const { data } = await teacherCentral.client.from("calendar_events").select("id");
+    const { data } = await teacherCentral.client
+      .from("calendar_events")
+      .select("id")
+      .in("id", [centralEventId, eastEventId, unmatchedEventId]);
     const ids = (data ?? []).map((event) => event.id);
     expect(ids).toContain(centralEventId);
     expect(ids).not.toContain(eastEventId);
@@ -158,7 +161,14 @@ describe.runIf(configured)("calendar event RLS", () => {
   });
 
   it("a regional manager sees their region plus unmatched events, never another region", async () => {
-    const { data } = await rmCentral.client.from("calendar_events").select("id");
+    // Scoped to this suite's own three events. An unscoped select is capped at
+    // 1000 rows by PostgREST, and with 20k real events in the project the
+    // fixtures simply were not in the first page — the assertion was measuring
+    // how much production data exists, not what RLS lets through.
+    const { data } = await rmCentral.client
+      .from("calendar_events")
+      .select("id")
+      .in("id", [centralEventId, eastEventId, unmatchedEventId]);
     const ids = (data ?? []).map((event) => event.id);
     expect(ids).toContain(centralEventId);
     expect(ids).toContain(unmatchedEventId);
@@ -166,7 +176,10 @@ describe.runIf(configured)("calendar event RLS", () => {
   });
 
   it("the other regional manager gets the inverse regional view and the shared unmatched queue", async () => {
-    const { data } = await rmEast.client.from("calendar_events").select("id");
+    const { data } = await rmEast.client
+      .from("calendar_events")
+      .select("id")
+      .in("id", [centralEventId, eastEventId, unmatchedEventId]);
     const ids = (data ?? []).map((event) => event.id);
     expect(ids).toContain(eastEventId);
     expect(ids).toContain(unmatchedEventId);
