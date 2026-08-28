@@ -10,6 +10,7 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { signInWithRetry } from "./rls-test-accounts";
 
 function loadEnvLocal() {
   try {
@@ -53,8 +54,7 @@ describe.runIf(configured)("close_session_from_zoho ownership (review L3)", () =
     const client = createClient(url!, anonKey!, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
-    const { error: signInError } = await client.auth.signInWithPassword({ email, password: PASSWORD });
-    if (signInError) throw new Error(`signIn failed: ${signInError.message}`);
+    await signInWithRetry(client, email, PASSWORD);
     return { id: data.user.id, email, client };
   }
 
