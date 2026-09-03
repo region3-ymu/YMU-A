@@ -126,12 +126,21 @@ describe("returns-table functions that get redefined", () => {
     // in 0061 with no drop and has always worked: 0061 narrowed its coverage
     // window to the current school year, which is a body change with an
     // identical column list. If the shape parser were broken this would read as
-    // a change and the rule above would be crying wolf on seven historical
+    // a change and the rule above would be crying wolf on several historical
     // migrations that are all correct.
+    //
+    // 0093 is the one genuine shape change (adding late_minutes) — it drops
+    // first, same pattern as teacher_directory() below, so every redefinition
+    // apart from that one is still a legal body-only change with no drop.
     const stable = definitions.filter((d) => d.fn === "find_substitutes");
-    expect(stable.length).toBeGreaterThan(1);
-    expect(new Set(stable.map((d) => d.shape)).size).toBe(1);
-    expect(stable.every((d) => !d.hasDrop)).toBe(true);
+    expect(stable.length).toBeGreaterThan(2);
+    expect(new Set(stable.map((d) => d.shape)).size).toBe(2);
+    const changed = stable.find(
+      (d, index) => index > 0 && d.shape !== stable[index - 1].shape,
+    );
+    expect(changed?.migration).toBe("0093_substitute_late_grace_and_real_drive_times.sql");
+    expect(changed?.hasDrop).toBe(true);
+    expect(stable.filter((d) => d !== changed).every((d) => !d.hasDrop)).toBe(true);
   });
 
   it("catches a genuine shape change that WAS handled correctly", () => {

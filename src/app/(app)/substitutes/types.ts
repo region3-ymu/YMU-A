@@ -33,6 +33,13 @@ export type Candidate = {
   same_region: boolean;
   same_program: boolean;
   score: number;
+  /**
+   * Minutes late this teacher would arrive to the class, given whatever they
+   * teach immediately before at a different school — 0 means on time.
+   * find_substitutes() only offers a candidate up to 15 here; never late
+   * leaving, only (optionally) late arriving.
+   */
+  late_minutes: number;
 };
 
 export type FindResult =

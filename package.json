@@ -15,6 +15,7 @@
     "sheet:reset": "node --env-file=.env.local scripts/reset-feedback-sheet.ts",
     "sync:sheet": "node --env-file=.env.local scripts/sync-feedback-sheet.ts",
     "import:schools": "node --env-file=.env.local scripts/import-schools.ts",
+    "travel:matrix": "node --env-file=.env.local scripts/build-school-travel-matrix.ts",
     "test": "vitest run tests/google-calendar-client.test.ts tests/calendar-sync-classify.test.ts tests/calendar-sync-cancellation-horizon.test.ts tests/attendance-status.test.ts tests/notify-dispatch-logic.test.ts tests/reports-aggregate.test.ts tests/school-years-aggregate.test.ts tests/feedback-due.test.ts tests/late-flags.test.ts tests/schedules-range.test.ts tests/reports-range.test.ts tests/program-match.test.ts tests/ticket-status.test.ts tests/feedback-objectives.test.ts tests/news-attachment-name.test.ts",
     "test:rls": "vitest run --config vitest.rls.config.ts tests/rls.test.ts tests/schools-rls.test.ts tests/events-rls.test.ts tests/calendar-sync-rls.test.ts tests/attendance-rls.test.ts tests/offline-sync-rls.test.ts tests/notifications-rls.test.ts tests/reports-rls.test.ts tests/flags-rls.test.ts tests/users-archive-rls.test.ts tests/zoho-ownership-rls.test.ts tests/notify-scope-rls.test.ts tests/afterschool-rls.test.ts tests/credential-reset-rls.test.ts tests/global-roles-rls.test.ts tests/news-audience-rls.test.ts tests/team-admin-rls.test.ts"
   },

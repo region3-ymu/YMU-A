@@ -228,6 +228,12 @@ export default function SubstitutesFinder({
                   {c.programs.length > 0 && ` · Teaches: ${c.programs.join(", ")}`}
                 </p>
 
+                {c.late_minutes > 0 && (
+                  <p className="rounded-lg bg-warning-container px-2 py-1 text-xs text-on-warning-container">
+                    Coming from another school — may arrive up to {c.late_minutes} min late.
+                  </p>
+                )}
+
                 <div className="flex flex-wrap gap-3 text-xs">
                   {c.email && (
                     <a href={`mailto:${c.email}`} className="text-primary underline">
