@@ -7,6 +7,7 @@ import {
   NOTICE_CHANNELS,
   describeOutcomeGap,
   outcomeNeedsAbsenceReason,
+  outcomeNeedsClockIn,
   outcomeNeedsNotice,
   outcomeNeedsSubstitution,
   EMPTY_OUTCOME_DRAFT,
@@ -102,6 +103,38 @@ export default function ResolveFlagButton({
               ))}
             </select>
           </label>
+
+          {outcomeNeedsClockIn(outcome) && (
+            <>
+              <label className="text-xs font-medium text-on-surface-variant">
+                When they actually clocked in (required)
+                <input
+                  type="datetime-local"
+                  name="clock_in_at"
+                  required
+                  value={draft.clockInAt}
+                  onChange={(event) => set("clockInAt", event.target.value)}
+                  className="mt-1 w-full rounded-lg bg-surface-container px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary"
+                />
+              </label>
+              <label className="text-xs font-medium text-on-surface-variant">
+                Status (required)
+                <select
+                  name="clock_in_status"
+                  required
+                  value={draft.clockInStatus}
+                  onChange={(event) => set("clockInStatus", event.target.value)}
+                  className="mt-1 w-full rounded-lg bg-surface-container px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary"
+                >
+                  <option value="" disabled>
+                    Choose…
+                  </option>
+                  <option value="on_time">On time</option>
+                  <option value="late">Late</option>
+                </select>
+              </label>
+            </>
+          )}
 
           {outcomeNeedsAbsenceReason(outcome) && (
             <label className="text-xs font-medium text-on-surface-variant">

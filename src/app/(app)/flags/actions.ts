@@ -45,6 +45,8 @@ export async function resolveFlag(
     notifiedChannel: String(formData.get("notified_channel") ?? "").trim(),
     excused: String(formData.get("excused") ?? "").trim(),
     substitutionId: String(formData.get("substitution_id") ?? "").trim(),
+    clockInAt: String(formData.get("clock_in_at") ?? "").trim(),
+    clockInStatus: String(formData.get("clock_in_status") ?? "").trim(),
   };
   const outcomeGap = describeOutcomeGap(outcome);
   if (outcomeGap) return { error: outcomeGap };

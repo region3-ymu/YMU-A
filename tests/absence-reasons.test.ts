@@ -112,12 +112,28 @@ describe("describeOutcomeGap", () => {
   });
 
   it("passes the everyday correction with nothing else", () => {
-    expect(describeOutcomeGap(draft({ outcome: "attendance_corrected" }))).toBeNull();
     expect(describeOutcomeGap(draft({ outcome: "class_not_held" }))).toBeNull();
   });
 
   it("rejects an outcome that is not on the list", () => {
     expect(describeOutcomeGap(draft({ outcome: "they_were_late" }))).toContain("from the list");
+  });
+
+  // 0097: "they were here" is the one outcome that writes a real on-time/late
+  // clock-in, so unlike the other three it needs an actual time and status —
+  // this is what lets it fully replace "Record attendance" on a flag.
+  it("will not let 'they were here' stand without a clock-in", () => {
+    expect(describeOutcomeGap(draft({ outcome: "attendance_corrected" }))).toContain(
+      "when they actually clocked in",
+    );
+    expect(
+      describeOutcomeGap(draft({ outcome: "attendance_corrected", clockInAt: "2026-08-25T09:15" })),
+    ).toContain("on time or late");
+    expect(
+      describeOutcomeGap(
+        draft({ outcome: "attendance_corrected", clockInAt: "2026-08-25T09:15", clockInStatus: "late" }),
+      ),
+    ).toBeNull();
   });
 
   // The gap this whole migration exists to close: "they were absent" with
@@ -182,13 +198,15 @@ describe("toOutcomePayload", () => {
   // whatever the form was holding would turn a stale selection into a raw
   // exception. Nulling here is what makes the reset-on-change in the UI a
   // convenience rather than a correctness requirement.
-  it("drops the fields the outcome does not imply", () => {
+  it("drops the fields the outcome does not imply, and keeps the ones it does", () => {
     const payload = toOutcomePayload({
       outcome: "attendance_corrected",
       absenceReason: "sick",
       notifiedChannel: "called",
       excused: "yes",
       substitutionId: "abc",
+      clockInAt: "2026-08-25T09:15",
+      clockInStatus: "late",
     });
     expect(payload).toEqual({
       p_outcome: "attendance_corrected",
@@ -197,6 +215,8 @@ describe("toOutcomePayload", () => {
       p_notified_channel: null,
       p_excused: null,
       p_substitution_id: null,
+      p_clock_in_at: new Date("2026-08-25T09:15").toISOString(),
+      p_clock_in_status: "late",
     });
   });
 
@@ -210,6 +230,8 @@ describe("toOutcomePayload", () => {
       notifiedChannel: "texted",
       excused: "yes",
       substitutionId: "",
+      clockInAt: "",
+      clockInStatus: "",
     });
     expect(notified.p_notified_in_advance).toBe(true);
     expect(notified.p_excused).toBe(true);
@@ -220,6 +242,8 @@ describe("toOutcomePayload", () => {
       notifiedChannel: "none",
       excused: "no",
       substitutionId: "",
+      clockInAt: "",
+      clockInStatus: "",
     });
     expect(silent.p_notified_in_advance).toBe(false);
     expect(silent.p_excused).toBe(false);
@@ -235,6 +259,8 @@ describe("toOutcomePayload", () => {
         notifiedChannel: channel.value,
         excused: "yes",
         substitutionId: "",
+        clockInAt: "",
+        clockInStatus: "",
       });
       expect(payload.p_notified_in_advance).toBe(channel.value !== "none");
     }

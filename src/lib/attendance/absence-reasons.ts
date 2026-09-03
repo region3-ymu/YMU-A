@@ -81,12 +81,25 @@ export function outcomeNeedsSubstitution(outcome: string): boolean {
   return outcome === "substitute_covered";
 }
 
+/**
+ * Only "they were here" needs a clock-in time and an on-time/late answer —
+ * the other three outcomes each resolve to a fixed status (absent, absent,
+ * not_held) with no clock-in to speak of. 0097: this is what makes "Mark
+ * resolved" a complete replacement for "Record attendance" on a late
+ * clock-in flag, so there is exactly one place to answer "what happened".
+ */
+export function outcomeNeedsClockIn(outcome: string): boolean {
+  return outcome === "attendance_corrected";
+}
+
 export type OutcomeDraft = {
   outcome: string;
   absenceReason: string;
   notifiedChannel: string;
   excused: string;
   substitutionId: string;
+  clockInAt: string;
+  clockInStatus: string;
 };
 
 export const EMPTY_OUTCOME_DRAFT: OutcomeDraft = {
@@ -95,6 +108,8 @@ export const EMPTY_OUTCOME_DRAFT: OutcomeDraft = {
   notifiedChannel: "",
   excused: "",
   substitutionId: "",
+  clockInAt: "",
+  clockInStatus: "",
 };
 
 /**
@@ -109,9 +124,17 @@ export const EMPTY_OUTCOME_DRAFT: OutcomeDraft = {
  * Returns null when the form is good to submit.
  */
 export function describeOutcomeGap(draft: OutcomeDraft): string | null {
-  const { outcome, absenceReason, notifiedChannel, excused, substitutionId } = draft;
+  const { outcome, absenceReason, notifiedChannel, excused, substitutionId, clockInAt, clockInStatus } =
+    draft;
   if (!outcome) return null; // Optional — the everyday case leaves it unset.
   if (!isFlagOutcome(outcome)) return "Choose what happened from the list.";
+
+  if (outcomeNeedsClockIn(outcome)) {
+    if (!clockInAt) return "Record when they actually clocked in.";
+    if (clockInStatus !== "on_time" && clockInStatus !== "late") {
+      return "Record whether they were on time or late.";
+    }
+  }
 
   if (outcomeNeedsAbsenceReason(outcome)) {
     if (!absenceReason) return "Choose why the teacher was away.";
@@ -146,9 +169,12 @@ export function toOutcomePayload(draft: OutcomeDraft) {
       p_notified_channel: null,
       p_excused: null,
       p_substitution_id: null,
+      p_clock_in_at: null,
+      p_clock_in_status: null,
     };
   }
   const notice = outcomeNeedsNotice(outcome);
+  const needsClockIn = outcomeNeedsClockIn(outcome);
   return {
     p_outcome: outcome,
     p_absence_reason: outcomeNeedsAbsenceReason(outcome) ? draft.absenceReason : null,
@@ -156,5 +182,7 @@ export function toOutcomePayload(draft: OutcomeDraft) {
     p_notified_channel: notice ? draft.notifiedChannel : null,
     p_excused: notice ? draft.excused === "yes" : null,
     p_substitution_id: outcomeNeedsSubstitution(outcome) ? draft.substitutionId : null,
+    p_clock_in_at: needsClockIn && draft.clockInAt ? new Date(draft.clockInAt).toISOString() : null,
+    p_clock_in_status: needsClockIn ? draft.clockInStatus : null,
   };
 }
