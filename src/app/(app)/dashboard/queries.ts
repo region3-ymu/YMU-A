@@ -155,7 +155,7 @@ export type TodayAttendanceRow = {
   summary: string | null;
   start_at: string;
   end_at: string | null;
-  attendance_status: "on_time" | "late" | "not_held" | "missed" | "upcoming";
+  attendance_status: "on_time" | "late" | "not_held" | "absent" | "missed" | "upcoming";
 };
 
 // Today's per-(teacher, class) status, straight from attendance_period_rows

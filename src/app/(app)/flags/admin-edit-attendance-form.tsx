@@ -41,10 +41,11 @@ export default function AdminEditAttendanceForm({
   // YMU 2026-08-27: "si no hubo clases no hubo tardanza ni a tiempo." Asking
   // for on-time or late when the class did not happen forces a choice where
   // both answers are false, so the question goes away and the status is sent
-  // as not_held instead. admin_create_attendance/admin_edit_attendance (0087)
-  // derive the same thing from the reason, so this is the courtesy, not the
-  // rule.
-  const [notHeld, setNotHeld] = useState(false);
+  // as not_held instead. Same logic for teacher_absent (0095) — a teacher who
+  // was not there was neither on time nor late, and is not paid for it either.
+  // admin_create_attendance/admin_edit_attendance derive the same status from
+  // the reason server-side, so this is the courtesy, not the rule.
+  const [forcedStatus, setForcedStatus] = useState<"not_held" | "absent" | null>(null);
 
   const defaultClockInAt = toLocalInputValue(currentClockInAt ?? scheduledStartAt ?? new Date().toISOString());
 
@@ -87,11 +88,15 @@ export default function AdminEditAttendanceForm({
           it also raises if the reason is not one of the seven on the list. */}
       <ReasonPicker
         notesPlaceholder="e.g. confirmed on the paper sign-in sheet"
-        onReasonChange={(reason) => setNotHeld(reason === "class_not_held")}
+        onReasonChange={(reason) =>
+          setForcedStatus(
+            reason === "class_not_held" ? "not_held" : reason === "teacher_absent" ? "absent" : null,
+          )
+        }
       />
 
       <label className="text-xs font-medium text-on-surface-variant">
-        {notHeld ? "When it would have started" : "Clock-in time"}
+        {forcedStatus ? "When it would have started" : "Clock-in time"}
         <input
           type="datetime-local"
           name="clock_in_at"
@@ -101,12 +106,21 @@ export default function AdminEditAttendanceForm({
         />
       </label>
 
-      {notHeld ? (
+      {forcedStatus === "not_held" ? (
         <>
           <input type="hidden" name="clock_in_status" value="not_held" />
           <p className="rounded-lg bg-surface-container px-3 py-2 text-xs text-on-surface-variant">
             No on-time or late for a class that did not happen. It still counts
             toward hours — the teacher is paid — but not as a class taught.
+          </p>
+        </>
+      ) : forcedStatus === "absent" ? (
+        <>
+          <input type="hidden" name="clock_in_status" value="absent" />
+          <p className="rounded-lg bg-warning-container px-3 py-2 text-xs text-on-warning-container">
+            No on-time or late for a class the teacher was not at. It does NOT
+            count toward hours — they are not paid for it — and it is not a
+            class taught.
           </p>
         </>
       ) : (

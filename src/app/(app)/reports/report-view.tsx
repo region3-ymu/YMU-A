@@ -245,6 +245,17 @@ export default function ReportView({
                         </span>
                         Missed {row.missedCount}
                       </span>
+                      {/* Unlike Not held, this counts against the rate below
+                          — the class did need to happen. It differs from
+                          Missed only in having an actual reason on record. */}
+                      {row.absentCount > 0 && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-error-container px-2.5 py-1 text-xs font-semibold text-on-error-container">
+                          <span className="material-symbols-outlined text-sm" aria-hidden>
+                            person_off
+                          </span>
+                          Absent {row.absentCount}
+                        </span>
+                      )}
                       <span className="inline-flex items-center gap-1 rounded-full bg-surface-container-high px-2.5 py-1 text-xs font-semibold text-on-surface">
                         Rate % {row.attendanceRatePct ?? "—"}
                       </span>
@@ -288,12 +299,13 @@ function TeacherRow({ name, summaries }: { name: string; summaries: PeriodSummar
     (acc, r) => ({
       taught: acc.taught + r.taughtCount,
       notHeld: acc.notHeld + r.notHeldCount,
+      absent: acc.absent + r.absentCount,
       hours: acc.hours + r.hoursWorked,
       onTime: acc.onTime + r.onTimeCount,
       late: acc.late + r.lateCount,
       missed: acc.missed + r.missedCount,
     }),
-    { taught: 0, notHeld: 0, hours: 0, onTime: 0, late: 0, missed: 0 },
+    { taught: 0, notHeld: 0, absent: 0, hours: 0, onTime: 0, late: 0, missed: 0 },
   );
 
   return (
@@ -315,6 +327,7 @@ function TeacherRow({ name, summaries }: { name: string; summaries: PeriodSummar
           <Pill tone="tertiary" icon="check_circle" label={`On time ${totals.onTime}`} />
           {totals.late > 0 && <Pill tone="warning" icon="warning" label={`Late ${totals.late}`} />}
           {totals.missed > 0 && <Pill tone="error" icon="event_busy" label={`Missed ${totals.missed}`} />}
+          {totals.absent > 0 && <Pill tone="error" icon="person_off" label={`Absent ${totals.absent}`} />}
         </span>
       </summary>
 
@@ -340,6 +353,9 @@ function TeacherRow({ name, summaries }: { name: string; summaries: PeriodSummar
                 <Pill tone="tertiary" icon="check_circle" label={`On time ${row.onTimeCount}`} />
                 <Pill tone="warning" icon="warning" label={`Late ${row.lateCount}`} />
                 <Pill tone="error" icon="event_busy" label={`Missed ${row.missedCount}`} />
+                {row.absentCount > 0 && (
+                  <Pill tone="error" icon="person_off" label={`Absent ${row.absentCount}`} />
+                )}
                 <Pill tone="neutral" label={`Rate % ${row.attendanceRatePct ?? "—"}`} />
               </div>
             </div>

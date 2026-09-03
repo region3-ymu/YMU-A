@@ -13,11 +13,11 @@ export type ReportRow = {
   start_at: string;
   end_at: string | null;
   session_id: string | null;
-  clock_in_status: "on_time" | "late" | "not_held" | null;
+  clock_in_status: "on_time" | "late" | "not_held" | "absent" | null;
   clock_in_at: string | null;
   clock_out_at: string | null;
   origin: "online" | "offline" | null;
-  attendance_status: "on_time" | "late" | "not_held" | "missed" | "upcoming";
+  attendance_status: "on_time" | "late" | "not_held" | "absent" | "missed" | "upcoming";
   hours_worked: number | null;
 };
 
@@ -72,6 +72,15 @@ export type PeriodSummary = {
    * shown beside taughtCount rather than folded into it or hidden.
    */
   notHeldCount: number;
+  /**
+   * Classes that DID happen but the assigned teacher did not show — unlike
+   * notHeldCount, NOT paid (excluded from hoursWorked) and, unlike
+   * notHeldCount, counted IN scheduledCount: this is a real failure to
+   * attend, so it still counts against the attendance rate the same way
+   * missedCount does. The difference from missedCount is only that it has an
+   * actual record (reason, excused or not) instead of silence.
+   */
+  absentCount: number;
   onTimeCount: number;
   lateCount: number;
   missedCount: number;
