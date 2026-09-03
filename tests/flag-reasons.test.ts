@@ -1,9 +1,11 @@
 // The reason list is duplicated on purpose: SQL renders the note that lands in
-// the spreadsheet (flag_reason_label in migration 0076), TypeScript draws the
-// dropdown. Duplication is the right trade — building the label in SQL is what
-// keeps the Flags tab's 93 historical rows and every new one in one shape —
-// but it only holds if the two halves stay identical, which is what the first
-// test here pins.
+// the spreadsheet (flag_reason_label, first defined in migration 0076, most
+// recently redefined in 0096 to drop "— was there on time" from "forgot"),
+// TypeScript draws the dropdown. Duplication is the right trade — building the
+// label in SQL is what keeps the Flags tab's 93 historical rows and every new
+// one in one shape — but it only holds if the two halves stay identical,
+// which is what the first test here pins against whichever migration most
+// recently redefined the function.
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
@@ -17,7 +19,7 @@ import {
 
 describe("the SQL twin", () => {
   const migration = readFileSync(
-    "supabase/migrations/0076_flag_resolution_reasons.sql",
+    "supabase/migrations/0096_forgot_label_and_class_not_held_via_resolve.sql",
     "utf8",
   );
 
@@ -77,7 +79,7 @@ describe("isFlagReason", () => {
 
 describe("flagReasonLabel", () => {
   it("resolves the causes that dominated the first 120 flags", () => {
-    expect(flagReasonLabel("forgot")).toBe("Forgot to clock in — was there on time");
+    expect(flagReasonLabel("forgot")).toBe("Forgot to clock in");
     expect(flagReasonLabel("no_internet")).toBe("No internet at the school");
   });
 

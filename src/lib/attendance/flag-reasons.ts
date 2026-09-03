@@ -28,7 +28,7 @@
  *                        the quickest way out of the screen.
  */
 export const FLAG_REASONS = [
-  { value: "forgot", label: "Forgot to clock in — was there on time" },
+  { value: "forgot", label: "Forgot to clock in" },
   { value: "tech_problem", label: "App or phone problem" },
   { value: "calendar_time_wrong", label: "Calendar time is wrong — class starts later" },
   { value: "no_internet", label: "No internet at the school" },
