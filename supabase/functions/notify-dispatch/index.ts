@@ -149,6 +149,13 @@ Deno.serve(async (request) => {
   const pushFailedIds: string[] = []; // attempts incremented, not yet at the cap
   const pushGaveUpIds: string[] = []; // hit MAX_PUSH_ATTEMPTS this run
   const noDeviceIds: string[] = []; // recipient has never subscribed a device
+  // A row the recipient opted out of (skipReason 'disabled_by_preference')
+  // falls into none of the buckets above, so nothing wrote it back and it
+  // sat 'pending' forever, re-claimed and re-skipped every cron run (found
+  // via 31 such rows stuck since mid-August — see migration 0088). Settle
+  // whichever channel(s) were actually still pending for it.
+  const preferenceSkippedPushIds: string[] = [];
+  const preferenceSkippedEmailIds: string[] = [];
 
   const emailCache = new Map<string, string | null>(); // recipient_id -> email (or null if lookup failed)
   const emailSentIds: string[] = [];
@@ -156,6 +163,11 @@ Deno.serve(async (request) => {
 
   for (const decision of decisions) {
     const { row } = decision;
+
+    if (decision.skipReason === "disabled_by_preference") {
+      if (row.status === "pending") preferenceSkippedPushIds.push(row.id);
+      if (row.email_status === "pending") preferenceSkippedEmailIds.push(row.id);
+    }
 
     const subs = decision.sendPush ? subsByUser.get(row.recipient_id) ?? [] : [];
 
@@ -262,6 +274,12 @@ Deno.serve(async (request) => {
     emailFailedIds.length
       ? supabase.from("notification_queue").update({ email_status: "failed" }).in("id", emailFailedIds)
       : Promise.resolve(),
+    preferenceSkippedPushIds.length
+      ? supabase.from("notification_queue").update({ status: "skipped" }).in("id", preferenceSkippedPushIds)
+      : Promise.resolve(),
+    preferenceSkippedEmailIds.length
+      ? supabase.from("notification_queue").update({ email_status: "skipped" }).in("id", preferenceSkippedEmailIds)
+      : Promise.resolve(),
   ]);
 
   // attempts increments individually (no bulk "increment by 1" in PostgREST)
@@ -288,6 +306,7 @@ Deno.serve(async (request) => {
     staleSubscriptionsRemoved: staleSubscriptionIds.length,
     emailSent: emailSentIds.length,
     emailFailed: emailFailedIds.length,
+    preferenceSkipped: preferenceSkippedPushIds.length + preferenceSkippedEmailIds.length,
     emailConfigured,
   });
 });

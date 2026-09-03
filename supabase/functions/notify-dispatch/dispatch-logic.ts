@@ -71,8 +71,8 @@ export type QueueRow = {
   event_id: string | null;
   type: string;
   payload: Record<string, unknown>;
-  status: string; // push-channel status: 'pending' | 'sent' | 'failed'
-  email_status: string | null; // null | 'pending' | 'sent' | 'failed'
+  status: string; // push-channel status: 'pending' | 'sent' | 'failed' | 'no_device' | 'skipped'
+  email_status: string | null; // null | 'pending' | 'sent' | 'failed' | 'skipped'
   attempts: number;
   created_at: string;
 };
