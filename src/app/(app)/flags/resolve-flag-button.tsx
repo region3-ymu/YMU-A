@@ -107,16 +107,19 @@ export default function ResolveFlagButton({
           {outcomeNeedsClockIn(outcome) && (
             <>
               <label className="text-xs font-medium text-on-surface-variant">
-                When they actually clocked in (required)
+                When they actually clocked in (optional)
                 <input
                   type="datetime-local"
                   name="clock_in_at"
-                  required
                   value={draft.clockInAt}
                   onChange={(event) => set("clockInAt", event.target.value)}
                   className="mt-1 w-full rounded-lg bg-surface-container px-3 py-2 text-sm text-on-surface outline-none focus:ring-2 focus:ring-primary"
                 />
               </label>
+              <p className="text-xs text-on-surface-variant">
+                Leave blank if nobody knows the exact minute — on time or late below is what
+                actually matters.
+              </p>
               <label className="text-xs font-medium text-on-surface-variant">
                 Status (required)
                 <select

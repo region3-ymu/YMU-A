@@ -120,15 +120,17 @@ describe("describeOutcomeGap", () => {
   });
 
   // 0097: "they were here" is the one outcome that writes a real on-time/late
-  // clock-in, so unlike the other three it needs an actual time and status —
-  // this is what lets it fully replace "Record attendance" on a flag.
-  it("will not let 'they were here' stand without a clock-in", () => {
+  // clock-in, so unlike the other three it needs a status — this is what lets
+  // it fully replace "Record attendance" on a flag. 0098: the exact minute is
+  // optional (usually unknowable — the flag exists because nobody clocked in
+  // on the app), so a blank clockInAt must NOT block submission.
+  it("needs on-time/late for 'they were here', but not the exact minute", () => {
     expect(describeOutcomeGap(draft({ outcome: "attendance_corrected" }))).toContain(
-      "when they actually clocked in",
+      "on time or late",
     );
     expect(
-      describeOutcomeGap(draft({ outcome: "attendance_corrected", clockInAt: "2026-08-25T09:15" })),
-    ).toContain("on time or late");
+      describeOutcomeGap(draft({ outcome: "attendance_corrected", clockInStatus: "late" })),
+    ).toBeNull();
     expect(
       describeOutcomeGap(
         draft({ outcome: "attendance_corrected", clockInAt: "2026-08-25T09:15", clockInStatus: "late" }),
@@ -192,6 +194,18 @@ describe("toOutcomePayload", () => {
   it("sends nothing at all when no outcome was chosen", () => {
     const payload = toOutcomePayload(EMPTY_OUTCOME_DRAFT);
     expect(Object.values(payload).every((value) => value === null)).toBe(true);
+  });
+
+  // 0098: a blank exact-minute must not become a submission blocker — only
+  // the status is required for this outcome.
+  it("sends the status with no clock-in time when the minute is unknown", () => {
+    const payload = toOutcomePayload({
+      ...EMPTY_OUTCOME_DRAFT,
+      outcome: "attendance_corrected",
+      clockInStatus: "on_time",
+    });
+    expect(payload.p_clock_in_at).toBeNull();
+    expect(payload.p_clock_in_status).toBe("on_time");
   });
 
   // resolve_flag REFUSES a field its outcome does not imply, so forwarding

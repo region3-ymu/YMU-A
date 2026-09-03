@@ -124,13 +124,14 @@ export const EMPTY_OUTCOME_DRAFT: OutcomeDraft = {
  * Returns null when the form is good to submit.
  */
 export function describeOutcomeGap(draft: OutcomeDraft): string | null {
-  const { outcome, absenceReason, notifiedChannel, excused, substitutionId, clockInAt, clockInStatus } =
-    draft;
+  const { outcome, absenceReason, notifiedChannel, excused, substitutionId, clockInStatus } = draft;
   if (!outcome) return null; // Optional — the everyday case leaves it unset.
   if (!isFlagOutcome(outcome)) return "Choose what happened from the list.";
 
   if (outcomeNeedsClockIn(outcome)) {
-    if (!clockInAt) return "Record when they actually clocked in.";
+    // The time is a courtesy, not a requirement — a manager confirming
+    // "they were here" often knows on-time-vs-late without knowing the exact
+    // minute (that is usually why the flag needed a manual answer at all).
     if (clockInStatus !== "on_time" && clockInStatus !== "late") {
       return "Record whether they were on time or late.";
     }
