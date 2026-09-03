@@ -1,0 +1,210 @@
+# Daily encrypted backup of the YMU-A database.
+#
+# WHY THIS EXISTS: as of 2026-08-26 this project has no backups of any kind.
+# It is the most-used app in the organisation, it holds attendance records for
+# minors, and it is the one whose loss could not be reconstructed from anywhere
+# else. Even on a Supabase plan that provides managed backups, those live inside
+# the same Supabase account as the data — they do not protect against losing
+# access to that account, or against the project being deleted. This is the
+# off-platform copy.
+#
+# Daily rather than weekly, unlike the inventory app's: this database changes
+# every school day, so a week of loss is a week of clock-ins and feedback that
+# teachers would have to reconstruct from memory.
+#
+# THIS REPOSITORY IS PUBLIC. Workflow artifacts on a public repo are
+# downloadable by ANYONE, no GitHub account required. A raw dump here contains
+# staff names, phone numbers, emergency contacts and minors' attendance — so the
+# dump is encrypted with AES-256 BEFORE it is ever uploaded, and the job refuses
+# to run without a passphrase. Do not remove the encryption step, and do not add
+# a step that uploads anything unencrypted, unless this repo is made private
+# first.
+#
+# ---------------------------------------------------------------------------
+# SETUP — two secrets, created by a human (Settings -> Secrets and variables ->
+# Actions -> New repository secret). Never paste either into a file.
+#
+#   SUPABASE_DB_URL
+#     Supabase dashboard -> Connect -> "Session pooler" -> copy the URI and
+#     substitute the database password for [YOUR-PASSWORD].
+#
+#     USE THE SESSION POOLER, NOT THE DIRECT CONNECTION. Supabase's direct
+#     database hostname resolves to IPv6 only, and GitHub's hosted runners have
+#     no IPv6 route — a direct URL fails with "could not translate host name" or
+#     a connection timeout. The pooler is IPv4-reachable, which is the whole
+#     reason it is named here.
+#
+#     The password is the DATABASE password set when the project was created,
+#     not the Supabase account password. If it is unknown, reset it under
+#     Settings -> Database -> Database password — but note that breaks anything
+#     else already using it.
+#
+#   BACKUP_PASSPHRASE
+#     A long random passphrase, stored in a password manager. IF IT IS LOST THE
+#     BACKUPS ARE UNRECOVERABLE. Storing it only in GitHub secrets does not
+#     count as storing it — secrets are write-only and cannot be read back.
+# ---------------------------------------------------------------------------
+
+name: Daily DB backup
+
+on:
+  schedule:
+    # 07:41 UTC daily (03:41 EDT). Off the hour on purpose: scheduled jobs that
+    # land on :00 queue behind everyone else's and get delayed the most.
+    #
+    # NOTE: GitHub disables scheduled workflows on a repo with no pushes for 60
+    # days and emails the admins. If nobody has committed in two months, check
+    # this job is still enabled under the Actions tab.
+    - cron: '41 7 * * *'
+  # Run it by hand once right after setup rather than waiting a day to discover
+  # a bad secret.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: db-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Dump the database
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${DB_URL:-}" ]; then
+            echo "::error::SUPABASE_DB_URL secret is empty or missing. See the setup notes at the top of this file."
+            exit 1
+          fi
+
+          # pg_dump runs inside a pinned Postgres image rather than using the
+          # runner's bundled client, because pg_dump REFUSES to dump a server
+          # newer than itself and the runner's version drifts with the image.
+          # If this fails with "server version: 1X.Y; pg_dump version: 17.Z",
+          # change the tag below to match the project's Postgres major version
+          # (Supabase dashboard -> Settings -> Infrastructure).
+          #
+          # The URL is passed via env, not argv, so the password never appears
+          # in a process listing or in the workflow log.
+          docker run --rm \
+            -e PGCONNECT_TIMEOUT=30 \
+            -e DB_URL \
+            -v "$PWD:/out" \
+            postgres:17-alpine \
+            sh -c 'pg_dump "$DB_URL" \
+                     --format=custom \
+                     --compress=9 \
+                     --no-owner \
+                     --no-privileges \
+                     --file=/out/dump.pgc'
+
+          # Warnings about the `extensions`, `graphql`, `cron`, `vault` or
+          # `supabase_functions` schemas are expected and harmless: those are
+          # Supabase-managed and get recreated by the platform.
+
+      - name: Sanity-check the dump
+        run: |
+          set -euo pipefail
+          if [ ! -f dump.pgc ]; then
+            echo "::error::pg_dump produced no file."
+            exit 1
+          fi
+
+          size=$(stat -c%s dump.pgc)
+          echo "Dump size: ${size} bytes"
+
+          # A silently-truncated backup is worse than a missing one, because it
+          # looks like success. A real dump of this schema — 89 migrations, with
+          # attendance and calendar history — is well over 100 KB, so anything
+          # under 50 KB means the dump aborted partway or hit the wrong database.
+          if [ "$size" -lt 51200 ]; then
+            echo "::error::Dump is only ${size} bytes — treating this as a failed backup, not a small one."
+            exit 1
+          fi
+
+      - name: Encrypt the dump
+        env:
+          PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${PASSPHRASE:-}" ]; then
+            echo "::error::BACKUP_PASSPHRASE secret is empty or missing. Refusing to upload an unencrypted dump to a PUBLIC repo."
+            exit 1
+          fi
+
+          gpg --version | head -1
+          before=$(sha256sum dump.pgc | cut -d' ' -f1)
+
+          # --pinentry-mode loopback is REQUIRED, not optional: GnuPG 2.x (what
+          # the Ubuntu runners ship) ignores --passphrase-fd without it and tries
+          # to open a pinentry dialog, which fails on a headless runner with
+          # "Inappropriate ioctl for device".
+          printf '%s' "$PASSPHRASE" | gpg --batch --quiet \
+            --pinentry-mode loopback --passphrase-fd 0 \
+            --symmetric --cipher-algo AES256 --no-symkey-cache \
+            --output dump.pgc.gpg dump.pgc
+
+          # VERIFY THE CIPHERTEXT BEFORE TRUSTING IT. An encrypted blob that
+          # cannot be decrypted is indistinguishable from a good backup until the
+          # day you need it, so prove the round-trip in the same run that made it.
+          printf '%s' "$PASSPHRASE" | gpg --batch --quiet \
+            --pinentry-mode loopback --passphrase-fd 0 --no-symkey-cache \
+            --decrypt --output verify.pgc dump.pgc.gpg
+
+          if [ "$before" != "$(sha256sum verify.pgc | cut -d' ' -f1)" ]; then
+            echo "::error::Encrypted dump did not round-trip — refusing to upload a backup that cannot be restored."
+            exit 1
+          fi
+          echo "Round-trip verified: the artifact decrypts to a byte-identical dump."
+
+          shred -u dump.pgc verify.pgc 2>/dev/null || rm -f dump.pgc verify.pgc
+          ls -l dump.pgc.gpg
+          test ! -f dump.pgc && test ! -f verify.pgc
+
+      - name: Name the artifact
+        id: stamp
+        run: echo "date=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload encrypted backup
+        uses: actions/upload-artifact@v4
+        with:
+          name: ymu-a-backup-${{ steps.stamp.outputs.date }}
+          path: dump.pgc.gpg
+          # 90 days is GitHub's maximum. Anything to keep longer than that,
+          # download and archive somewhere you control.
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: How to restore
+        run: |
+          cat <<'EOF'
+          ================= RESTORING THIS BACKUP =================
+          1. Download the artifact from this run's summary page and unzip it.
+
+          2. Decrypt (prompts for BACKUP_PASSPHRASE):
+               gpg --output dump.pgc --decrypt dump.pgc.gpg
+
+          3. Inspect before touching anything live — lists the contents without
+             restoring, the cheapest way to confirm the backup is real:
+               pg_restore --list dump.pgc
+
+          4. Restore into a SCRATCH database, never over production:
+               pg_restore --dbname "postgresql://.../scratch" \
+                          --no-owner --no-privileges --clean --if-exists dump.pgc
+
+          5. Then run the RLS suite against that scratch database:
+               npm run test:rls
+             A restore that comes back without its policies is not a restore.
+
+          A backup you have never test-restored is a hypothesis, not a backup.
+          Do steps 4 and 5 once now, while nothing depends on it.
+          =========================================================
+          EOF
