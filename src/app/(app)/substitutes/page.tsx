@@ -9,9 +9,13 @@ import type { CoverableClass, Substitution } from "./types";
 
 export const metadata: Metadata = { title: "Substitutes" };
 
-// How far ahead the picker offers classes. Covering an absence is short-notice
-// work; a term's worth of classes would just be a longer list to scroll.
-const DAYS_AHEAD = 14;
+// How far ahead the picker offers classes. Started at 14 on the theory that
+// covering an absence is short-notice work, but YMU arranges cover further out
+// than that (2026-09-03: "que pueda seleccionar una clase que esté a un mes de
+// distancia") — a teacher who gives notice weeks ahead was the case the shorter
+// window locked out. Still bounded rather than a whole term: the picker is a
+// flat list grouped by school, and every extra week is more of it to scroll.
+const DAYS_AHEAD = 28;
 
 // How far back the "already arranged" list reaches. Cover is looked up after
 // the fact as often as before it — a manager resolving a missed clock-in needs
