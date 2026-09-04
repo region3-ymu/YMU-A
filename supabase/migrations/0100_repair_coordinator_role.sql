@@ -1,0 +1,28 @@
+-- ===========================================================================
+-- 0100 — the repair_coordinator role
+-- ===========================================================================
+--
+-- The inventory app (YMU-I) is moving onto this project so the organisation has
+-- one account per person instead of three. Its five roles collapse onto the ones
+-- here — its admin is the CPO, its coordinator and field_staff are both
+-- teachers, its regional_manager is this one — except for the person who
+-- repairs instruments, who has no equivalent. This is that role.
+--
+-- IT GETS NOTHING IN YMU-A ON PURPOSE. Every role check in this database is
+-- positive: policies enumerate who *can*, never who cannot. Verified across all
+-- of them before writing this — the one `not in (...)` guard (0077) denies
+-- rather than grants, and the three `case ... role` expressions only order
+-- ticket assignment. So a value added here starts with access to nothing and
+-- has to be given it explicitly, which is exactly the property that makes
+-- adding it safe while the app is in use.
+--
+-- Nothing in the running app changes. `ALTER TYPE ... ADD VALUE` does not
+-- rewrite any table, no existing row carries the new value, and no query
+-- changes its result. There is no window where anyone is locked out.
+--
+-- Alone in this file, because a value added by ALTER TYPE cannot be used in the
+-- transaction that added it — the same reason 0029, 0062 and 0068 are each
+-- alone. The tables that give this role its permissions come in 0101.
+-- ===========================================================================
+
+alter type public.app_role add value if not exists 'repair_coordinator';

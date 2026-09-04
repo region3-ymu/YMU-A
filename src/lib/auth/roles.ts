@@ -19,6 +19,11 @@ export const APP_ROLES = [
   // permission level. Mirrors app_role in migration 0068.
   "administrator",
   "cpo",
+  // Repairs instruments for the inventory app, and has no business in this one
+  // (YMU 2026-09-04). It lives in this enum because both apps now share one
+  // account per person; it is deliberately absent from every permission list
+  // below, so it reaches nothing here. Mirrors app_role in migration 0100.
+  "repair_coordinator",
 ] as const;
 
 export type AppRole = (typeof APP_ROLES)[number];
@@ -218,6 +223,11 @@ export function assignableRoles(callerRole: AppRole): AppRole[] {
     "academic_manager",
     "operations_manager",
     "administrator",
+    // Grantable here because this is the only account admin the organisation
+    // has — the inventory app has no user management of its own and is not
+    // getting one. Handing it out gives nothing in YMU-A; it is what lets the
+    // person into the inventory app.
+    "repair_coordinator",
   ];
 }
 
@@ -256,6 +266,7 @@ export const ROLE_LABELS: Record<AppRole, string> = {
   administrator: "Administrator",
   operations_manager: "Operations Manager",
   cpo: "CPO",
+  repair_coordinator: "Repair Coordinator",
 };
 
 /**
@@ -321,6 +332,22 @@ export function canViewAppFeedback(role: AppRole, isAppAdmin: boolean): boolean 
 // you go looking for, not things you check between classes.
 export function navForRole(role: AppRole, isAppAdmin: boolean = false): NavItem[] {
   const items: NavItem[] = [];
+
+  // Repairs instruments; has no job in this app. Without this branch the role
+  // falls through to the `else` below and is offered Tickets, Schedules, News
+  // and Reports — pages RLS would render nearly empty for them, which reads as
+  // a broken app rather than as one that isn't theirs. Settings only, so they
+  // can still change their own password and notification preferences.
+  if (role === "repair_coordinator") {
+    return [
+      {
+        href: "/settings",
+        label: "Settings",
+        note: "Account, notifications & theme",
+        icon: "settings",
+      },
+    ];
+  }
 
   if (role === "teacher") {
     items.push(
