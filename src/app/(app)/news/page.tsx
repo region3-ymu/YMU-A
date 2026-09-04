@@ -16,7 +16,7 @@ export default async function NewsPage() {
   const canPost = canPublishNews(profile.role);
 
   return (
-    <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-4 p-6">
+    <main className="mx-auto flex w-full min-w-0 max-w-2xl flex-1 flex-col gap-4 p-6">
       <header className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
           <span
@@ -53,11 +53,11 @@ export default async function NewsPage() {
           </p>
         </div>
       ) : (
-        <ul className="grid gap-3">
+        <ul className="grid min-w-0 gap-3">
           {posts.map((post) => {
             const unread = !readIds.has(post.id);
             return (
-              <li key={post.id}>
+              <li key={post.id} className="min-w-0">
                 <Link
                   href={`/news/${post.id}`}
                   className="relative block overflow-hidden rounded-2xl bg-surface-container p-4 pl-5 shadow-sm transition-transform active:scale-[0.99]"
@@ -93,13 +93,15 @@ export default async function NewsPage() {
                       </span>
                     )}
                   </div>
-                  <p className={`mt-1 text-base ${unread ? "font-bold" : "font-semibold"} text-on-surface`}>
+                  <p className={`mt-1 break-words text-base ${unread ? "font-bold" : "font-semibold"} text-on-surface`}>
                     {post.title}
                   </p>
                   {/* Two lines of the body as a preview — enough to tell a
-                      cover request from a newsletter without opening it. */}
-                  <p className="mt-0.5 line-clamp-2 text-sm text-on-surface-variant">{post.body}</p>
-                  <p className="mt-2 text-xs text-on-surface-variant">
+                      cover request from a newsletter without opening it.
+                      break-words because a pasted form URL is one 99+
+                      character token, and line-clamp only limits height. */}
+                  <p className="mt-0.5 line-clamp-2 break-words text-sm text-on-surface-variant">{post.body}</p>
+                  <p className="mt-2 break-words text-xs text-on-surface-variant">
                     {post.author?.full_name ?? "A manager"} ·{" "}
                     {displayRole({ role: post.author_role, job_title: null })} ·{" "}
                     {formatDateTime(post.published_at)}

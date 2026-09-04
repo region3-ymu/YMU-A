@@ -5,6 +5,7 @@ import { requireProfile } from "@/lib/auth/dal";
 import { canPublishNews, displayRole } from "@/lib/auth/roles";
 import { getNewsPost, newsAudienceLabel } from "@/lib/news/queries";
 import { formatDateTime } from "@/lib/format/datetime";
+import { linkify } from "@/lib/format/linkify";
 import { markNewsRead } from "../actions";
 import DeletePostButton from "./delete-post-button";
 
@@ -40,8 +41,8 @@ export default async function NewsPostPage({ params }: { params: Promise<{ id: s
       profile.role === "cpo");
 
   return (
-    <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-5 p-6">
-      <div>
+    <main className="mx-auto flex w-full min-w-0 max-w-2xl flex-1 flex-col gap-5 p-6">
+      <div className="min-w-0">
         <Link
           href="/news"
           className="flex w-fit items-center gap-1 text-sm text-on-surface-variant hover:underline"
@@ -63,8 +64,8 @@ export default async function NewsPostPage({ params }: { params: Promise<{ id: s
             </span>
           )}
         </div>
-        <h1 className="mt-1 text-2xl font-bold tracking-tight text-on-surface">{post.title}</h1>
-        <p className="mt-1 text-sm text-on-surface-variant">
+        <h1 className="mt-1 break-words text-2xl font-bold tracking-tight text-on-surface">{post.title}</h1>
+        <p className="mt-1 break-words text-sm text-on-surface-variant">
           {post.author?.full_name ?? "A manager"} ·{" "}
           {displayRole({ role: post.author_role, job_title: null })} ·{" "}
           {formatDateTime(post.published_at)}
@@ -74,9 +75,17 @@ export default async function NewsPostPage({ params }: { params: Promise<{ id: s
 
       {/* whitespace-pre-wrap, not a markdown renderer: managers type these on a
           phone, and their line breaks are the only formatting they expect to
-          survive. */}
-      <article className="whitespace-pre-wrap rounded-2xl bg-surface-container p-5 text-on-surface shadow-sm">
-        {post.body}
+          survive. linkify() is the one exception — a pasted form link is the
+          point of half these posts, and plain text made it untappable.
+
+          break-words + min-w-0 for the same reason the schedules detail page
+          carries them: whitespace-pre-wrap does not break inside a word, and
+          two of the four posts on this board hold a bare Google Forms URL of
+          99 and 118 characters. As a flex item with the default
+          min-width:auto, the article sized itself to that token rather than
+          being held to max-w-2xl, and dragged the whole document sideways. */}
+      <article className="min-w-0 whitespace-pre-wrap break-words rounded-2xl bg-surface-container p-5 text-on-surface shadow-sm">
+        {linkify(post.body)}
       </article>
 
       {post.attachments.length > 0 && (
